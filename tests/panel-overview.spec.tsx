@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// The overview.
+// 总览。
 import { expect, it } from 'vitest'
 import { en, zh } from '../src/client/locales.ts'
 import { usePanel, mount, remount, all, find, tab, click, text } from './fixtures/panel.tsx'
@@ -13,7 +13,7 @@ it('leads the overview with the pending Tickets, then problems, the last day and
   expect(all('.dt-section-title').map(title => title.textContent)).toEqual(['待处理工单2', '系统问题2', '过去 24 小时详情 ›', '执行器详情 ›'])
   expect(all('.dt-cards .dt-ticket-stage').map(item => item.textContent)).toEqual(['待回答', '待处理失败'])
   expect(all('.dt-cards .dt-att-what').map(item => item.textContent)).toEqual(['飞书 来源异常', '评估未完成：这个文案好奇怪'])
-  // Actions sit below the title and Threads, apart from the stage, each with its icon.
+  // 操作按钮位于标题和 Threads 之下，与 stage 分开，每个都带自己的图标。
   expect(all('.dt-ticket').every(row => row.querySelector('.dt-ticket-stage button, .dt-ticket-stage a') === null
     && [...row.querySelectorAll('.dt-ticket-actions button, .dt-ticket-actions a')].every(action => action.querySelector('svg')))).toBe(true)
   expect(text()).toContain('来源会在每次轮询时自动重试')
@@ -44,7 +44,7 @@ it('opens the Thread of an unjudged Eval at its Trigger from the problem list', 
 
 it('follows the last day\'s counts to the status of each stage', async () => {
   await mount()
-  // Arrived Triggers include filtered ones, which have no Thread, so no list has that count to link to.
+  // 到达的 Trigger 包含被过滤的那些，它们没有 Thread，因此没有列表有该计数可供链接。
   expect(all('.dt-stat button').map(button => button.textContent)).toEqual(['2', '1'])
   await click(all('.dt-stat button')[0]!)
   expect(tab(zh['tab.source']).getAttribute('aria-selected')).toBe('true')
@@ -115,7 +115,7 @@ it('names a failing part of dsh-superagent itself by its label', async () => {
 
 it('words a refused retry in the interface language by its code', async () => {
   await mount()
-  // Simulate another user retrying the ticket after the overview loaded.
+  // 模拟另一名用户在总览加载后重试该 ticket。
   server.person = server.person.map(ticket => ticket.id === 't4' ? { ...ticket, actions: { ...ticket.actions, retry: false } } : ticket)
   await click(find(zh.retry, '.dt-ticket-actions button'))
   await click(zh.confirm)
@@ -148,7 +148,7 @@ it('says when no Source is on, an Eval is past its deadline or a message keeps f
     error: 'HTTP 502 from GitHub' }]
   await mount()
   const titles = () => all('.dt-cards .dt-att-what').map(item => item.textContent)
-  // The Feishu Source is off, so its error is no problem any more.
+  // Feishu Source 已关闭，因此其错误不再是问题。
   expect(titles()).toEqual([zh.problemNoSource, '评估超时未决定：#9 迟迟未决', '评估未完成：这个文案好奇怪', 'GitHub 回复发送失败（已重试 4 次）'])
   expect(text()).toContain('HTTP 502 from GitHub')
   await click(zh.actionOpenSources)

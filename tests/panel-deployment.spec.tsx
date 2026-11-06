@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// The Deployment settings and the Plugin Manager page.
+// Deployment 设置与 Plugin Manager 页面。
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { PluginConfig } from '../src/client/deployment.tsx'
@@ -16,11 +16,11 @@ it('saves this machine\'s settings in the Deployment settings through DSH\'s con
   await click(tab(zh['tab.settings']))
   await click(find(zh['settingsGroup.deployment'], '.dt-settings-link'))
   expect(text()).toContain('/srv/dsh-superagent')
-  // Accounts are on the Source settings; the Plugin Manager page, where those are not at hand, shows them here.
+  // 账号位于 Source 设置中；在无法触达那些设置的 Plugin Manager 页面上，它们会显示在这里。
   expect(text()).not.toContain('@agent-bot')
   for (const moved of ['仓库克隆', '工单 worktree 目录', '禁用的命令']) expect(text()).not.toContain(moved)
   expect(text()).toContain(zh.deploymentIntro)
-  // A limit applies at once, so a draft of one says only that it is unsaved, even while Assignments run.
+  // 限制值立即生效，因此对它的草稿只说明尚未保存，即使 Assignments 正在运行。
   await type(field<HTMLInputElement>(zh.deploymentContextTimeout), '20000')
   expect(document.querySelector('.dt-savebar')?.textContent).toBe(`${zh.draftKept}${zh.discard}${zh.save}`)
   await click(zh.save)
@@ -55,7 +55,7 @@ it('merges a Deployment draft into the values another page saved meanwhile, and 
   at({ page: 'settings', query: { group: 'deployment' } })
   await mount()
   await type(field<HTMLInputElement>(zh.deploymentContextPages), '20')
-  // The Plugin Manager page saves another field of the same entry meanwhile.
+  // 与此同时 Plugin Manager 页面保存了同一条目的另一个字段。
   await act(async () => { await shared.mutate([{ op: 'set', path: ['promptMaxChars'], value: 50000 }], 1) })
   expect(text()).toContain('设置已在别处修改，你的修改已合并到最新版本')
   expect(field<HTMLInputElement>(zh.deploymentPromptMaxChars).value).toBe('50000')
@@ -68,7 +68,7 @@ it('renders the Deployment page with the derived accounts in the Plugin Manager,
   let container = document.createElement('div')
   let root = createRoot(container)
   onTestFinished(() => { act(() => { root.unmount() }); container.remove() })
-  // Remount from scratch on each render to match Plugin Manager page navigation.
+  // 每次渲染都从头重新挂载，以匹配 Plugin Manager 的页面导航。
   const render = async (view: 'page' | 'summary') => {
     act(() => { root.unmount() }); container.remove()
     container = document.createElement('div'); document.body.append(container)
@@ -99,7 +99,7 @@ it('tells a dsh-superagent that is starting from a browser that cannot write on 
   await mount()
   const limit = () => field<HTMLInputElement>(zh.deploymentPromptMaxChars)
   expect(limit().disabled).toBe(false)
-  // While dsh-superagent restarts, DSH stops serving its entry; the values come back editable once it is served again.
+  // dsh-superagent 重启期间，DSH 停止提供其入口；再次提供服务后这些值恢复可编辑。
   await act(async () => { publish({ status: 'unavailable' }) })
   expect(text()).toContain(zh.deploymentUnavailable)
   expect(limit().disabled).toBe(true)
@@ -124,7 +124,7 @@ it('reads the state every second after a setup check, until dsh-superagent stopp
   server.setup = { ...server.setup, problem: null }
   await second()
   expect(text()).not.toContain(zh['setup.agentCliUnset'])
-  // Once it answers, the state is read every five seconds again.
+  // 一旦它有响应，状态又每五秒读取一次。
   const reads = server.requests.filter(request => request.path === 'state').length
   await act(async () => { await vi.advanceTimersByTimeAsync(3000) }); await settle()
   expect(server.requests.filter(request => request.path === 'state')).toHaveLength(reads)
@@ -142,7 +142,7 @@ it('ends a restart that never stopped answering after half a minute, and reads t
   const before = reads()
   await advance(10_000)
   expect(reads() - before).toBeGreaterThanOrEqual(8)
-  // The restart ends at 30 s; the state is read at once, then every five seconds.
+  // 重启在 30 秒时结束；状态立即读取一次，之后每五秒读取一次。
   await advance(21_000)
   const ended = reads()
   await advance(3_000)

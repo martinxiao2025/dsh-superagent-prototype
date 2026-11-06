@@ -1,11 +1,11 @@
-/** A worker's background work in DSH: waiting for its shell jobs and subagents, and stopping them. */
+/** DSH 中 worker 的后台工作：等待其 shell 作业与子代理，并停止它们。 */
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { expect, it, vi } from 'vitest'
 import { stopSubagents, untilQuiet } from '../src/executor/background.ts'
 import { jobRegistry } from './fixtures/host.ts'
 
-/** A context with DSH's job registry and subagents, and an idle worker agent with one live subagent, `child-1`. */
+/** 带有 DSH 作业注册表与子代理的 context，以及一个空闲 worker agent（含一个存活的子代理 `child-1`）。 */
 function setup(waitForChildren: (agent: Agent) => Promise<boolean>, drainChildren: () => Promise<void> = async () => {}) {
   const jobs = jobRegistry()
   const agent = { id: 'worker-t1', status: 'idle', whenIdle: async () => {}, inbox: { nextTurn: [], nextStep: [] }, cancel: vi.fn() } as unknown as
@@ -18,7 +18,7 @@ function setup(waitForChildren: (agent: Agent) => Promise<boolean>, drainChildre
 
 it('is not quiet when an end during the subagent check woke the worker, whose own idle looks again', async () => {
   const { ctx, agent, jobs } = setup(async () => {
-    // The job settles meanwhile, and its end wakes the worker.
+    // 作业在此期间结束，其结束唤醒了 worker。
     jobs.end(id); (agent as { status: string }).status = 'running'
     return false
   })
@@ -32,7 +32,7 @@ it('stops waiting for subagents that never settle once the host stops', async ()
   const { ctx, agent } = setup(() => { joining(); return new Promise(() => {}) })
   const stop = new AbortController()
   const quiet = untilQuiet(ctx, agent, stop.signal)
-  // The host stops while the wait for its subagents runs.
+  // 宿主在等待其子代理期间停止。
   await joined
   stop.abort()
   expect(await quiet).toBe(false)

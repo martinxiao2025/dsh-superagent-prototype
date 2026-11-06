@@ -1,4 +1,4 @@
-/** Lightweight parser for the Markdown subset used in reports and questions, plus plain-text URL linkification; never interprets raw HTML. */
+/** 用于报告与提问的 Markdown 子集的轻量解析器，外加纯文本 URL 链接化；从不解释原始 HTML。 */
 
 export type Inline = { kind: 'text' | 'bold' | 'code'; text: string } | { kind: 'link'; text: string; url: string }
 export type Block = { kind: 'heading' | 'paragraph'; text: string } | { kind: 'list'; ordered: boolean; items: string[] }
@@ -8,9 +8,9 @@ function shortUrl(url: string): string {
     const parsed = new URL(url)
     const path = parsed.pathname.length > 24 ? `${parsed.pathname.slice(0, 24)}…` : parsed.pathname
     return `${parsed.host}${path === '/' ? '' : path}`
-  } catch (error) { void error /* Not a URL after all; show it as written. */; return url }
+  } catch (error) { void error /* 其实不是 URL；按原样显示。 */; return url }
 }
-/** Splits plain text into text and bare-URL link nodes, excluding trailing sentence punctuation from URLs. */
+/** 把纯文本拆成文本节点与裸 URL 链接节点，并从 URL 中排除结尾的句子标点。 */
 export function linkify(text: string): Inline[] {
   return text.split(/(https?:\/\/[^\s)，。]*[^\s)，。.,;:!?'"])/).filter(Boolean).map((part): Inline => /^https?:\/\//.test(part)
     ? { kind: 'link', text: shortUrl(part), url: part } : { kind: 'text', text: part })

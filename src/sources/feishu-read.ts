@@ -1,4 +1,4 @@
-/** Trigger-scoped Feishu context reader; retrieved messages are returned for model inspection without entering intake. */
+/** 以 Trigger 为作用域的飞书上下文读取器；读取到的消息返回供模型检视，不进入摄入流程。 */
 import { z } from 'zod'
 import type { Trigger } from '../core/index.ts'
 import { validItems, type Commands } from '../infra/commands.ts'
@@ -7,7 +7,7 @@ import { feishuRef, feishuTime, HistoricalMessageSchema, HistoryPageSchema, hist
   from './feishu-trigger.ts'
 import type { ContextMessage, ThreadContext } from './kind.ts'
 
-/** Retained source message reference anchoring context reads; `at` is the timestamp around which `chatAround` queries. */
+/** 作为上下文读取锚点的保留来源消息引用；`at` 是 `chatAround` 查询所围绕的时间戳。 */
 export interface FeishuRef { triggerId: string; chatId: string; messageId: string; at?: string }
 const messageId = z.string().regex(/^om_[a-zA-Z0-9_-]+$/)
 const sourceSchema = z.object({
@@ -22,11 +22,11 @@ const messageSchema = z.object({
   message_app_link: z.string().optional(), thread_id: z.string().optional(), root_id: z.string().optional(), parent_id: z.string().optional(),
 })
 export type FeishuMessage = z.infer<typeof messageSchema>
-/** A topic page; messages are validated individually so an unreadable item is skipped alone and counted. */
+/** 一页话题消息；各消息单独校验，因此无法读取的条目只跳过并计数。 */
 const threadSchema = z.object({ messages: z.array(z.unknown()), has_more: z.boolean(), page_token: z.string().optional(),
   thread_id: z.string() })
 
-/** Reads the CLI-provided AppLink for the source message alone, without retaining expanded thread content. */
+/** 仅读取 CLI 提供的来源消息 AppLink，不保留展开的 thread 内容。 */
 export async function readFeishuLink(commands: Commands, ref: FeishuRef): Promise<string> {
   const id = messageId.parse(ref.messageId)
   const result = z.object({ messages: z.array(z.object({ message_id: messageId, chat_id: z.string(), message_app_link: z.url().optional(), deleted: z.boolean().optional() })) })
@@ -36,14 +36,14 @@ export async function readFeishuLink(commands: Commands, ref: FeishuRef): Promis
   return message.message_app_link
 }
 
-/** Resource references are anchored to an accepted trigger instead of arbitrary chat or message IDs. */
+/** 资源引用锚定在已接受的 trigger 上，而不是任意的群聊或消息 ID。 */
 export function feishuReferences(ref: FeishuRef) {
   const read = (section: string) => `feishu/${ref.triggerId}/${section}`
   return { skill: 'dsh-superagent-feishu', message: read('message'), root: read('root'), parent: read('parent'), thread: read('thread'),
     around: read('around') }
 }
 
-/** Validates a model-supplied resource string before any network request; only `thread` and `around` take pagination cursors. */
+/** 在发起任何网络请求前校验模型提供的资源字符串；只有 `thread` 与 `around` 接受分页游标。 */
 export function feishuResource(resource: string) {
   const match = /^feishu\/([^/]+)\/(message|root|parent|thread|around)(?:\/([^/]+))?$/.exec(resource)
   if (!match || (match[3] && match[2] !== 'thread' && match[2] !== 'around')) {
@@ -53,7 +53,7 @@ export function feishuResource(resource: string) {
 }
 async function sourceOf(commands: Commands, ref: FeishuRef) {
   const id = messageId.parse(ref.messageId)
-  // Use the raw mget endpoint to read parent/root IDs without triggering CLI thread expansion.
+  // 使用原始 mget 端点读取 parent/root ID，避免触发 CLI 的 thread 展开。
   const params = JSON.stringify({ message_ids: [id] })
   const listed = await commands.lark(['api', 'GET', '/open-apis/im/v1/messages/mget', '--params', params])
   const sourceResult = z.object({ items: z.array(sourceSchema) }).parse(listed)
@@ -65,7 +65,7 @@ async function sourceOf(commands: Commands, ref: FeishuRef) {
 
 export interface FeishuPage<M> { status: string; thread_id?: string; messages: M[]; next_resource: string | null; skipped?: number }
 export interface FeishuOne<M> { status: string; message: M | null }
-/** Fetches one message or a bounded topic page of a Trigger's source message with explicit pagination continuation. */
+/** 读取一条消息或 Trigger 来源消息的一页有界话题消息，并显式给出分页续读位置。 */
 export async function readFeishu(commands: Commands, ref: FeishuRef, resource: string, pageSize: number,
   order: 'asc' | 'desc' = 'asc'): Promise<FeishuPage<FeishuMessage> | FeishuOne<FeishuMessage>> {
   const request = feishuResource(resource)
@@ -88,7 +88,7 @@ export async function readFeishu(commands: Commands, ref: FeishuRef, resource: s
   }
   const target = request.section === 'root' ? source.root_id : request.section === 'parent' ? source.parent_id : source.message_id
   if (!target) return { status: `no_${request.section}`, message: null }
-  // The CLI renders rich text and merged forwards; automatic thread replies are omitted in favor of explicit pages.
+  // CLI 会渲染富文本与合并转发；自动的 thread 回复被省略，改为显式分页读取。
   const result = z.object({ messages: z.array(messageSchema) }).parse(await commands.lark(['im', '+messages-mget', '--message-ids', target, '--no-reactions']))
   const message = result.messages.find(message => message.message_id === target)
   if (!message) throw new Error('The requested Feishu message is unavailable; do not infer its contents')
@@ -104,14 +104,14 @@ export function feishuView(message: FeishuMessage): ContextMessage {
     ...message.sender.sender_type !== 'user' ? { bot: true } : {}, ...message.deleted ? { deleted: true } : {},
     ...message.parent_id ? { reply_to: message.parent_id } : {}, ...message.message_app_link ? { url: message.message_app_link } : {} }
 }
-/** Formats a chat history API message for model inspection; the history API identifies senders by `open_id` only. */
+/** 把群聊历史 API 的消息格式化供模型检视；历史 API 只用 `open_id` 标识发送者。 */
 function historyView(message: HistoricalMessage): ContextMessage {
   return { id: message.message_id, from: message.sender.id, at: isoTime(message.create_time),
     text: message.deleted ? '' : withMentionNames(historyText(message), message.mentions ?? []),
     ...message.sender.sender_type !== 'user' ? { bot: true } : {}, ...message.deleted ? { deleted: true } : {},
     ...message.parent_id ? { reply_to: message.parent_id } : {}, ...message.message_app_link ? { url: message.message_app_link } : {} }
 }
-/** Reads chat messages surrounding `ref.at` (five before and five after on initial read, then pages of ten older messages). */
+/** 读取 `ref.at` 前后的群聊消息（首次读取前后各五条，之后每页十条更早的消息）。 */
 async function chatAround(commands: Commands, ref: FeishuRef, cursor: string | undefined, before = 5,
   after = 5): Promise<FeishuPage<ContextMessage>> {
   const time = Date.parse(ref.at ?? '')
@@ -121,7 +121,7 @@ async function chatAround(commands: Commands, ref: FeishuRef, cursor: string | u
     const page = HistoryPageSchema.parse(await commands.lark(['api', 'GET', '/open-apis/im/v1/messages', '--params', params]))
     return { ...page, items: validItems(HistoricalMessageSchema, page.items).filter(item => item.chat_id === ref.chatId) }
   }
-  // Feishu takes whole seconds; the source message counts among the earlier items, so `before + 1` holds it and those before it.
+  // 飞书按整秒计；来源消息本身计入较早的条目，因此 `before + 1` 可包含它及其之前的消息。
   const earlier = await list({ end_time: String(Math.ceil(time / 1000)), sort_type: 'ByCreateTimeDesc', page_size: cursor ? 10 : before + 1,
     ...cursor ? { page_token: cursor } : {} })
   const later = cursor || !after ? []
@@ -157,7 +157,7 @@ export const feishuThreadContext: ThreadContext<{ readPageSize: number }> = {
     const resource = `feishu/${trigger.id}/${part}${cursor ? '/' + encodeURIComponent(cursor) : ''}`
     const body = await feishuRead(commands, ref, resource, config.readPageSize)
     if (part === 'thread' && body.status === 'no_thread') {
-      // Fall back to preceding chat messages when the trigger message does not belong to a topic thread.
+      // 当 trigger 消息不属于话题 thread 时，回退为读取其之前的群聊消息。
       const around = await chatAround(commands, ref, undefined, 5, 0)
       return { messages: around.messages, body: { status: 'chat_neighbours', messages: around.messages }, status: 'chat_neighbours' }
     }

@@ -13,7 +13,7 @@ let directory: string
 beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'orchestrator-migration-')) })
 afterEach(() => { rmSync(directory, { recursive: true, force: true }) })
 
-/** Seed a SQLite database in the schema 10 layout (including the legacy `outbox.sent` column and `inbox` table). */
+/** 按 schema 10 的布局初始化一个 SQLite 数据库（包含遗留的 `outbox.sent` 列与 `inbox` 表）。 */
 function schema10(path: string, records: Record<string, unknown>, rows: { ticket?: object[]; decision?: object[]; thread?: object[]; trigger?: object[] } = {}): void {
   new Store(path).close()
   const db = new DatabaseSync(path)
@@ -49,7 +49,7 @@ it('writes a schema 10 database in its current shape once, so nothing reads an o
   const path = join(directory, 'db.sqlite')
   const ticket = {
     id: 't1', title: 'Fix', decisionId: 'd1', state: 'open', assignments: [], summary: '', createdAt: '1', updatedAt: '2',
-    // In schema 10, a GitHub Channel without a comment link marked a PR that the ticket opened.
+    // 在 schema 10 中，没有评论链接的 GitHub Channel 标记的是 ticket 自己开启的 PR。
     channels: [{ source: 'github', thread: 'github:8', address: { number: '8' } }, { source: 'github', thread: 'github:7', address: { number: '7', url: 'https://github.com/acme/widgets/pull/7#issuecomment-1' } }],
     mandate: mandate({ chatId: 'oc_team', direct: false, member: 'ou_alice', mention: true }),
     inputs: [{ id: 'i1', kind: 'reopen', decisionId: 'd2', at: '3' }, { id: 'i2', kind: 'reopen', decisionId: 'd0', at: '0' },
@@ -60,7 +60,7 @@ it('writes a schema 10 database in its current shape once, so nothing reads an o
   const imported = { ...ticket, id: 't2', state: 'ended', channels: [], inputs: [], undelivered: [], mandate: mandate({ legacyAuthority: 'thread_followup', followup: true }),
     meta: { sourceTriggerId: 'old', workspace: '/w/task-2', sessionId: 'worker-task-2', legacyPrompt: 'Read event/old' },
     ended: { at: '6', by: 'executor', reason: 'merged' } }
-  // Ended with a person's message waiting, and with no execution or origin trigger.
+  // 结束时有一条人的消息在等待，且没有 execution 或 origin trigger。
   const waiting = { ...ticket, id: 't3', state: 'ended', channels: [], ended: { at: '6', by: 'human', reason: 'Not needed' }, inputs: [{ id: 'i5', kind: 'trigger', triggerId: 'trig-2', at: '7' }],
     undelivered: ['i5'], mandate: mandate({ chatId: 'p2p', direct: true, member: 'ou_alice' }), meta: {} }
   const bare = { ...ticket, id: 't4', channels: [], inputs: [], undelivered: [], meta: undefined }
@@ -92,7 +92,7 @@ it('writes a schema 10 database in its current shape once, so nothing reads an o
     'answer-ready:t1:trig-3': true,
     'github-object-state:7': 'open', subscriptions: [], 'settings-before-9': { policy: {} }, 'thread-times-backfilled': true,
     'github-issue-pending': { 1: {} },
-    // Caches of reads, which memory keeps now.
+    // 各类读取的缓存，现已改由内存保管。
     'feishu-read:orchestrator-1:feishu/e1/thread': '{}', 'github-read:worker-t1:github/pulls/7': '{}', 'feishu-source-link:oc_team:om_1': 'https://x',
     'orchestrator-1:prompt-preview/abc': 'prompt',
   }, { ticket: [ticket, imported, waiting, bare], decision: [decision, reopened, unavailable], thread: [thread], trigger: triggers })
@@ -105,7 +105,7 @@ it('writes a schema 10 database in its current shape once, so nothing reads an o
   expect(settings.policy.rules[0]).not.toHaveProperty('visual')
   expect(settings.executor).not.toHaveProperty('reviewer')
   expect(settings.executor.prepare).toBe('echo $DSH_SUPERAGENT_DIR')
-  // The current settings are the newest revision, which the migration saved, since the newest saved one differs from them.
+  // 当前设置就是迁移保存的最新修订，因为已保存的最新一条与它们不同。
   const [current, , second, first] = store.settingsHistory()
   expect(current).toMatchObject({ revision: 4, source: 'internal', settings })
   expect(store.get('settings')).toBeUndefined()
@@ -113,7 +113,7 @@ it('writes a schema 10 database in its current shape once, so nothing reads an o
   expect(second).toMatchObject({ source: 'tool', settings: { sources: { 'github-issue': { enabled: true } } } })
   expect(store.get('prompt-version:1')).toMatchObject({ legacy: { config: { guides: { release: 'Use guide/github and dsh-tag-feishu.' } } },
     config: { skills: { release: 'Use the github section and dsh-superagent-feishu.' } } })
-  // An invalid historical prompt version keeps its raw value under legacy and falls back to the preceding version's config.
+  // 无效的历史 prompt 版本会在 legacy 下保留其原始值，并回退到前一版本的配置。
   expect(store.get('prompt-version:2')).toMatchObject({ legacy: { config: { communication: 1 } }, config: store.get<{ config: object }>('prompt-version:1')!.config })
   expect(store.get('settings-version:3')).toMatchObject({ source: 'panel', settings: { executor: { maxWorkers: 'many' } } })
   const migrated = store.tickets.get('t1')!
@@ -138,21 +138,21 @@ it('writes a schema 10 database in its current shape once, so nothing reads an o
   expect(store.tickets.get('t2')).toMatchObject({ execution: { name: 'task-2', assignment: 'Read event/old' },
     mandate: { basis: { via: 'followup', authority: 'thread_followup' } } })
   expect(store.tickets.get('t2')).not.toHaveProperty('follows')
-  // An end's reason that only repeats its outcome is not kept.
+  // 仅重复其结果的结束原因不会被保留。
   expect(store.tickets.get('t2')!.ended).toEqual({ at: '6', by: 'executor', outcome: 'merged' })
-  // A ticket a person stopped keeps nothing waiting; a ticket stored without its attributes gets an origin all the same.
+  // 被人停止的 ticket 不会保留任何等待项；未存储属性的 ticket 仍会获得 origin。
   expect(store.tickets.get('t4')).toMatchObject({ origin: { triggerId: '', triggerIds: [] } })
   expect(store.tickets.get('t3')).toMatchObject({ ended: { outcome: 'stopped' }, undelivered: [], origin: { triggerId: '', triggerIds: [] },
     mandate: { basis: { via: 'listed', source: 'feishu', scope: { chatId: 'p2p', direct: true }, sender: 'ou_alice', addressed: 'direct' } } })
   expect(store.tickets.get('t3')).not.toHaveProperty('execution')
-  // A reason is a code; words the assessor wrote stay as written.
+  // 原因是一个代码；assessor 写下的文字按原样保留。
   expect(store.decisions.get('d2')).toEqual({ ...reopened, reason: [{ code: 'said', values: { text: 'follow-up' } }] })
   expect(store.decisions.get('d3')!.reason).toEqual([{ code: 'timeout' }])
   expect(store.decisions.get('d1')!.mandate!.basis).toEqual({ via: 'listed', rules: ['copy'], observation: {}, authority: 'proactive_rule' })
   expect(store.threads.get('github:5')!.evaluating!.basis).toEqual({ via: 'admission', source: 'github', scope: { number: 5 }, row: 'issues',
     cell: 'listedUnaddressed', observation: { mode: 'auto' } })
-  // kv: an Input is rendered from its ticket as it is read, so no body stays; records nothing reads go, and so do the
-  // removed Issue Source's, which the migration converted.
+  // kv：Input 在读取时从其 ticket 渲染，因此不保留正文；无人读取的记录会被移除，被移除的
+  // Issue Source 的记录同样如此，它们已由迁移转换。
   expect(store.get('ticket/t1/input/i0')).toBeUndefined()
   expect(store.get('ticket/t1/input/i9')).toBeUndefined()
   expect(store.keys('task/')).toEqual([])
@@ -161,10 +161,10 @@ it('writes a schema 10 database in its current shape once, so nothing reads an o
     expect(store.get(name)).toBeUndefined()
   }
   expect(store.get('github-issue-pending')).toBeUndefined()
-  // The schema 6 tables stay, with the rows the schema 7 import left out.
+  // schema 6 的表会保留，其中不含 schema 7 导入时略去的行。
   expect(store.db.prepare("SELECT name FROM sqlite_master WHERE name = 'inbox'").get()).toBeDefined()
   store.close()
-  // Migrating the result again changes nothing.
+  // 再对结果执行一次迁移不会产生变化。
   const db = new DatabaseSync(path)
   db.prepare("UPDATE kv SET value='10' WHERE key='schema'").run()
   db.close()
@@ -188,7 +188,7 @@ it('keeps each message as a receipt of what became of it, with why one was dropp
   const store = new Store(path)
   expect(store.read.droppedReplies().map(item => [item.id, item.dropped.reason])).toEqual([['ignored', 'channelIgnored'], ['gone', 'channelGone']])
   expect(['gone', 'sent', 'waiting'].map(id => store.replyStatus(id))).toEqual(['dropped', 'sent', 'pending'])
-  // A receipt holds no attempts: the message that waits has a `reply` effect, which keeps the ones it had and counts on.
+  // 回执不保留尝试次数：等待中的消息有一个 `reply` effect，它会保留原有的次数并继续计数。
   expect(store.receipts.get('waiting')).toEqual({ id: 'waiting', channel: { source: 'feishu', thread: 'feishu:oc_1:om_1', address: {} }, text: 'waiting',
     kind: 'reply', status: 'pending' })
   expect(store.db.prepare('SELECT kind, key, attempts, error FROM effect').all()).toEqual([{ kind: 'reply', key: 'waiting', attempts: 2, error: 'offline' }])
@@ -200,7 +200,7 @@ it('changes nothing when one step fails: the database stays at schema 10 as it w
   const path = join(directory, 'db.sqlite')
   const ticket = { id: 't1', title: 'Fix', decisionId: 'd1', channels: [], state: 'open', assignments: [], inputs: [], undelivered: [], summary: '', createdAt: '1',
     updatedAt: '2', mandate: mandate({ via: 'listed' }), meta: { sourceTriggerId: 'trig-1', workspace: '/w/fix-1' } }
-  // The current settings must validate; an invalid value aborts the migration transaction.
+  // 当前设置必须通过校验；无效值会中止迁移事务。
   schema10(path, { settings: { executor: { maxWorkers: 'many' } } }, { ticket: [ticket] })
   expect(() => new Store(path)).toThrow(/^The orchestrator database is unchanged at schema 10: its migration to schema 11 failed: the settings: /)
   const db = new DatabaseSync(path)
@@ -216,7 +216,7 @@ it('reads every basis an earlier gate recorded in the current shape', () => {
   expect(basisOf({ source: 'feishu', scope, followup: true, rules: ['r'] })).toEqual({ via: 'followup', source: 'feishu', scope, rules: ['r'] })
   expect(basisOf({ source: 'feishu', scope, addressed: 'direct', admission: 'unlistedAddressed' })).toEqual({ via: 'admission', source: 'feishu', scope,
     cell: 'unlistedAddressed', addressed: 'direct' })
-  // Observed under an earlier gate that recorded no cell: the sender had to be on the list.
+  // 在更早的、不记录任何 cell 的 gate 下观察到的结果：发送者必须在名单上。
   expect(basisOf({ source: 'feishu', scope, sender: 'Alice', observation: true, mode: 'auto', rules: ['r'] })).toEqual({ via: 'listed', source: 'feishu', scope,
     sender: 'Alice', rules: ['r'], observation: { mode: 'auto' } })
   expect(basisOf({ chatId: 'oc_1', direct: true, followup: true, member: 'ou_a' })).toEqual({ via: 'followup', source: 'feishu', scope: { chatId: 'oc_1', direct: true },
@@ -226,7 +226,7 @@ it('reads every basis an earlier gate recorded in the current shape', () => {
   expect(basisOf({ via: 'followup' })).toEqual({ via: 'followup' })
 })
 
-/** Build a pre-team-sections prompt version where fixed and built-in guides were stored inside the config object. */
+/** 构造一个 team-sections 之前的 prompt 版本，其中固定与内置的指南存储在 config 对象内部。 */
 const legacyPrompts = (revision: number, guides: Record<string, string> = {}) => ({
   [`prompt-version:${revision}`]: { revision, previousRevision: revision ? revision - 1 : null, savedAt: '', source: 'web',
     config: { shared: 'Legacy shared rule.', orchestrator: 'Legacy orchestrator: only route.', worker: 'Legacy worker.',
@@ -247,14 +247,14 @@ it('writes a prompt version saved before the team sections in them, keeping its 
   expect(config.communication).toBe(defaultPrompts().communication)
   expect(config.delivery).toContain('it changes fewer than 350 lines (additions plus deletions);')
   expect(config.delivery).not.toContain('fewer than 200 lines')
-  // Guides that are now fixed or built-in are gone; the team's own skills stay, in current names.
+  // 现已成为固定或内置的指南会被移除；团队自己的技能保留，并采用当前名称。
   expect(Object.keys(config.skills)).toEqual(['identities', 'notes'])
   expect(config.skills.notes).toBe('Call orchestrator_route (kind accept) with trigger_id, read trigger/<id>, follow the work section and skill dsh-superagent-release, load dsh-superagent-github, cd "$DSH_SUPERAGENT_DIR".')
   const prompt = composePrompt(config, 'orchestrator')
   expect(prompt).not.toContain('Legacy orchestrator')
   expect(prompt).toContain(masterPrompt)
   expect(prompts.current().revision).toBe(3)
-  // Read as the built-in text, a legacy version says so instead of listing its differences.
+  // 按内置文本读取时，遗留版本会说明这一点，而不是列出其差异。
   expect(prompts.history(0, 1).revisions.map(version => version.changed)).toEqual([['legacy']])
   store.close()
 })
@@ -267,7 +267,7 @@ it('writes saved team sections and skills under current names: earlier project n
   const { config: current } = new Prompts(store, () => 100000, () => undefined, () => true).current()
   expect(current.delivery).toBe('Merge with --repo $DSH_SUPERAGENT_GITHUB_REPOSITORY.')
   expect(current.skills.notes).toBe('Load dsh-superagent-github; cd "$DSH_SUPERAGENT_DIR". List with orchestrator_read tickets, then orchestrator_read ticket/<id>.')
-  // The four routing tools are one.
+  // 四个路由工具合为一个。
   expect(current.skills.routing).toBe('Accept with orchestrator_route (kind accept); stop with orchestrator_route (kind stop), never orchestrator_route (kind ignore).')
   store.close()
 })
@@ -283,7 +283,7 @@ it('writes the removed auto-merge threshold and member identities into the promp
   expect(migrated.config.skills.identities).not.toContain('Bob')
   expect(store.get('settings-before-9')).toBeUndefined()
   store.close()
-  // The default threshold and nobody with two identities change nothing; other delivery text gains the threshold as its own sentence.
+  // 默认阈值与没有任何人拥有两个身份的情况不会带来变化；其他投递文本会把该阈值作为单独一句加入。
   const unchanged = opened({ 'settings-before-9': { policy: { members: [{ name: 'Bob', feishuId: 'ou_bob', github: '' }] } } })
   expect(new Prompts(unchanged, () => 100000, () => undefined, () => true).current().revision).toBe(0)
   unchanged.close()
@@ -309,8 +309,8 @@ it('reads a current prompt version that does not read as the one before it, keep
 })
 
 /**
- * Create a raw SQLite database matching the exact table DDL of the last schema 10 release (before working-set columns
- * and the `effect` table were added, and with leftover schema 6 `inbox` and `task` tables).
+ * 创建一个原始 SQLite 数据库，其表 DDL 与上一个 schema 10 发布版本完全一致（在加入 working-set 列
+ * 与 `effect` 表之前，并保留遗留的 schema 6 `inbox` 与 `task` 表）。
  */
 function lastSchema10(path: string): void {
   const db = new DatabaseSync(path)
@@ -376,7 +376,7 @@ it('writes the Sources\' records in their current shape once, so no Source conve
     deadline: '', basis: { via: 'listed' } }
   schema10(path, {
     'feishu-chats': { oc_dm: true, oc_team: false }, 'feishu-history:oc_team': '2026-09-01T00:00:00.000Z',
-    // Earlier versions kept a chat's topics as a list.
+    // 早期版本会把某个 chat 的 topic 保存为列表。
     'feishu-history-threads:oc_team': ['omt_old'],
     'github-thread:7': '2026-09-02T00:00:00.000Z', 'thread-since:github:7': '2026-09-03T00:00:00.000Z',
     'github-thread:8': '2026-09-04T00:00:00.000Z',
@@ -396,7 +396,7 @@ it('writes the Sources\' records in their current shape once, so no Source conve
   const db = new DatabaseSync(path)
   db.prepare('INSERT INTO outbox (id, value) VALUES (?, ?)').run('r1', JSON.stringify({ id: 'r1', channel: dm, text: 'Done', kind: 'reply',
     attempts: 0, error: '' }))
-  // Assessments queued before effects named their Trigger: one whose Eval runs, and one whose Eval ended.
+  // 在 effect 之前排队的评估会指明其 Trigger：一个的 Eval 正在运行，另一个的 Eval 已结束。
   for (const [seq, evalId] of [[1, 'e1'], [2, 'e2']] as const) {
     db.prepare('INSERT INTO effect (kind, key, value, seq, due, since) VALUES (?, ?, ?, ?, ?, ?)').run('assessment', evalId, '{}', seq, 0,
       '')
@@ -408,7 +408,7 @@ it('writes the Sources\' records in their current shape once, so no Source conve
   expect(store.receipts.waiting()[0]!.channel.address).toEqual({ chatId: 'oc_dm', messageId: 'om_1', direct: 'true' })
   expect(store.threads.get('feishu:oc_team:om_9')!.meta.url).toBe('https://applink.feishu.cn/client/chat/open?openChatId=oc_team')
   expect(store.triggers.get('issue')!.source).toBe('github')
-  // The waiting mention within the polling horizon is read again; the older one is no fresh request.
+  // 轮询时间窗内的等待提及会被重新读取；更早的那条不再算新的请求。
   expect(store.get(KV.github.retries)).toEqual({ 12: { since: recent, pr: false } })
   expect(store.get(KV.github.cursor(7))).toBe('2026-09-03T00:00:00.000Z')
   expect(store.get(KV.github.cursor(8))).toBe('2026-09-04T00:00:00.000Z')
@@ -428,7 +428,7 @@ it('keeps each fact of a ticket once: its end, its latest report, and no worker 
     assignments: [{ id: 'a1', ticketId: 't', ref: 'worker-t', state: 'running', createdAt: '1' }] })
   expect(open).toEqual({ ...base, execution: { name: 'fix', directory: '/w', assignment: 'Do it.' },
     assignments: [{ id: 'a1', state: 'running', createdAt: '1', report: { state: 'progress', summary: 'Working on it', at: '2' } }] })
-  // A report the ticket had stays the latest one; an ended ticket without an end record ended closed.
+  // ticket 已有的报告仍是最新的一份；没有结束记录的已结束 ticket 按 closed 结束处理。
   const reported = { id: 'a1', ticketId: 't', ref: '', state: 'ended', createdAt: '1', report: { state: 'ready', summary: 'Done', at: '2' } }
   expect(withoutCopies({ ...base, state: 'ended', summary: 'Done', assignments: [reported] })).toMatchObject({
     ended: { at: '2', by: 'executor', outcome: 'closed' }, assignments: [{ id: 'a1', state: 'ended', report: { summary: 'Done' } }] })
@@ -439,14 +439,14 @@ it('reads the reasons earlier versions stored in words as codes, and keeps any o
   expect(reasonsOf('a1: not_a_member; b2: no_mention')).toEqual([{ code: 'not_a_member', triggerId: 'a1' }, { code: 'no_mention', triggerId: 'b2' }])
   expect(reasonsOf('Routed to ticket t9')).toEqual([{ code: 'routed', values: { ticket: 't9' } }])
   expect(reasonsOf('Observe mode: would accept (a copy fix)')).toEqual([{ code: 'observed', values: { text: 'a copy fix' } }])
-  // An assessor's words may hold a colon or a semicolon; they stay one reason.
+  // assessor 的文字可能包含冒号或分号；它们仍作为一条原因。
   expect(reasonsOf('Not a request: chatter; nothing to do')).toEqual([{ code: 'said', values: { text: 'Not a request: chatter; nothing to do' } }])
   expect(reasonsOf([{ code: 'timeout' }])).toEqual([{ code: 'timeout' }])
 })
 
 const ticket10 = (id: string, fields: Record<string, unknown> = {}) => ({ id, title: 'Fix', decisionId: 'd1', channels: [], state: 'open', assignments: [],
   inputs: [], undelivered: [], summary: '', createdAt: '1', updatedAt: '2', mandate: mandate({ via: 'listed' }), meta: { sourceTriggerId: 'trig-1' }, ...fields })
-/** Populate `trigger_thread` rows for `triggers` as schema 10 did on save. */
+/** 为 `triggers` 填充 `trigger_thread` 行，与 schema 10 在保存时的做法一致。 */
 function indexed(path: string, triggers: { id: string; at: string; threads: { source: string; id: string }[] }[]): void {
   const db = new DatabaseSync(path)
   for (const { id, at, threads } of triggers) {
@@ -458,7 +458,7 @@ function indexed(path: string, triggers: { id: string; at: string; threads: { so
 it('dates each Thread from its Triggers, and keeps every Trigger\'s time in the one form stored times take', () => {
   const path = join(directory, 'db.sqlite')
   const comment = (id: string, at: string) => ({ id, source: 'github', threads: [{ source: 'github', id: '7' }], actor, human: true, at, text: id, meta: {} })
-  // GitHub wrote its times in whole seconds; a Thread a schema 10 build saved before it knew of activity times has none.
+  // GitHub 以整秒记录时间；schema 10 构建在认识活动时间之前保存的 Thread 没有该时间。
   const triggers = [comment('first', '2026-10-01T00:00:00Z'), comment('last', '2026-10-09T00:00:00.000Z')]
   schema10(path, {}, { trigger: triggers,
     thread: [{ key: 'github:7', ref: { source: 'github', id: '7' }, createdAt: '2026-10-05T00:00:00.000Z', subscriptions: [], correlated: [], pending: [], meta: {} }] })
@@ -505,7 +505,7 @@ it('reads the reasons a Trigger\'s filter and an Assignment\'s end stored in wor
   expect(store.tickets.get('t1')!.assignments.map(item => item.endedReason)).toEqual(['retried', 'hostRestarted', undefined])
   expect(store.triggers.disposition('trig-1')).toMatchObject({ filtered: { code: 'senderNotMember' } })
   store.close()
-  // The Assignment an end stopped does not repeat the end's reason, which the end keeps.
+  // 被结束终止的 Assignment 不会重复结束的原因，该原因由结束保留。
   const ended = withoutCopies({ ...ticket10('t2'), state: 'ended', ended: { at: '5', by: 'human', reason: 'Not needed', outcome: 'stopped' },
     assignments: [{ id: 'a1', state: 'ended', createdAt: '1', endedAt: '5', endedReason: 'Not needed' }] })
   expect([ended.ended, ended.assignments[0]]).toEqual([{ at: '5', by: 'human', reason: 'Not needed', outcome: 'stopped' }, { id: 'a1', state: 'ended', createdAt: '1', endedAt: '5' }])

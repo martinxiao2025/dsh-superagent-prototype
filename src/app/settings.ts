@@ -1,4 +1,4 @@
-/** Block-scoped settings validation, optimistic concurrency saves, processing pause control, and source policy synchronization. */
+/** 按配置块校验设置、带乐观并发的保存、处理暂停控制，以及 Source 策略同步。 */
 import type { Context } from '@deepseek-ai/cordis'
 import { z } from 'zod'
 import { UserError, type EngineForSettings } from '../core/index.ts'
@@ -15,15 +15,15 @@ import type { Store } from './store.ts'
 import { KV } from '../kv.ts'
 
 /**
- * Indicates an optimistic concurrency conflict when saving or syncing a settings block against a stale revision.
- * Thrown by `Settings.save` and `Settings.sync` and translated into an HTTP 409 response by the management routes.
+ * 基于过期修订保存或同步某个设置块时表示乐观并发冲突。
+ * 由 `Settings.save` 与 `Settings.sync` 抛出，并由管理路由转换为 HTTP 409 响应。
  */
 export class SettingsConflict extends Error {}
 const now = (): string => new Date().toISOString()
-/** Executor settings that control shell execution paths, prepare commands, and command shims. */
+/** Executor 设置中控制 shell 执行路径、prepare 命令与命令 shim 的部分。 */
 const environment = ({ executor }: SettingsValue) => JSON.stringify([executor.directory, executor.prepare, executor.blockedCommands])
 
-/** Schema parser, settings merger, and non-panel origin guard for one settings block kind. */
+/** 单一设置块类型的 schema 解析器、设置合并器，以及非面板来源的防护。 */
 interface Block {
   parse(value: unknown, sources: SourceRegistry, id: string): unknown
   merge(settings: SettingsValue, value: unknown, id: string): SettingsValue
@@ -41,60 +41,60 @@ const BLOCKS: Record<'policy' | 'eval' | 'executor' | 'source', Block> = {
   executor: {
     parse: value => ExecutorConfigSchema.parse(value),
     merge: (settings, value) => ({ ...settings, executor: value as SettingsValue['executor'] }),
-    // Only the management panel may modify shell execution paths or commands.
+    // 只有管理面板可以修改 shell 执行路径或命令。
     guard: (current, candidate, origin) => { if (origin !== 'panel' && environment(current) !== environment(candidate)) throw new UserError('panelOnlyEnvironment') },
   },
   source: {
     parse: (value, sources, id) => sources.validate(id, z.object({ enabled: z.boolean(), config: z.unknown() }).parse(value)),
     merge: (settings, value, id) => ({ ...settings, sources: { ...settings.sources, [id]: value as SettingsValue['sources'][string] } }),
-    // Only the management panel may switch source accounts.
+    // 只有管理面板可以切换 Source 账号。
     guard: (current, candidate, origin) => { if (origin !== 'panel' && setupChanged(current, candidate)) throw new UserError('panelOnlyAccounts') },
   },
 }
 
-/** Host dependencies used by `Settings`. */
+/** `Settings` 使用的宿主依赖。 */
 export interface SettingsHost {
   readonly store: Pick<Store, 'settings' | 'saveSettings' | 'blockRevision' | 'atomic' | 'tickets' | 'get'>
   readonly sources: SourceRegistry
-  /** Notified when a settings save changes the policy version. */
+  /** 设置保存导致 Policy 版本变化时被通知。 */
   readonly engine: EngineForSettings
-  /** Health board where each source's policy sync reports under `sync:<id>`. */
+  /** 健康面板，各 Source 的策略同步以 `sync:<id>` 上报。 */
   readonly health: Pick<HealthBoard, 'claim'>
-  /** DSH Cordis context used to validate and resolve role models. */
+  /** 用于校验与解析角色模型的 DSH Cordis 上下文。 */
   readonly context: Context
   readonly lifetime: AbortSignal
-  /** Session manager through which the main Session is notified of saved settings. */
+  /** Session 管理器，主 Session 经它获知已保存的设置。 */
   readonly sessions: Pick<Sessions, 'notify' | 'delivery'>
-  /** Source host passed to source kinds' policy syncs and label refreshes. */
+  /** 传给 Source 类型的策略同步与标签刷新的 Source 宿主。 */
   readonly sourceHost: SourceHost
-  /** Setup state, account/command checks, and restart trigger when setup-read fields change. */
+  /** setup 状态、账号与命令检查，以及 setup 相关字段变化时的重启触发。 */
   readonly setup: Pick<Setup, 'configured' | 'checkAccounts' | 'blockCommands' | 'restart'>
-  /** Triggers an immediate pass so work newly allowed by a settings save runs right away. */
+  /** 触发一次即时 pass，使设置保存后新获允许的工作立刻运行。 */
   requestPass(): void
 }
 
 /**
- * Validates and persists block-scoped settings in `Store`, enforces origin guards, and manages source policy synchronization and label refreshes.
- * `Runtime`, management HTTP routes, and main-Session tools read and save settings through it.
- * Notifies `Engine` when the policy version changes, notifies the main Session via `Sessions`, and triggers `Setup` restarts or `Passes` runs when saved settings take effect.
- * Tracks per-source synchronization status in `HealthBoard` and retries failed syncs with exponential backoff.
+ * 在 `Store` 中校验并持久化按块的设置，执行来源防护，并管理 Source 策略同步与标签刷新。
+ * `Runtime`、管理 HTTP 路由与主 Session 工具都通过它读取与保存设置。
+ * Policy 版本变化时通知 `Engine`，通过 `Sessions` 通知主 Session，并在保存的设置生效时触发 `Setup` 重启或 `Passes` 运行。
+ * 在 `HealthBoard` 中跟踪各 Source 的同步状态，并以指数退避重试失败的同步。
  */
 export class Settings {
-  /** Per-source `sync:<id>` health entries, claimed lazily on each source's first policy sync. */
+  /** 各 Source 的 `sync:<id>` 健康条目，在该 Source 首次策略同步时按需认领。 */
   private readonly syncs = new Map<string, HealthEntry>()
-  /** Pending exponential-backoff retry timer and last wait duration (ms) per source after a failed sync. */
+  /** 同步失败后每个 Source 待执行的重试定时器与上次等待时长（毫秒）。 */
   private readonly retries = new Map<string, { timer: ReturnType<typeof setTimeout>; wait: number }>()
   constructor(private readonly host: SettingsHost) {
     host.lifetime.addEventListener('abort', () => { for (const { timer } of this.retries.values()) clearTimeout(timer) }, { once: true })
   }
-  /** Schedule exponential backoff retries (1 minute up to 1 hour) after a failed source sync, or clear pending retries on success. */
+  /** 在 Source 同步失败后安排指数退避重试（1 分钟到 1 小时），成功则清除待重试项。 */
   private retrySync(id: string, failed: boolean): void {
     const previous = this.retries.get(id)
     if (previous) clearTimeout(previous.timer)
     this.retries.delete(id)
     if (!failed || this.host.lifetime.aborted) return
     const wait = previous ? Math.min(previous.wait * 2, 3_600_000) : 60_000
-    const timer = setTimeout(() => { this.sync(id).catch(() => { /* sync() records its failure in health. */ }) }, wait)
+    const timer = setTimeout(() => { this.sync(id).catch(() => { /* sync() 会把失败记录到健康状态中。 */ }) }, wait)
     timer.unref?.()
     this.retries.set(id, { timer, wait })
   }
@@ -103,11 +103,11 @@ export class Settings {
     if (!entry) this.syncs.set(id, entry = this.host.health.claim(`sync:${id}`))
     return entry
   }
-  /** Returns the current validated settings from `Store`. */
+  /** 返回 `Store` 中当前已校验的设置。 */
   current(): SettingsValue { return this.host.store.settings() }
   /**
-   * Returns an overview of all settings blocks with their current block revisions: full values for `pause`, `eval`, and
-   * `executor`; rule summaries and allowed-sender counts for `policy`; and instance status switches for `sources` (with `read: 'settings/<block>'` paths for full block reads).
+   * 返回所有设置块及其当前块修订的概览：`pause`、`eval` 与 `executor` 给出完整值；`policy` 给出规则摘要与
+   * 允许发送者数量；`sources` 给出实例状态开关（完整块读取使用 `read: 'settings/<block>'` 路径）。
    */
   view() {
     const { store, sources } = this.host
@@ -123,9 +123,9 @@ export class Settings {
         ({ id, kind, enabled, installed, revision: revision(`source:${id}`), read: `settings/source:${id}` })) }
   }
   /**
-   * Returns one settings block as accepted by `save` (`policy`, `eval`, `executor`, `pause` holding `{ paused }`, or
-   * `source:<id>` holding `{ enabled, config }`) along with its current block revision.
-   * @throws UserError (`unknownBlock`) when no such settings block exists.
+   * 返回 `save` 可接受的单个设置块（`policy`、`eval`、`executor`，`pause` 含 `{ paused }`，或 `source:<id>` 含 `{ enabled, config }`）
+   * 及其当前块修订。
+   * @throws UserError（`unknownBlock`）当该设置块不存在。
    */
   block(block: string): { block: string; revision: number; value: unknown } {
     const { store, sources } = this.host
@@ -137,13 +137,13 @@ export class Settings {
     return { block, revision: store.blockRevision(block as SettingsSave), value }
   }
   /**
-   * Validates and saves one settings block against its `revision`; a no-op save records no new revision, a changed policy
-   * version notifies affected open tickets, and changing a setup-read field (`SETUP_FIELDS`, such as an account CLI) or any
-   * change saved while waiting for setup (`!this.host.setup.configured()`) restarts `dsh-superagent` so setup runs again.
-   * @param origin - Caller origin; restricts execution-environment and account-CLI changes to `'panel'` (a guardrail against prompt-injected tool calls, not an OS security boundary, since agents run shell commands; `origin` has no default so no caller receives panel privileges implicitly).
-   * @returns Save outcome with the block's current `revision`, whether `policy_changed`, whether `restarting`, and `context_delivery` status (`'injected'` or `'pending'`).
-   * @throws SettingsConflict when `block`'s revision changed before or during validation checks.
-   * @throws UserError | z.ZodError when `block` is unknown, the source is not installed, `value` is invalid (such as an `executor` block carrying `paused`, which only `pause` sets), a non-panel `origin` changes panel-only fields, or a role-model or account check fails.
+   * 按 `revision` 校验并保存单个设置块；无变化的保存不记录新修订；Policy 版本变化会通知受影响的未结束工单；
+   * 修改 setup 相关字段（`SETUP_FIELDS`，例如账号 CLI），或在等待 setup 期间保存任何变更（`!this.host.setup.configured()`），
+   * 都会重启 `dsh-superagent` 以重新运行 setup。
+   * @param origin - 调用方来源；把执行环境与账号 CLI 的修改限制在 `'panel'`（这是针对提示词注入式工具调用的护栏，而非操作系统安全边界，因为 agent 会执行 shell 命令；`origin` 没有默认值，因此任何调用方都不会隐式获得面板权限）。
+   * @returns 保存结果，含该块的当前 `revision`、`policy_changed`、`restarting`，以及 `context_delivery` 状态（`'injected'` 或 `'pending'`）。
+   * @throws SettingsConflict 当 `block` 的修订在校验检查之前或期间发生变更。
+   * @throws UserError | z.ZodError 当 `block` 未知、Source 未安装、`value` 无效（例如 `executor` 块带了 `paused`，它只能由 `pause` 设置）、非面板 `origin` 修改了仅限面板的字段，或角色模型/账号检查失败。
    */
   async save(block: SettingsBlock, value: unknown, revision: number, origin: SettingsOrigin) {
     const { store, sources, engine, sessions } = this.host
@@ -166,7 +166,7 @@ export class Settings {
     rules.guard?.(current, candidate, origin)
     if (setupChanged(current, candidate)) await this.host.setup.checkAccounts(block, candidate)
     if (stale()) throw new SettingsConflict('Settings changed during the checks. Reload before saving.')
-    // Re-read current settings after async checks in case unrelated blocks were saved concurrently.
+    // 异步检查之后重新读取当前设置，以防无关的块被并发保存。
     const old = store.settings()
     const settings = rules.merge(old, parsed, id)
     if (JSON.stringify(SettingsSchema.parse(settings)) === JSON.stringify(old)) {
@@ -184,20 +184,20 @@ export class Settings {
       if (origin !== 'tool') sessions.notify(...settingsNotice(block, changedPaths(old, settings)))
       if (before !== after) engine.policyChanged(before, after, effects)
     })
-    // Rewrite worker command shims immediately when `blockedCommands` changes.
+    // `blockedCommands` 变化时立即重写 worker 的命令 shim。
     const blocked = settings.executor.blockedCommands
     const changed = blocked.join(' ') !== old.executor.blockedCommands.join(' ')
     if (changed) await this.host.setup.blockCommands(blocked)
-    // When restarting, the notice stays pending until after the restart; `setup.restart()` defers until this call returns.
+    // 需要重启时，通知保持待投递直到重启之后；`setup.restart()` 会推迟到本次调用返回。
     const delivery = restarting ? 'pending' : await sessions.delivery(`settings:${block}`)
     if (restarting) this.host.setup.restart()
     else this.host.requestPass()
     return { saved: true, revision: store.blockRevision(block), policy_changed: before !== after, restarting, context_delivery: delivery }
   }
   /**
-   * Pauses or resumes processing (new evaluations, worker dispatch, and channel delivery, while Sources continue recording
-   * Triggers); saved in its own `'pause'` block so concurrent `executor` edits remain valid across it.
-   * @returns Whether processing is now paused (`{ paused }`).
+   * 暂停或恢复处理（新的评估、worker 派发与渠道投递；期间 Source 仍继续记录 Trigger），
+   * 保存在独立的 `'pause'` 块中，使并发的 `executor` 编辑在其前后仍然有效。
+   * @returns 处理当前是否已暂停（`{ paused }`）。
    */
   async pause(paused: boolean, origin: SettingsOrigin): Promise<{ paused: boolean }> {
     const { store, sessions } = this.host
@@ -212,7 +212,7 @@ export class Settings {
     this.host.requestPass()
     return { paused }
   }
-  /** Returns the IDs of installed, enabled Sources whose policy section can synchronize now (empty while setup is not configured). */
+  /** 返回当前可同步策略块（已安装且已启用）的 Source ID；setup 未配置时为空。 */
   syncable(): string[] {
     const { sources } = this.host
     if (!this.host.setup.configured()) return []
@@ -223,10 +223,10 @@ export class Settings {
     })
   }
   /**
-   * Synchronizes source `id`'s policy section from its external source of truth, saves it as a `'policy'` revision when
-   * changed, and records the outcome in the `sync:<id>` health entry (scheduling exponential-backoff retries via `retrySync` on failure).
-   * @returns The synchronized policy section for `id`.
-   * @throws UserError (`nothingToSync`) when `id` cannot sync now, `SettingsConflict` if the `'policy'` block changed during synchronization, or the underlying sync error on failure.
+   * 从 Source `id` 的外部事实来源同步其策略块，发生变化时保存为 `'policy'` 修订，并把结果记录到
+   * `sync:<id>` 健康条目（失败时经 `retrySync` 安排指数退避重试）。
+   * @returns `id` 同步后的策略块。
+   * @throws UserError（`nothingToSync`）当 `id` 当前无法同步；`SettingsConflict` 当 `'policy'` 块在同步期间发生变化；失败时抛出底层同步错误。
    */
   async sync(id: string) {
     const { store, sources } = this.host
@@ -237,7 +237,7 @@ export class Settings {
       const part = await sources.kind(id)!.policy!.sync!.run(this.host.sourceHost, sources.policyPart(id)!, this.host.lifetime)
       if (revision !== store.blockRevision('policy')) throw new SettingsConflict('Policy changed during synchronization. Retry with the current settings.')
       const policy = store.settings().policy
-      // Skip saving a new revision when the synced list is unchanged.
+      // 同步后的列表没有变化时不保存新修订。
       if (JSON.stringify(part) !== JSON.stringify(policy.sources[id])) {
         await this.save('policy', { ...policy, sources: { ...policy.sources, [id]: part } }, revision, 'sync')
       }
@@ -251,9 +251,9 @@ export class Settings {
     }
   }
   /**
-   * Rereads a Source's display names (such as Feishu chat names) immediately.
-   * @returns Sorted display names (`{ added }`) that were not present in the stored label map before this read.
-   * @throws UserError (`noLabels`) when the Source has no label refresh; rethrows a failed read, keeping the stored list.
+   * 立即重新读取某个 Source 的显示名（例如飞书会话名）。
+   * @returns 本次读取之前存储的标签映射中没有的显示名，已排序（`{ added }`）。
+   * @throws UserError（`noLabels`）当该 Source 不支持标签刷新；读取失败则重新抛出，并保留已存储的列表。
    */
   async refreshLabels(id: string): Promise<{ added: string[] }> {
     const { store, sources } = this.host

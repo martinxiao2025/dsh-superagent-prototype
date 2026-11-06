@@ -12,7 +12,7 @@ import { promptFile } from '../src/app/skill-files.ts'
 import { packagePath } from '../src/infra/paths.ts'
 import type { Variable } from '../src/app/execution-environment.ts'
 
-/** The execution environment outside any ticket, as the runtime passes it once setup has finished. */
+/** 任何 ticket 之外的执行环境，即 setup 完成后 runtime 传入的那份。 */
 const variables = (): Variable[] => [{ key: 'DSH_SUPERAGENT_GITHUB_REPOSITORY', value: 'acme/widgets', description: { zh: '仓库', en: 'The repository' }, owner: 'github' }]
 const ENVIRONMENT_LINE = '- DSH_SUPERAGENT_GITHUB_REPOSITORY = "acme/widgets": The repository.'
 const promptsOf = (store: Store, maxChars = 100000) => new Prompts(store, () => maxChars, variables, () => true)
@@ -30,7 +30,7 @@ it('saves team sections and skills as versions that survive a restart, with hist
     const config = { ...defaultPrompts(), scope: 'Finish what was asked.', delivery: '', skills: { release: 'Tag releases on Fridays.' } }
     prompts.save(config, 0, 'panel')
     expect(composePrompt(prompts.current().config, 'worker')).toContain('## Ticket scope\nFinish what was asked.')
-    // An empty team section leaves the prompt; the fixed sections stay.
+    // 空的团队部分会从 prompt 中移除；固定部分保留。
     expect(promptParts(config, 'worker').map(part => part.name)).not.toContain('delivery')
     expect(store.get('settings-revision')).toBeUndefined()
     store.close(); store = new Store(join(dir, 'db')); prompts = promptsOf(store)
@@ -59,7 +59,7 @@ it('assembles every role from fixed sections around the team sections, whatever 
 
 it('reads a prompt file whatever its line ends and blank lines, and names a missing or empty one', () => {
   const dir = mkdtempSync(join(tmpdir(), 'prompt-file-'))
-  // promptFile resolves paths relative to prompts/; use a relative path to reach the temp dir.
+  // promptFile 以 prompts/ 为基准解析路径；需用相对路径才能到达临时目录。
   const name = (file: string) => relative(packagePath('prompts'), join(dir, file))
   try {
     writeFileSync(join(dir, 'crlf.md'), 'One.\r\nTwo. \r\n \t\r\n\r\nThree.\r\n')
@@ -84,7 +84,7 @@ it.each(['orchestrator', 'worker'] as const)('ends the %s prompt with the fixed 
     expect(preview[role]).toBe(prompts.compose(defaultPrompts(), role))
     expect(preview[role]).toContain(`${handoffPolicy(role)}\n\nExecution environment`)
     if (role === 'worker') expect(preview[role].endsWith(ENVIRONMENT_LINE)).toBe(true)
-    // Nothing follows the main Session's Policy section, so a Policy change leaves the rest of its prompt as it was.
+    // 主 Session 的 Policy 部分之后没有其他内容，因此 Policy 变更会使其 prompt 的其余部分保持原样。
     else expect(preview[role].endsWith(`${ENVIRONMENT_LINE}\n\n${policySection(store.settings()).text}`)).toBe(true)
     expect(preview.parts[role].at(-1)!.name).toBe(role === 'orchestrator' ? 'runtime/policy' : 'runtime/environment')
   })
@@ -139,7 +139,7 @@ describe('overrides of built-in parts', () => {
       expect(worker).toContain('Hand off as a worker.')
       expect(main).toContain(handoffPolicy('orchestrator'))
       expect(prompts.skills(edited)).toContainEqual(['github', 'GitHub, the team way.'])
-      // The parts say what they are edited by.
+      // 各部分会说明自己由什么编辑。
       expect(promptParts(edited, 'worker').find(part => part.name === 'runtime/handoff')).toMatchObject({ key: 'runtime/handoff/worker',
         text: 'Hand off as a worker.' })
     })
@@ -156,7 +156,7 @@ describe('overrides of built-in parts', () => {
         + settings().policy.rules.filter(rule => rule.enabled).map(rule => `- ${rule.name} (${rule.id}): ${rule.instruction}`).join('\n') })
       const none = SettingsSchema.parse({ policy: { rules: [] } })
       expect(policySection(none, edited)).toEqual({ key: 'runtime/policy/none', text: `## Policy\n${policyVersion(none)}, ${none.eval.mode}: nothing to accept.` })
-      // A rule's text that names a placeholder is not filled again.
+      // 规则文本中即使提到占位符也不会再次填充。
       const named = SettingsSchema.parse({ policy: { rules: [{ id: 'x', name: 'X', enabled: true, instruction: 'Keep {mode} and $& as written.' }] } })
       expect(policySection(named, edited).text.endsWith('- X (x): Keep {mode} and $& as written.')).toBe(true)
     })
@@ -169,27 +169,27 @@ describe('overrides of built-in parts', () => {
         .toThrow(new UserError('promptPlaceholders', { part: 'runtime/policy', placeholders: '{rules}' }))
       expect(() => prompts.validate(config({ 'runtime/environment': { text: 'Where you work.' } })))
         .toThrow(new UserError('promptPlaceholders', { part: 'runtime/environment', placeholders: '{variables}' }))
-      // Back to the built-in text: the part follows the built-in text again, so a later upgrade updates it.
+      // 回到内置文本：该部分再次跟随内置文本，因此后续升级会更新它。
       expect(prompts.validate(config({ 'runtime/shared': { text: sharedPrompt } }))).not.toHaveProperty('overrides')
-      // The whole configuration, overrides included, stays within the limit.
+      // 整个配置（包括覆盖项）都保持在限制之内。
       expect(() => promptsOf(store, 5000).validate(config({ 'runtime/shared': { text: 'x'.repeat(5000) } }))).toThrow(UserError)
     })
   })
   it('records the built-in text an override was edited from, and lists the overrides whose built-in text changed since', () => {
     withStore(store => {
       const prompts = promptsOf(store)
-      // An override edited from today's built-in text has nothing to show.
+      // 基于当前内置文本编辑的覆盖项没有可展示的内容。
       const saved = prompts.save(config({ 'runtime/dispatch': { text: '## dispatch\nRoute well.' } }), 0, 'panel')
       expect(saved.config.overrides!['runtime/dispatch']!.base).toBe(builtInBase(`## dispatch\n${guides.dispatch}`))
       expect(prompts.defaultChanged(saved.config)).toEqual([])
-      // One edited from a built-in text an earlier version shipped, which this installation kept when it was saved.
+      // 基于更早版本发布的内置文本编辑的覆盖项，本安装在其保存时保留了该文本。
       const earlier = '## replies\nAn earlier built-in text.'
       store.set(KV.prompts.builtIn(builtInBase(earlier)), earlier)
       const upgraded = prompts.save(config({ ...saved.config.overrides, 'runtime/replies': { text: 'Our replies.', base: builtInBase(earlier) },
         'runtime/work': { text: 'Our work.', base: 'unknown' } }), saved.revision, 'panel')
       expect(prompts.defaultChanged(upgraded.config)).toEqual([{ part: 'runtime/replies', base: builtInBase(earlier), previous: earlier },
         { part: 'runtime/work', base: 'unknown' }])
-      // Kept as it was: an upgrade never replaces the team's text.
+      // 保持原样：升级绝不会替换团队的文本。
       expect(prompts.compose(prompts.current().config, 'worker')).toContain('Our replies.')
     })
   })
@@ -205,7 +205,7 @@ describe('overrides of built-in parts', () => {
     withStore(store => {
       const prompts = promptsOf(store)
       const config = { ...defaultPrompts(), overrides: { 'runtime/retired': { text: 'Old.', base: 'b' } } }
-      // Only a part the saved version holds goes quietly; one a client makes up is refused.
+      // 只有已保存版本中存在的部分才会被静默移除；客户端凭空编造的部分会被拒绝。
       expect(() => prompts.validate(config)).toThrow(new UserError('unknownPromptPart', { part: 'runtime/retired' }))
       store.set(KV.prompts.version(1), { revision: 1, previousRevision: 0, savedAt: '', source: 'panel', config }); store.set(KV.prompts.revision, 1)
       expect(prompts.defaultChanged(config)).toEqual([{ part: 'runtime/retired', base: 'b', removed: true }])
@@ -219,7 +219,7 @@ describe('overrides of built-in parts', () => {
       const first = prompts.save(config({ 'runtime/shared': { text: 'Ours.', base: 'earlier' } }), 0, 'panel')
       const second = prompts.save(config({ 'runtime/shared': { text: 'Ours, edited.' } }), first.revision, 'tool')
       expect(second.config.overrides!['runtime/shared']).toEqual({ text: 'Ours, edited.', base: 'earlier' })
-      // Keeping the team's text after an upgrade changes only the base, which the history names.
+      // 升级后保留团队文本只会改变 base，历史中会指明它。
       const rebased = prompts.save(config({ 'runtime/shared': { text: 'Ours, edited.', base: builtInBase(sharedPrompt) } }), second.revision, 'panel')
       expect(prompts.history().revisions.find(version => version.revision === rebased.revision)!.changed).toEqual(['runtime/shared'])
     })
@@ -230,7 +230,7 @@ describe('overrides of built-in parts', () => {
       for (const part of ['constructor', 'toString']) {
         expect(() => prompts.validate(config(JSON.parse(`{"${part}": { "text": "x" }}`)))).toThrow(new UserError('unknownPromptPart', { part }))
       }
-      // The parser drops a __proto__ key, which sets no prototype.
+      // 解析器会丢弃 __proto__ 键，因此不会设置 prototype。
       expect(prompts.validate(config(JSON.parse('{"__proto__": { "text": "x" }}')))).toEqual(defaultPrompts())
       expect(() => prompts.validate(config({ 'runtime/shared': { text: ' \n ' } }))).toThrow(new UserError('promptPartEmpty', { part: 'runtime/shared' }))
       const edited = prompts.validate(config({ 'runtime/environment': { text: '{constructor} {toString}\n{variables}' } }))

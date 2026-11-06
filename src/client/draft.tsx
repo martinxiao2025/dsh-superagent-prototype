@@ -1,5 +1,5 @@
 /**
- * Optimistic settings draft state with sessionStorage persistence and three-way rebase against concurrent saves.
+ * 乐观更新的设置草稿状态，带 sessionStorage 持久化，并针对并发保存做三方变基。
  */
 import { useEffect, useLayoutEffect, useReducer, useRef, type FormEvent } from 'react'
 import { ApiError } from './api.ts'
@@ -14,9 +14,9 @@ const named = (list: unknown[], field: string) =>
   list.every(item => isRecord(item) && typeof item[field] === 'string') && new Set(list.map(item => (item as Record<string,
     unknown>)[field])).size === list.length
 /**
- * Three-way merge between `base`, local `mine`, and remote `theirs`.
- * Merges objects by key and arrays of keyed records (`id` or `chatId`) by element: a key or element removed by one side is
- * deleted if the other side left it unchanged; a removal against a modification keeps `mine` and is recorded in `conflicts`.
+ * 在 `base`、本地 `mine` 与远端 `theirs` 之间做三方合并。
+ * 对象按键合并，带键记录（`id` 或 `chatId`）的数组按元素合并：一方删除的键或元素若另一方未修改则删除；
+ * 删除与修改冲突时保留 `mine`，并记录到 `conflicts`。
  */
 export function merge3(base: unknown, mine: unknown, theirs: unknown, conflicts: string[][] = [], path: string[] = []): unknown {
   if (same(mine, base) || same(mine, theirs)) return theirs
@@ -54,9 +54,9 @@ function read<V, M>(key: string | undefined): Stored<V, M> | undefined {
   if (!key) return undefined
   try {
     const stored = JSON.parse(sessionStorage.getItem(key) ?? 'null') as Partial<Stored<V, M>> | null
-    // Drop drafts without `base` (stored by older versions) because they cannot be three-way merged.
+    // 丢弃没有 `base` 的草稿（旧版本存储的），因为它们无法做三方合并。
     return stored && 'base' in stored && 'value' in stored && Number.isInteger(stored.revision) ? stored as Stored<V, M> : undefined
-  } catch (error) { void error /* An unreadable draft is dropped; the saved value stays authoritative. */; return undefined }
+  } catch (error) { void error /* 无法读取的草稿被丢弃；已保存的值仍为准。 */; return undefined }
 }
 
 export type DraftNotice = { kind: 'restored' | 'rebasing' } | { kind: 'merged'; revision: number }
@@ -74,8 +74,8 @@ export type DraftAction<V, M> = { type: 'edit'; value: V; meta: M | undefined; s
   | { type: 'discard' | 'submit' } | { type: 'saved'; revision: number; restarting: boolean } | { type: 'refused'; notice: DraftNotice }
   | { type: 'revisionArrived'; saved: V; revision: number }
 /**
- * State machine for a settings draft.
- * Holds submitted values in `awaitingRevision` until the polled revision catches up, and rebases active edits onto newer remote revisions via `merge3`.
+ * 设置草稿的状态机。
+ * 把已提交的值保留在 `awaitingRevision` 中，直到轮询到的版本追上；并通过 `merge3` 把进行中的编辑变基到更新的远端版本上。
  */
 export function draftReducer<V, M>(state: DraftState<V, M>, action: DraftAction<V, M>): DraftState<V, M> {
   const { phase, draft, seen } = state
@@ -93,7 +93,7 @@ export function draftReducer<V, M>(state: DraftState<V, M>, action: DraftAction<
       sent: { value: draft.value, revision: action.revision, restarting: action.restarting } } : state
     case 'refused': return { ...state, phase: phase === 'saving' ? 'editing' : phase, notice: action.notice }
     case 'revisionArrived': {
-      // Defer rebasing while a save is running; its completion will either advance to `awaitingRevision` or reload and merge.
+      // 保存进行中时推迟变基；其完成时会前进到 `awaitingRevision`，或重新加载并合并。
       if (phase === 'saving') return state
       const { revision, saved } = action
       if (state.sent) return revision >= state.sent.revision ? { phase: 'clean', seen: revision } : { ...state, seen: revision }
@@ -132,7 +132,7 @@ export interface DraftOptions<V> {
   save: (value: V, revision: number, base: V) => Promise<{ revision: number; restarting?: boolean }>
   reload: () => Promise<unknown>
 }
-/** Manage a settings draft, persisting unsaved edits in `sessionStorage` and rebasing them when newer server revisions arrive. */
+/** 管理设置草稿：把未保存的编辑持久化到 `sessionStorage`，并在更新的服务端版本到来时对其变基。 */
 export function useDraft<V, M = undefined>({ key, saved, revision, save, reload }: DraftOptions<V>) {
   const { restart } = usePanel()
   const [state, dispatch] = useReducer(draftReducer<V, M>, undefined, () => {
@@ -172,7 +172,7 @@ export function useDraft<V, M = undefined>({ key, saved, revision, save, reload 
     edit: (value: V, meta?: M) => dispatch({ type: 'edit', value, meta, saved, revision }), discard: () => dispatch({ type: 'discard' }) }
 }
 
-/** Sticky save/discard bar for a settings block; transfers focus back to its parent block when hidden so keyboard navigation does not reset. */
+/** 设置块的粘性保存/放弃栏；隐藏时把焦点交还其父块，使键盘导航不被重置。 */
 export function SaveBar({ state, dirty, busy, words, status, onDiscard, onSave }: {
   state: DraftState<unknown, unknown>; dirty: boolean; busy: boolean; words?: DraftWords; status?: string | undefined
   onDiscard: () => void; onSave?: () => void

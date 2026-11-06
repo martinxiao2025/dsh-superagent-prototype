@@ -1,20 +1,20 @@
-/** Word counting and string formatting utilities for IM message limits and templates. */
+/** 供 IM 消息长度限制与模板使用的字数统计与字符串格式化工具。 */
 const words = new Intl.Segmenter('zh', { granularity: 'word' })
 export const IM_WORDS = 100
 export const NOTE_WORDS = 30
-/** Counts word-like segments across Chinese, English, and mixed text, ignoring punctuation. */
+/** 统计中英文及混合文本中的类词片段数量，忽略标点。 */
 export function wordCount(text: string): number {
   let count = 0
   for (const segment of words.segment(text)) if (segment.isWordLike) count++
   return count
 }
-/** Validates that an outgoing IM Markdown message does not exceed `IM_WORDS` (link labels and URLs both count toward the limit). */
+/** 校验出站 IM Markdown 消息不超过 `IM_WORDS`（链接文字与 URL 都计入上限）。 */
 export function checkedImText(text: string): string {
   const count = wordCount(text)
   if (count > IM_WORDS) throw new Error(`IM message has ${count} words; maximum is ${IM_WORDS}. Rewrite as a short high-level update. Do not split it into multiple messages.`)
   return text
 }
 export const fill = (template: string, values: Record<string, string>): string => template.replace(/\{(\w+)\}/g, (_, name: string) => values[name] ?? '')
-/** Case-insensitive comparison for GitHub logins and repository names. */
+/** 用于 GitHub 登录名与仓库名的大小写不敏感比较。 */
 export const sameName = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase()
 export const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

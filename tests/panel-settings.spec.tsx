@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// The Settings groups, drafts, save bars and history.
+// Settings 的分组、草稿、保存栏与历史。
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Fields } from '../src/client/settings-kit.tsx'
@@ -35,10 +35,10 @@ it('saves the Eval block on the Policy settings and the Executor with its execut
   expect(server.settings.eval).toEqual({ mode: 'auto', timeoutSeconds: 180, model: { provider: 'worker-provider', model: 'worker-model' } })
   await click(find(zh['promptPart.runtime/work'], '.dt-settings-link'))
   await type(field<HTMLInputElement>(zh.maxWorkers), '5')
-  // An empty root uses the default directory, which the field names instead of looking set.
+  // 空的 root 使用默认目录，字段会指明这一点，而不是看起来已设置。
   expect(field<HTMLInputElement>(zh.executionDirectory).closest('.dt-field')!.querySelector('small')?.textContent).toBe('留空时用 /srv/dsh-superagent/work')
   await type(field<HTMLInputElement>(zh.executionDirectory), '/srv/work')
-  // A variable picked from the list goes where the caret is in the prepare command.
+  // 从列表中选择的变量会插入到 prepare 命令中光标所在的位置。
   const prepare = field<HTMLTextAreaElement>(zh.prepareCommand)
   await type(prepare, 'git worktree add ')
   prepare.setSelectionRange(17, 17)
@@ -86,7 +86,7 @@ it('shows save and discard only while a settings block has edits, at the end of 
   await type(field<HTMLInputElement>(zh.maxWorkers), '6')
   await click(zh.discard)
   expect(all('.dt-savebar')).toHaveLength(0)
-  // A save submitted from a field keeps the focus there; one from the bar hands it to the block when the bar closes.
+  // 从字段提交的保存会把焦点留在那里；从保存栏提交的保存则在保存栏关闭时把焦点交给该块。
   const workers = field<HTMLInputElement>(zh.maxWorkers)
   await type(workers, '5')
   workers.focus()
@@ -104,7 +104,7 @@ it('shows save and discard only while a settings block has edits, at the end of 
   const github = all('.dt-card').find(card => card.querySelector('.dt-card-title')?.textContent === 'GitHub')!
   await type(field<HTMLInputElement>('智能体的 GitHub CLI'), 'gh-other')
   expect(github.lastElementChild!.classList.contains('dt-savebar')).toBe(true)
-  // The agent CLI is read by setup, so the bar warns that saving restarts dsh-superagent and interrupts running work.
+  // agent CLI 由 setup 读取，因此保存栏会警告：保存会重启 dsh-superagent 并中断正在运行的工作。
   expect(github.lastElementChild!.textContent).toContain('2 个进行中的派工会中断')
 })
 
@@ -117,7 +117,7 @@ it('gives the focus back to the field that had it once a block\'s save ends', as
   const input = container.querySelector('input')!
   input.focus()
   await render(true)
-  // jsdom does not blur a control when it becomes disabled; move focus away manually.
+  // jsdom 在控件变为禁用时不会触发 blur；需手动移开焦点。
   const elsewhere = document.createElement('button'); document.body.append(elsewhere); elsewhere.focus(); elsewhere.remove()
   expect(document.activeElement).toBe(document.body)
   await render(false)
@@ -135,7 +135,7 @@ it('lists the settings groups stages first, opens each stage\'s group from its s
     await click(find(zh['tab.settings'], '.dt-status-head button'))
     expect(document.querySelector('.dt-settings-link[aria-current="page"]')?.textContent).toBe(group)
   }
-  // The Trigger stage has no settings, so its status offers none.
+  // Trigger 阶段没有设置项，因此其状态不提供任何设置。
   await click(tab(zh['tab.trigger']))
   expect(all('.dt-status-head button').map(button => button.textContent)).not.toContain(zh['tab.settings'])
   await click(tab(zh['tab.settings']))

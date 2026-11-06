@@ -1,4 +1,4 @@
-/** Effect queue migration and notice deduplication on the Runtime. */
+/** Runtime 上的效果队列迁移与通知去重。 */
 import { afterEach, expect, it, vi } from 'vitest'
 import { startRuntime, type Host } from './fixtures/host.ts'
 
@@ -9,7 +9,7 @@ const notices = (host: Host) => host.agents.get(host.runtime.masterId)!.inject.m
 
 it('delivers the relays, subscription changes and notifications that a version before the effect queue kept, once the migration queued them', async () => {
   h = await startRuntime(store => {
-    // A schema 10 database, which the schema 11 migration brings up to date when the Runtime opens it.
+    // 一个 schema 10 的数据库；Runtime 打开它时，schema 11 迁移会将其升级到最新。
     store.set('schema', 10)
     store.set('relay-queue', [{ id: 'report:old', text: JSON.stringify({ kind: 'worker_report', ticket_id: 't1', state: 'ready' }) }])
     store.set('subscription-results', ['github:7'])

@@ -1,4 +1,4 @@
-/** Verifies that every class in src has a preceding JSDoc block. */
+/** 校验 src 中每个类声明之前都有 JSDoc 块。 */
 import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'

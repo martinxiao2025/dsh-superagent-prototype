@@ -1,4 +1,4 @@
-/** Thread timeline pagination, neighbour lookup, and timestamp normalization. */
+/** Thread 时间线分页、相邻项查找与时间戳归一化。 */
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -37,12 +37,12 @@ it('pages a thread by time and then id, so a Trigger of the same second as a pag
   const second = threadDetail(host(), 'github:7', first.earlier!, 1)!
   const third = threadDetail(host(), 'github:7', second.earlier!, 1)!
   expect([ids(first), ids(second), ids(third), third.earlier]).toEqual([['c'], ['b'], ['a'], null])
-  // Legacy timestamp-only cursors still page before that timestamp.
+  // 仅含时间戳的旧式游标仍以该时间戳为界向前翻页。
   expect(ids(threadDetail(host(), 'github:7', '2026-10-01T00:00:01.000Z', 5))).toEqual(['a'])
 })
 
 it('shows the page around a GitHub comment with that comment, though GitHub writes its time in whole seconds', () => {
-  // Lexicographically, `...:00Z` sorts after `...:00.001Z` unless normalized to milliseconds.
+  // 按字典序，`...:00Z` 会排在 `...:00.001Z` 之后，除非归一化到毫秒。
   const taking = engine()
   for (const item of [comment('old', '2026-10-01T00:00:00Z'), comment('new', '2026-10-01T00:00:00.500Z'), comment('newest', '2026-10-01T00:00:01Z')]) {
     taking.receive(item)

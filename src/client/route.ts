@@ -1,4 +1,4 @@
-/** Typed panel routes, route parser, and sessionStorage location history. */
+/** 带类型的页面路由、路由解析器，以及 sessionStorage 位置历史。 */
 import { THREAD_FILTERS, TICKET_FILTERS, type ThreadFilter, type TicketFilter } from '../app/api.ts'
 import type { SetupPlace } from '../setup.ts'
 import { DECISION_FILTERS, type DecisionFilter } from './api.ts'
@@ -28,7 +28,7 @@ function compact<Q extends object>(query: Q): Q | undefined {
   const set = Object.entries(query).filter(([, value]) => value !== undefined)
   return set.length ? Object.fromEntries(set) as Q : undefined
 }
-/** Validate and normalize a stored route, dropping unrecognized query filters or removed tabs (such as the legacy `policy` tab). */
+/** 校验并规范化已存储的路由，丢弃无法识别的查询筛选或已移除的标签页（如旧的 `policy` 标签页）。 */
 export function parseRoute(value: unknown): Route | undefined {
   const { page, id, query } = (value ?? {}) as { page?: unknown; id?: unknown; query?: Record<string, unknown> }
   const text = (name: string) => typeof query?.[name] === 'string' ? query[name] as string : undefined
@@ -57,11 +57,11 @@ export function initialLocation(): Location {
     const stack = Array.isArray(stored?.stack) ? stored.stack as unknown[] : []
     if (route) return { route, stack: stack.flatMap(item => parseRoute(item) ?? []), group: pick(SETTINGS_GROUPS, stored?.group) }
   } catch (error) {
-    // Route memory is a convenience; an unreadable value falls back to HOME.
+    // 路由记忆只是便利功能；无法读取的值回退到 HOME。
     void error
   }
   return { route: HOME, stack: [] }
 }
 export function remember(location: Location): void {
-  try { sessionStorage.setItem(ROUTE_KEY, JSON.stringify(location)) } catch (failure) { void failure /* Route memory is a convenience. */ }
+  try { sessionStorage.setItem(ROUTE_KEY, JSON.stringify(location)) } catch (failure) { void failure /* 路由记忆只是便利功能。 */ }
 }

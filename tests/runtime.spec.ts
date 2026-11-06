@@ -75,25 +75,25 @@ async function receive(trigger: Trigger, target = runtime) {
   return result
 }
 let services: Record<string, unknown>
-/** DSH's job registry the Runtime's Executor reads its workers' shell jobs from. */
+/** DSH 的 job registry，Runtime 的 Executor 据此读取其 worker 的 shell job。 */
 let jobs: ReturnType<typeof jobRegistry>
-/** What worker commands of the startup checks print, by argv; an Error makes the command fail with its message. */
+/** 启动检查中 worker 命令按 argv 打印的内容；值为 Error 时让该命令以该消息失败。 */
 let answers: Record<string, string | Error>
-/** Stand-in CLIs on disk, since setup finds executables before it runs them: the agent's, the merge account's and the Feishu bot's. */
+/** 磁盘上的替身 CLI，因为 setup 先查找可执行文件再运行它们：agent 的、merge 账号的和飞书 bot 的。 */
 const AGENT = () => join(directory, 'agent-gh')
 const OTHER = () => join(directory, 'other-gh')
 const BOT = () => join(directory, 'lark-bot')
 const HELPERS = 'git config -z --show-origin --get-all credential.https://github.com.helper'
 const SCOPED = 'git config -z --show-scope --get-regexp ^(credential\\..*|http\\..*extraheader)$'
 const subprocess = { spawn: vi.fn((spec: { argv: readonly string[] }) => {
-  // Strip leading `env` and `KEY=VALUE` arguments before looking up the command response.
+  // 在查找命令响应前，先去掉开头的 `env` 与 `KEY=VALUE` 参数。
   const argv = [...spec.argv]
   while (argv[0] === 'env' || /^[A-Z_]+=/.test(argv[0] ?? '')) argv.shift()
   const answer = answers[argv.join(' ')] ?? ''
   const reader = (text: string) => ({ readFrom: () => ({ text, nextOffset: text.length, lossy: false }) })
   return { done: Promise.resolve({ exitCode: answer instanceof Error ? 1 : 0, signal: null }), collected: { stdout: reader(answer instanceof Error ? '' : answer), stderr: reader(answer instanceof Error ? answer.message : '') } }
 }) }
-/** Source account overrides for test setup; `feishu: null` disables the Feishu source. */
+/** 测试 setup 的 Source 账号覆盖项；`feishu: null` 会禁用飞书 Source。 */
 interface Accounts { github?: Record<string, unknown>; feishu?: Record<string, unknown> | null }
 function seed(store: Store, accounts: Accounts = {}): void {
   const settings = store.settings()
@@ -120,7 +120,7 @@ function feishu(id: string, text: string, overrides: Record<string, unknown> = {
   return feishuTrigger({ message_id: `om_${id}`, chat_id: CHAT, chat_type: 'group', sender_id: MEMBER, sender_type: 'user', content: text, create_time: String(Date.parse('2026-09-09T00:00:00Z') + Number(id.replace(/\D/g, '') || 0) * 1000), mentions: [{ id: 'ou_bot' }], ...overrides }, 'ou_bot', 'cli_bot')!
 }
 const worktreeName = 'fix-regression'
-/** Route one decision with the main Session's orchestrator_route, answering its result; a refused one throws its reason. */
+/** 用主 Session 的 orchestrator_route 路由一个 decision，并返回其结果；被拒绝时抛出原因。 */
 async function route(item: Record<string, unknown>): Promise<Record<string, unknown>> {
   const { results } = await runTool(runtime.masterId, 'orchestrator_route', { decisions: [item] }) as { results: Record<string, unknown>[] }
   if (results[0]!.refused) throw new Error(String(results[0]!.refused))
@@ -170,7 +170,7 @@ beforeEach(async () => {
       tools.set(sessionId, sessionTools)
       agentCtx.reflect.provide('tools', { register: (tool: RegisteredTool) => { sessionTools.set(tool.name,
         tool); return () => sessionTools.delete(tool.name) },
-        // Preset tools are inherited; subagent is registered on the agent itself and cannot be named by restrict.
+        // Preset 工具是继承来的；subagent 注册在 agent 自身上，无法通过 restrict 指定。
         get: (name: string, scope?: object) => {
           const own = scope === agents.get(sessionId)
           return (scope === preset || own) && inherited.includes(name) || own && name === 'subagent' ? { name } : undefined
@@ -183,7 +183,7 @@ beforeEach(async () => {
       agentCtx.reflect.provide('skills', { register: () => () => {} })
       agentCtx.reflect.provide('systemPrompt', { section: (spec: Section) => { sections.set(sessionId, spec); return () => {} } })
       const inbox = { nextTurn: [] as UserMessage[], nextStep: [] as UserMessage[],
-        // A pending message taken out, as DSH's inbox does by its id.
+        // 取出一条待处理消息，如同 DSH 的 inbox 按 id 取出那样。
         remove: (id: string) => [inbox.nextTurn, inbox.nextStep].some(list => {
           const at = list.findIndex(message => message.id === id)
           if (at >= 0) list.splice(at, 1)
@@ -209,7 +209,7 @@ beforeEach(async () => {
   const store = new Store(join(directory, 'orchestrator.sqlite')); seed(store); store.close()
   runtime = new Runtime(ctx, testMachine({ stateDir: directory }), restarts)
   await runtime.ready
-  // Source kinds are normally registered by plugins that are not loaded in unit tests.
+  // Source kind 通常由插件注册，而单元测试中并未加载这些插件。
   runtime.sources.register(feishuKind); runtime.sources.register(githubKind)
   runtime.store.saveSettings({ ...runtime.store.settings(), policy: { ...runtime.store.settings().policy, sources: { feishu: { allowed: [{ id: MEMBER, name: 'Alice' }], syncChat: CHAT }, github: { allowed: [{ id: 'alice' }] } } }, eval: { ...runtime.store.settings().eval, mode: 'auto' }, sources: { github: { enabled: true, config: { repository: 'acme/widgets', cli: AGENT() } }, feishu: { enabled: true, config: { cli: BOT(), chats: [{ chatId: CHAT, listen: 'all' }], directMessages: true } } } })
   deliveries.mockClear()
@@ -223,7 +223,7 @@ it('relays an explicit member mention as a candidate and creates the ticket, ack
   expect(ticket).toMatchObject({ title: '修复回归', mandate: { strength: 'explicit', basis: expect.objectContaining({ via: 'addressed', source: 'feishu', sender: 'Alice', addressed: 'mention', scope: expect.objectContaining({ chatId: CHAT }) }) },
     execution: expect.objectContaining({ name: expect.stringMatching(/^fix-regression-/) }), origin: expect.objectContaining({ triggerId: trigger.id }) })
   expect(ticket).not.toHaveProperty('ended')
-  // The ticket's execution environment is fixed at accept time: its directory under the execution root, and the Sources' values from its Trigger.
+  // ticket 的执行环境在 accept 时即固定：执行根目录下的目录，以及来自其 Trigger 的各 Source 值。
   expect(ticket.execution!.directory).toBe(join(directory, 'work', ticket.execution!.name))
   expect(Object.fromEntries(runtime.ticketEnvironment(ticket).map(variable => [variable.key, variable.value]))).toMatchObject({ DSH_SUPERAGENT_DIR: ticket.execution!.directory, DSH_SUPERAGENT_NAME: ticket.execution!.name, DSH_SUPERAGENT_TICKET: ticket.id, DSH_SUPERAGENT_FEISHU_CHAT: CHAT, DSH_SUPERAGENT_GITHUB_REPOSITORY: 'acme/widgets', DSH_SUPERAGENT_GITHUB_ACCOUNT: 'agent-bot', DSH_SUPERAGENT_GITHUB_NUMBER: '' })
   expect(ticket.assignments).toEqual([expect.objectContaining({ state: 'running', startedAt: expect.any(String) })])
@@ -232,7 +232,7 @@ it('relays an explicit member mention as a candidate and creates the ticket, ack
   expect(runtime.store.replyStatus(key('ack', trigger.id))).toBe('sent')
   const larkCalls = vi.mocked(Commands.prototype.lark).mock.calls.map(([args]) => args)
   expect(larkCalls.find(args => args[1] === '+messages-reply')).toEqual(expect.arrayContaining(['--message-id', 'om_1', '--markdown', '收到，修复回归。']))
-  // The first message holds the request itself: an explicit ticket has no assignment text beyond it, and nothing to read first.
+  // 第一条消息承载请求本身：显式 ticket 除它之外没有 assignment 文本，也没有需要先读取的内容。
   const first = relays(sessionId)[0]!
   expect(first).toEqual({ ticket_id: ticket.id, title: '修复回归', trigger: expect.objectContaining({ trigger_id: trigger.id, from: MEMBER,
     thread: `feishu:${CHAT}:om_1`, text: trigger.text }) })
@@ -249,7 +249,7 @@ it('fans a person\'s later thread message out to the live worker as context and 
   expect(worker).toHaveLength(1)
   expect(worker[0]).toMatchObject({ trigger_id: followup.id, from: 'ou_guest', text: '顺便看看日志' })
   expect(worker[0]).not.toHaveProperty('read')
-  // Its resource renders the same, from the ticket; no body of it is stored.
+  // 其 resource 从 ticket 渲染出相同结果；不存储其正文。
   const resource = `ticket/${ticket.id}/input/${key(runtime.store.tickets.get(ticket.id)!.inputs[0]!.id)}`
   expect(JSON.parse(((await runTool(sessionId, 'orchestrator_read', { resource })) as { text: string }).text)).toEqual(worker[0])
   expect(runtime.store.get(resource)).toBeUndefined()
@@ -271,7 +271,7 @@ it('assesses a proactive observation in the orchestrator Session and creates the
   expect(candidate).toMatchObject({ kind: 'candidate', strength: 'inferred', mode: 'observe', next_action: expect.stringContaining('orchestrator_eval') })
   vi.spyOn(Commands.prototype, 'lark').mockResolvedValue({ items: [{ message_id: 'om_3', chat_id: CHAT }] })
   const details = await runTool(runtime.masterId, 'orchestrator_eval', { trigger_id: trigger.id })
-  // The rules are in the main Session's Policy section; the context names the Policy version it was built from.
+  // 规则位于主 Session 的 Policy 部分；context 会指明它所依据的 Policy 版本。
   expect(details).not.toHaveProperty('rules')
   expect(details).toMatchObject({ trigger_id: trigger.id, strength: 'inferred', policy_version: policyVersion(runtime.store.settings()), thread: expect.objectContaining({ complete: true, loaded_messages: 0 }) })
   const decision = (id: string) => ({ trigger_id: id, decision: 'accept', title: '文案修订', worktree_name: 'copy-fix', scope: '改副标题', reason: 'explicit copy change', intent_evidence: 'quoted', acknowledgement: '收到，把副标题改成“浏览网页”。',
@@ -311,7 +311,7 @@ it('accepts silently under a rule that says so, gives the worker the rule proced
   await expect(runTool(runtime.masterId, 'orchestrator_reply', { ticket_id: ticket.id, purpose: 'result', text: 'x' })).rejects.toThrow('not ready')
   await runTool(`worker-${ticket.id}`, 'orchestrator_report', { state: 'blocked', summary: 'needs a decision' })
   await expect(runTool(runtime.masterId, 'orchestrator_reply', { ticket_id: ticket.id, purpose: 'result', text: 'x' })).rejects.toThrow('not ready')
-  // Nothing left for a human: the ticket closes instead of waiting, and the rule's closing sentence can still be delivered.
+  // 没有留下需要人处理的事：ticket 不再等待而是关闭，规则的收尾句仍可送达。
   await runTool(`worker-${ticket.id}`, 'orchestrator_report', { state: 'dropped', summary: 'too complex; recorded in #123' })
   expect(runtime.store.tickets.get(ticket.id)).toMatchObject({ ended: expect.objectContaining({ by: 'executor', outcome: 'dropped' }) })
   expect(await runTool(runtime.masterId, 'orchestrator_reply', { ticket_id: ticket.id, purpose: 'result', text: '看到这个问题我试了一下，能复现，修复需要较大改动，已记在 #123。' })).toEqual({ status: 'sent' })
@@ -342,9 +342,9 @@ it('records worker reports, binds the task PR, ends the ticket on ready without 
   await observePull(runtime.context(githubKind), merged)
   const ended = runtime.store.tickets.get(ticket.id)!
   expect(ended).toMatchObject({ ended: expect.objectContaining({ by: 'executor', outcome: 'merged' }) })
-  // The ended ticket keeps its Subscription to the PR, so a later human comment there resumes it.
+  // 已结束的 ticket 保留对 PR 的 Subscription，因此之后该处的人类评论会恢复它。
   expect(runtime.store.threads.get('github:42')?.subscriptions).toEqual([ticket.id])
-  // Its worker's last word was its ready report, so its turn is not cancelled: it ends it itself.
+  // 其 worker 最后说的是它的 ready 报告，因此它的 turn 不会被取消：它自己结束。
   expect(agents.get(sessionId)!.cancel).not.toHaveBeenCalled()
   const notice = runtime.store.receipts.waiting().find(item => item.kind === 'notice')
   expect(notice ?? runtime.store.replyStatus(key('pr-terminal', '42', 'feishu', JSON.stringify({ chatId: CHAT, messageId: 'om_1' }), 'merged'))).toBeTruthy()
@@ -382,18 +382,18 @@ it('stops a ticket on a person\'s instruction for good, and resumes an ended one
   await receive(request)
   expect(await route({ kind: 'stop', ticket_id: ticket.id, trigger_id: request.id }))
     .toMatchObject({ decision: 'stop', reason: 'Human asked to stop', ticket: { ticket_id: ticket.id, state: 'stopped' } })
-  // The end says it was a person's stop once: no reason that repeats the outcome, none copied onto the Assignment.
+  // 结束原因只说明这是一次人的停止：没有重复结果的理由，也不会复制到 Assignment 上。
   const stopped = runtime.store.tickets.get(ticket.id)!
   expect(stopped.ended).toEqual({ at: expect.any(String), by: 'human', outcome: 'stopped' })
   expect(stopped.assignments[0]).not.toHaveProperty('endedReason')
   expect(agents.get(sessionId)!.cancel).toHaveBeenCalledWith({ kind: 'user' }, { keepInbox: false })
-  // A stop withdraws the mandate: later messages wait as context, and only new work restarts it.
+  // 停止会撤回 mandate：之后的消息作为 context 等待，只有新的工作才会重启它。
   const guest = feishu('6', '继续吧', { mentions: [], root_id: 'om_1', sender_id: 'ou_guest' })
   await receive(guest)
   await runtime.pump()
   expect(runtime.store.tickets.get(ticket.id)!.ended).toBeDefined()
   await expect(route({ kind: 'attach', ticket_id: ticket.id, trigger_id: guest.id })).rejects.toThrow('stopped')
-  // A ticket that ended by itself resumes on a person's message on its thread, whoever sent it.
+  // 自行结束的 ticket 会因其 thread 上的人类消息而恢复，无论发送者是谁。
   const other = await acceptedTicket(feishu('20', '@bot 修另一个'))
   await runTool(other.sessionId, 'orchestrator_report', { state: 'dropped', summary: 'not reproduced' })
   expect(runtime.store.tickets.get(other.ticket.id)!.ended).toBeDefined()
@@ -415,10 +415,10 @@ it('tells live workers about policy changes instead of revoking them and restart
   const result = await runtime.settings.save('policy', { ...settings.policy, rules: settings.policy.rules.map(rule => ({ ...rule, enabled: rule.id === 'copy' })) }, runtime.store.blockRevision('policy'), 'panel')
   await runtime.idle()
   expect(result).toMatchObject({ saved: true, policy_changed: true })
-  // The rules changed, but not as they bear on this explicit ticket, whose requester is still allowed: its worker is not woken.
+  // 规则变了，但并不影响这个显式 ticket（其请求者仍在允许列表中）：其 worker 不会被唤醒。
   expect(runtime.store.tickets.get(ticket.id)!.inputs).toEqual([])
   expect(relays(sessionId)).toEqual([])
-  // Its requester comes off the allowed list: the worker is told so, inline, and the ticket goes on.
+  // 其请求者被移出允许列表：会就地告知 worker，ticket 继续进行。
   const current = runtime.store.settings().policy
   await runtime.settings.save('policy', { ...current, sources: { ...current.sources, feishu: { ...current.sources.feishu!, allowed: [] } } },
     runtime.store.blockRevision('policy'), 'panel')
@@ -464,7 +464,7 @@ it('treats GitHub comments through the same gate: mentions by members are explic
   const result = await route({ kind: 'accept', trigger_id: mention.id, title: 'Fix PR 7', worktree_name: 'fix-pr', acknowledgement: 'On it: fixing the review finding.' })
   const ticket = runtime.store.tickets.get((result.ticket as { ticket_id: string }).ticket_id)!
   expect(ticket.channels).toEqual([expect.objectContaining({ source: 'github', address: expect.objectContaining({ number: '7' }) })])
-  // The PR's head is a variable of the ticket's execution environment; a prepare command may fetch it.
+  // PR 的 head 是 ticket 执行环境的一个变量；prepare 命令可以获取它。
   expect(Object.fromEntries(runtime.ticketEnvironment(ticket).map(variable => [variable.key, variable.value]))).toMatchObject({ DSH_SUPERAGENT_GITHUB_NUMBER: '7', DSH_SUPERAGENT_GITHUB_PR_HEAD: 'refs/pull/7/head', DSH_SUPERAGENT_FEISHU_CHAT: '' })
   const ci = { ...stranger, id: 'ci-1', human: false, text: 'GitHub PR #7 CI: failing', meta: { ci: true } }
   await receive(ci)
@@ -530,8 +530,8 @@ it('relaunches running assignments after a restart with a recovery note', async 
   await runtime.pump()
   await runtime.idle()
   expect(runtime.store.tickets.get(ticket.id)!.assignments[1]).toMatchObject({ state: 'running' })
-  // The new Assignment's message says only what is new, as the Session holds the first; the launch's own pass delivers the
-  // recovery note as it reads.
+  // 新 Assignment 的消息只说明新增内容，因为 Session 已持有第一条；启动自身的 pass 在读取时
+  // 送达 recovery 说明。
   expect(relays(`worker-${ticket.id}`)).toEqual([{ ticket_id: ticket.id, assignment: 2 }, { text: expect.stringContaining('host restarted') }])
 })
 
@@ -555,7 +555,7 @@ it('projects read models for the management page and removes thread subscription
   runtime.store.threads.describe(thread.key, { label: 'Named by its source' })
   expect(threadList(viewsOf(runtime), 'all', 0, 20).items[0]).toMatchObject({ title: 'Named by its source' })
   expect((await api('GET', 'state')).body).not.toHaveProperty('tickets')
-  // scripts/dsh-superagent and agents read health from GET state (docs/006, Management API); settings and their revisions have their own route.
+  // scripts/dsh-superagent 和 agents 从 GET state 读取 health（docs/006，Management API）；settings 及其修订版本有自己的路由。
   expect((await api('GET', 'state')).body).toMatchObject({ health: { runtime: { state: expect.any(String) } }, paused: false, load: { maxWorkers: 3 } })
   expect((await api('GET', 'settings')).body).toMatchObject({ sources: expect.arrayContaining([expect.objectContaining({ id: 'github',
     revision: expect.any(Number), value: expect.objectContaining({ enabled: true }) })]), blocks: { policy: { revision: expect.any(Number) } } })
@@ -567,7 +567,7 @@ it('projects read models for the management page and removes thread subscription
 it('lets an Executor drop only its own ticket from a thread it finds unrelated, but not the thread it started on or its pull request\'s', async () => {
   const { ticket, trigger, sessionId } = await acceptedTicket()
   const other = await acceptedTicket(feishu('5', '@bot 另一件事'))
-  // An attached thread that turns out to be about something else, which another ticket also follows.
+  // 一个已附加的 thread 结果发现是别的事，另一个 ticket 也关注着它。
   const attached = { source: 'feishu', id: 'oc_side:om_side' }
   subscribe(ticket.id, attached); subscribe(other.ticket.id, attached)
   const inject = agents.get(runtime.masterId)!.inject
@@ -579,7 +579,7 @@ it('lets an Executor drop only its own ticket from a thread it finds unrelated, 
   await expect(runTool(sessionId, 'orchestrator_thread_unrelated', { thread: threadKey(trigger.threads[0]!), reason: 'no' })).rejects.toThrow('the ticket started on')
   runtime.engine.bindThread(ticket.id, { source: 'github', id: '7' }, true)
   await expect(runTool(sessionId, 'orchestrator_thread_unrelated', { thread: 'github:7', reason: 'no' })).rejects.toThrow('pull request')
-  // A worker drops only its own ticket: the other ticket's thread is not one this ticket follows.
+  // worker 只会丢弃自己的 ticket：另一个 ticket 的 thread 并非本 ticket 关注的 thread。
   await expect(runTool(sessionId, 'orchestrator_thread_unrelated', { thread: threadKey(other.trigger.threads[0]!), reason: 'no' })).rejects.toThrow('does not follow that thread')
 })
 
@@ -590,7 +590,7 @@ it('reports a Source that was switched on as starting until its next pass report
   runtime.context(githubKind).report('github', { state: 'paused', detail: 'Off', code: 'sourceOff' })
   await save(true)
   expect(await github()).toEqual([{ name: 'github', state: 'starting', detail: '' }])
-  // A part that reports something else, such as a missing CLI, keeps its report: no pass may come to replace it.
+  // 某部分报告了别的情况（例如缺少 CLI）时，保留其报告：任何 pass 都不得替换它。
   await save(false)
   runtime.context(githubKind).report('github', { state: 'paused', detail: 'x', code: 'feishuCliUnset' })
   await save(true)
@@ -601,7 +601,7 @@ it('records each settings save with its policy change and the open tickets told 
   const { ticket } = await acceptedTicket()
   const settings = runtime.store.settings()
   await runtime.settings.save('executor', { ...settings.executor, maxWorkers: 5 }, runtime.store.blockRevision('executor'), 'panel')
-  // What a Source receives is its own configuration, not the Policy; who may originate work there is the Policy's.
+  // Source 收到的是它自己的配置而非 Policy；谁能在那里发起工作由 Policy 决定。
   const feishu = runtime.sources.instance('feishu')!
   await runtime.settings.save('source:feishu', { enabled: true, config: { ...feishu.config, directMessages: false } }, runtime.store.blockRevision('source:feishu'), 'panel')
   const policy = runtime.store.settings().policy
@@ -609,7 +609,7 @@ it('records each settings save with its policy change and the open tickets told 
   await expect(runtime.settings.save('executor', settings.executor, 0, 'panel')).rejects.toThrow('Settings changed')
   const history = policyHistory(runtime.store, runtime.sources, policyVersion(runtime.store.settings()))
   expect(history.items.slice(0, 3)).toEqual([
-    // Another sender on the list bears on no open ticket, so none is told.
+    // 列表上的另一个发送者与任何未结 ticket 无关，因此不会通知任何 ticket。
     expect.objectContaining({ source: 'panel', block: 'policy', policyChanged: true, notified: [], changes: [expect.objectContaining({ source: 'feishu', field: 'allowed', part: true })] }),
     expect.objectContaining({ source: 'panel', block: 'source:feishu', policyChanged: false, notified: [], changes: [{ code: 'sourceField', source: 'feishu', field: 'directMessages', from: true, to: false }] }),
     expect.objectContaining({ source: 'panel', block: 'executor', policyChanged: false, notified: [], changes: [{ code: 'maxWorkers', from: 3, to: 5 }] }),
@@ -652,7 +652,7 @@ it('describes rule edits in the Policy history and skips Policy syncs that chang
   const settings = runtime.store.settings()
   const revision = () => runtime.store.get('settings-revision') as number
   const before = revision()
-  // The sync chat lists exactly the allowed users already, so nothing is saved.
+  // 同步聊天已经恰好列出了允许的用户，因此不保存任何内容。
   await runtime.settings.sync('feishu')
   expect(revision()).toBe(before)
   await runtime.settings.save('policy', { ...runtime.store.settings().policy, rules: [{ ...settings.policy.rules[0]!, name: '文案' }, { ...settings.policy.rules[1]!, enabled: false }, { id: 'docs', name: '文档', enabled: true, instruction: 'x' }] }, runtime.store.blockRevision('policy'), 'panel')
@@ -673,7 +673,7 @@ it('retries only a failed, blocked or undelivered ticket with a new assignment, 
   const current = runtime.store.tickets.get(ticket.id)!
   await runTool(`worker-${ticket.id}`, 'orchestrator_report', { state: 'failed', summary: 'LlmError: offline' })
   expect(waitsForPerson(runtime.store.tickets.get(ticket.id)!)).toBe(true)
-  // A person may continue a failed worker in its Session; only an ended Ticket locks its tools.
+  // 人可以在其 Session 中继续一个失败的 worker；只有已结束的 Ticket 才会锁定其工具。
   expect(guards.get(`worker-${ticket.id}`)!()).toBeUndefined()
   const retried = await runtime.engine.retryTicket(ticket.id)
   await runtime.idle()
@@ -681,9 +681,9 @@ it('retries only a failed, blocked or undelivered ticket with a new assignment, 
   expect(runtime.store.tickets.get(ticket.id)!.assignments.map(item => item.state)).toEqual(['ended', 'running'])
   expect(retried.assignments.length).toBeGreaterThan(current.assignments.length)
   expect(retried.assignments.at(-2)!.endedReason).toBe('retried')
-  // The worker's Session holds the assignment, so the new one says only that a person retried it.
+  // worker 的 Session 已持有 assignment，因此新消息只说明有人重试了它。
   expect(relays(`worker-${ticket.id}`).at(-1)).toEqual({ ticket_id: ticket.id, assignment: 2, note: expect.stringContaining('A person retried this ticket') })
-  // A Session someone deleted gets the whole first message again with the next Assignment.
+  // 被某人删除的 Session 会在下一个 Assignment 中重新收到完整的第一条消息。
   runtime.store.atomic(() => { runtime.engine.report(ticket.id, { state: 'failed', summary: 'LlmError: offline' }) })
   agents.delete(`worker-${ticket.id}`)
   runtime.engine.retryTicket(ticket.id)
@@ -695,13 +695,13 @@ it('retries only a failed, blocked or undelivered ticket with a new assignment, 
   runtime.store.decisions.save({ ...accepted, id: 'unavailable-1', kind: 'unavailable', reason: [{ code: 'timeout' }], at: new Date().toISOString() })
   const unjudged = () => overviewOf(runtime).problems.filter(problem => problem.kind === 'eval-unavailable')
   expect(unjudged()).toEqual([expect.objectContaining({ thread: expect.objectContaining({ key: accepted.threadKey }), reason: [{ code: 'timeout' }], triggerId: accepted.triggerIds[0] })])
-  // Health shows it as an error for an hour, which `status` reports, and not as a runtime error on the overview.
+  // health 会把它显示为一小时的错误，由 `status` 报告，而不是作为总览上的 runtime 错误。
   expect(evalsHealth(runtime.store)).toMatchObject({ state: 'error', detail: expect.stringContaining('Assessment timed out') })
   expect(evalsHealth(runtime.store, Date.now() + 3_700_000)).toMatchObject({ state: 'ready' })
   await runtime.pump()
   expect(runtime.health.evals).toMatchObject({ state: 'error' })
   expect(overviewOf(runtime).problems.filter(problem => problem.kind === 'runtime-error')).toEqual([])
-  // A person's dismissal removes it without a new judgement; only unavailable Evals can be dismissed.
+  // 人的忽略会直接移除它而无需新的判断；只有不可用的 Eval 才能被忽略。
   expect(await api('POST', `decisions/${accepted.id}/dismiss`)).toMatchObject({ status: 404, body: { error: 'Unavailable Eval not found', code: 'unknownProblem' } })
   expect(await api('POST', 'decisions/unavailable-1/dismiss')).toEqual({ status: 200, body: { dismissed: true } })
   expect(unjudged()).toEqual([])
@@ -709,7 +709,7 @@ it('retries only a failed, blocked or undelivered ticket with a new assignment, 
   expect(runtime.store.decisions.get('unavailable-1')).toMatchObject({ dismissed: true })
   runtime.store.decisions.save({ ...runtime.store.decisions.get('unavailable-1')!, dismissed: undefined })
   expect(unjudged()).toHaveLength(1)
-  // A later judgement on the same Thread resolves it.
+  // 之后对同一 Thread 的判断会解决它。
   runtime.store.decisions.save({ ...accepted, id: 'ignore-2', kind: 'ignore', reason: [said('context only')], at: new Date().toISOString() })
   expect(unjudged()).toEqual([])
 })
@@ -721,7 +721,7 @@ it('links Channels and Threads for people, finds tickets by a bare PR number, an
   const chatLink = `https://applink.feishu.cn/client/chat/open?openChatId=${CHAT}`
   expect(ticketDetail(viewsOf(runtime), ticket.id)!.channels).toEqual([expect.objectContaining({ source: 'feishu', url: chatLink })])
   expect(threadDetail(viewsOf(runtime), home, undefined, 10)!.url).toBe(chatLink)
-  // A pull request the Ticket opened is a Thread it follows as its own.
+  // Ticket 打开的 pull request 是一个它自行关注的 Thread。
   runtime.store.tickets.save({ ...runtime.store.tickets.get(ticket.id)!, follows: [{ thread: 'github:4996', own: true }] })
   expect(search(viewsOf(runtime), '4996', new TextCache(0)).tickets).toEqual([expect.objectContaining({ id: ticket.id })])
   expect(threadList(viewsOf(runtime), 'subscribed', 0, 10).items.map(thread => thread.key)).toEqual([home])
@@ -762,7 +762,7 @@ it('asks a question where the human message that raised it was written, not in t
   const queued = vi.spyOn(runtime.outbox, 'send')
   await runTool(runtime.masterId, 'orchestrator_reply', { ticket_id: ticket.id, purpose: 'attention', human_action: 'Keep the PR and record the reason in a follow-up?', text: 'Keep the PR and record the reason in a follow-up?' })
   expect(queued.mock.calls.at(-1)![0].channel).toEqual(review.channel)
-  // A question about the ticket as a whole still goes to where the ticket started.
+  // 关于整个 ticket 的问题仍然回到 ticket 开始的地方。
   await runTool(sessionId, 'orchestrator_report', { state: 'progress', summary: 'y', human_action: 'Desktop too?' })
   await runTool(runtime.masterId, 'orchestrator_reply', { ticket_id: ticket.id, purpose: 'attention', human_action: 'Desktop too?', text: '要不要也改桌面端？' })
   expect(queued.mock.calls.at(-1)![0].channel).toEqual(trigger.channel)
@@ -784,7 +784,7 @@ it('keeps pages of Source reads, prompt previews and Feishu message links in mem
   const link = 'https://applink.feishu.cn/client/message/link/open?token=t30'
   vi.mocked(Commands.prototype.lark).mockResolvedValue({ messages: [{ message_id: 'om_30', chat_id: CHAT, message_app_link: link }] })
   expect(await runTool(runtime.masterId, 'orchestrator_read', { resource: `trigger/${message.id}` })).toMatchObject({ source_url: link })
-  // An AppLink is found by the links read since dsh-superagent started.
+  // AppLink 由 dsh-superagent 启动以来读取过的 links 找到。
   expect((await api('GET', `search?q=${encodeURIComponent(link)}`)).body).toMatchObject({ items: [expect.objectContaining({ id: message.id })] })
   const config = runtime.prompts.current().config
   const { previews } = await runTool(runtime.masterId, 'orchestrator_prompts_save', { config, preview: true }) as { previews: { read: string }[] }
@@ -824,13 +824,13 @@ it('waits for setup without the agent\'s GitHub CLI: the panel works, and nothin
   expect((await api('GET', 'state')).body).toMatchObject({ setup: { problem: { place: 'github' }, accounts: null, machine: { stateDir: directory } } })
   expect(overviewOf(next).problems[0]).toEqual({ kind: 'setup', ...next.setupProblem })
   await receive(feishu('30', '@bot 修一下'), next)
-  // A retry waits for setup instead of launching a worker that cannot run, and no report reaches the orchestrator.
+  // 重试会等待 setup，而不是启动一个无法运行的 worker，且不会有报告到达 orchestrator。
   await next.engine.retryTicket(ticket.id)
   expect(next.store.tickets.get(ticket.id)!.assignments.map(item => item.state)).toEqual(['ended', 'pending'])
   expect(controller.create).not.toHaveBeenCalled()
   expect(deliveries).not.toHaveBeenCalled()
-  // A save that changes nothing records nothing; any other save runs setup again, since it may be the fix, and so does a
-  // check after a fix outside dsh-superagent.
+  // 未产生变化的保存不记录任何内容；其他任何保存都会重新运行 setup，因为它可能就是修复，
+  // 在 dsh-superagent 之外修复后的检查也是如此。
   const revision = next.store.get<number>('settings-revision')
   expect(await next.settings.save('policy', next.store.settings().policy, next.store.blockRevision('policy'), 'panel')).toMatchObject({ saved: true, restarting: false })
   expect(next.store.get<number>('settings-revision')).toBe(revision)
@@ -849,17 +849,17 @@ it('reports each setup problem where the operator fixes it, and checks the agent
   answers[`${AGENT()} api repos/acme/widgets --jq {name: .full_name, push: .permissions.push}`] = '{"name":"acme/widgets","push":false}\n'
   await needs('github', 'repositoryReadOnly', { account: 'agent-bot', repository: 'acme/widgets' })
   answers[`${AGENT()} api repos/acme/widgets --jq {name: .full_name, push: .permissions.push}`] = '{"name":"acme/widgets","push":true}\n'
-  // The agent CLI runs in the workers' environment: without the shims on PATH.
+  // agent CLI 在 worker 的环境中运行：PATH 上没有那些 shim。
   const check = subprocess.spawn.mock.calls.map(([spec]) => spec.argv).find(argv => argv.includes(AGENT()))!
   expect(check[0]).toBe('env')
   expect(check[1]!.startsWith('PATH=')).toBe(true)
   expect(check[1]!.slice('PATH='.length).split(delimiter)).not.toContain(join(directory, 'worker-bin'))
   const valid = { ...answers }
-  // git older than 2.32 ignores GIT_CONFIG_GLOBAL and reads the operator's configuration.
+  // 低于 2.32 的 git 会忽略 GIT_CONFIG_GLOBAL 并读取操作者的配置。
   answers = { ...valid, [HELPERS]: 'file:/home/me/.gitconfig\0!gh auth git-credential\0' }
   await needs('deployment', 'gitTooOld', {})
   await needs('github', 'repositoryUnset', {}, { github: { repository: '' } })
-  // A broken Feishu bot leaves Feishu out and says why; GitHub work goes on.
+  // 飞书 bot 损坏会让 Feishu 被排除并说明原因；GitHub 的工作继续进行。
   answers = { ...valid, [`${BOT()} config strict-mode`]: 'strict-mode: off (source: profile)' }
   const next = await restart()
   await next.ready
@@ -870,7 +870,7 @@ it('reports each setup problem where the operator fixes it, and checks the agent
 
 it('reports a failure to write the agent environment as environmentFailed and leaves this process\'s environment as it was', async () => {
   await runtime.stop()
-  // The shim directory cannot be made: a file has its name.
+  // 无法创建 shim 目录：已有一个文件占用了它的名字。
   rmSync(join(directory, 'worker-bin'), { recursive: true, force: true })
   writeFileSync(join(directory, 'worker-bin'), '')
   const environment = { ...process.env }
@@ -916,11 +916,11 @@ it('checks a changed account CLI before saving it, restarts after the save, and 
   answers[`${OTHER()} api repos/acme/widgets --jq {name: .full_name, push: .permissions.push}`] = '{"name":"acme/widgets","push":true}\n'
   expect(await save({ cli: OTHER() })).toMatchObject({ saved: true, restarting: true })
   await vi.waitFor(() => expect(restarts).toHaveBeenCalledTimes(1))
-  // Other fields of the Source take effect without a restart.
+  // Source 的其他字段无需重启即可生效。
   expect(await save({ pollSeconds: 120 })).toMatchObject({ saved: true, restarting: false })
   expect(restarts).toHaveBeenCalledTimes(1)
   expect((await runtime.settings.save('executor', { ...runtime.store.settings().executor, prepare: 'true' }, runtime.store.blockRevision('executor'), 'panel')).restarting).toBe(false)
-  // A save of another block during the account check is kept: the check runs first, then the save merges.
+  // 账号检查期间对另一块的保存会被保留：先运行检查，再合并保存。
   const pending = save({ cli: AGENT() })
   await runtime.settings.save('policy', { ...runtime.store.settings().policy, rules: [] }, runtime.store.blockRevision('policy'), 'panel')
   await pending
@@ -944,12 +944,12 @@ it('pauses and resumes processing as its own action, a setting outside every blo
   expect(await runtime.settings.pause(true, 'panel')).toEqual({ paused: true })
   expect(runtime.store.settings().paused).toBe(true)
   expect(runtime.store.blockRevision('executor')).toBe(revision)
-  // A draft of the Executor settings started before the pause still saves, and keeps the pause; the executor block has no pause.
+  // 暂停前开始的 Executor 设置草稿仍会保存，并保留暂停状态；executor 块没有 pause。
   const draft = runtime.store.settings().executor
   await expect(runtime.settings.save('executor', { ...draft, paused: false }, revision, 'panel')).rejects.toThrow('paused')
   await runtime.settings.save('executor', { ...draft, maxWorkers: 5 }, revision, 'panel')
   expect(runtime.store.settings()).toMatchObject({ paused: true, executor: { maxWorkers: 5 } })
-  // The orchestrator pauses and resumes the same way, through the settings tool's pause block.
+  // orchestrator 以同样方式暂停和恢复，通过 settings 工具的 pause 块。
   await runTool(runtime.masterId, 'orchestrator_settings_save', { block: 'pause', value: { paused: false }, revision: 0 })
   expect(runtime.store.settings().paused).toBe(false)
 })
@@ -981,7 +981,7 @@ it('writes worker shims and the agent environment from the configuration only, a
   expect(readFileSync(join(bin, 'personal-gh'), 'utf8')).toContain('personal-gh is blocked in this installation; use gh, which acts as agent-bot.')
   expect(readFileSync(join(bin, 'lark-cli'), 'utf8')).toContain('lark-cli is unavailable: this installation has no Feishu bot.')
   expect(readFileSync(join(bin, 'gh'), 'utf8')).toContain(`exec '${AGENT()}'`)
-  // git config escapes backslashes inside a quoted value, which matters where the paths carry them.
+  // git config 会转义引号值内的反斜杠，这在路径含反斜杠时很关键。
   expect(readFileSync(workerGitConfig(directory), 'utf8')).toContain(`[credential "https://github.com"]\n\thelper = "${credentialHelper(AGENT()).replaceAll('\\', '\\\\')}"`)
   expect(process.env).toMatchObject({ GIT_CONFIG_GLOBAL: workerGitConfig(directory), GIT_CONFIG_NOSYSTEM: '1' })
   expect(process.env.GIT_AUTHOR_NAME).toBeUndefined()
@@ -1008,7 +1008,7 @@ it('rewrites the blocked-command shims when the Executor settings change them, w
   expect(readdirSync(bin).sort()).toEqual(['gh', 'lark-cli', 'personal-gh'])
   await save([])
   expect(readdirSync(bin).sort()).toEqual(['gh', 'lark-cli'])
-  // The commands workers need cannot be blocked.
+  // worker 需要的命令不能被屏蔽。
   await expect(save(['gh'])).rejects.toThrow()
   expect(restarts).not.toHaveBeenCalled()
 })
@@ -1019,9 +1019,9 @@ it('tells both roles the execution environment through a generated prompt sectio
   expect(section.name).toBe('runtime/environment')
   for (const line of ['- DSH_SUPERAGENT_GITHUB_REPOSITORY = "acme/widgets"', '- DSH_SUPERAGENT_GITHUB_ACCOUNT = "agent-bot"', '- DSH_SUPERAGENT_GITHUB_COMMIT_EMAIL = "7+agent-bot@users.noreply.github.com"']) expect(section.text).toContain(line)
   expect(section.text).not.toContain('MERGE_ACCOUNT')
-  // Outside a ticket there is no ticket directory.
+  // ticket 之外没有 ticket 目录。
   expect(section.text).not.toContain('DSH_SUPERAGENT_DIR')
-  // The main Session's Policy section follows it.
+  // 主 Session 的 Policy 部分随之更新。
   expect(preview.orchestrator).toContain(`${section.text}\n\n## Policy`)
   const { ticket, sessionId } = await acceptedTicket()
   expect(sections.get(sessionId)!.text({})).toContain(`- DSH_SUPERAGENT_DIR = ${JSON.stringify(ticket.execution!.directory)}`)
@@ -1034,14 +1034,14 @@ it('tells both roles the execution environment through a generated prompt sectio
 it('lets a worker read the prompt version it works under and the ones it worked under before, also after a restart, and no other', async () => {
   const { sessionId } = await acceptedTicket()
   const save = () => { const { config, revision } = runtime.prompts.current(); return runtime.prompts.save({ ...config, delivery: `${config.delivery}.` }, revision, 'panel').revision }
-  // A model request reads the system prompt, which binds the Session to the version current then.
+  // 一次模型请求会读取 system prompt，从而把 Session 绑定到当时的版本。
   const request = () => sections.get(sessionId)!.text({ signal: new AbortController().signal })
   const read = (resource: string) => runTool(sessionId, 'orchestrator_read', { resource })
   const first = save(), second = save()
   request()
   await expect(read(`prompts/${first}`)).rejects.toThrow('inaccessible prompt version')
   const third = save()
-  // Until its next request it works under the version it read; after it, it may still read that one.
+  // 在下一次请求之前，它按读到的版本工作；之后仍可继续读那个版本。
   expect(await read('prompts/current')).toMatchObject({ resource: `prompts/${second}` })
   request()
   expect(await read('prompts/current')).toMatchObject({ resource: `prompts/${third}` })
@@ -1071,7 +1071,7 @@ it('leaves auto-merge to the delivery requirements, with the agent\'s own gh and
   expect(ticket.mandate).not.toHaveProperty('autoMergeLineLimit')
   const delivery = runtime.prompts.current().config.delivery
   expect(delivery).toContain('it changes fewer than 200 lines (additions plus deletions);')
-  // Auto-merge is never enabled as the agent account; only a merge CLI the section names enables it.
+  // 自动合并绝不会以 agent 账号身份启用；只有该部分指定的 merge CLI 才能启用它。
   expect(delivery).toContain('Never enable auto-merge as the agent account')
   expect(delivery).toContain('<merge CLI> pr merge <number> --auto --merge --match-head-commit <sha>')
   expect(runtime.prompts.preview(runtime.prompts.current().config).worker).not.toContain('gh-merge')
@@ -1084,7 +1084,7 @@ it('runs the prepare command once for a new ticket, under the execution root wit
   const { ticket } = await acceptedTicket()
   expect(runs()).toEqual([expect.objectContaining({ argv: ['sh', '-c', 'git -C /srv/widgets worktree add "$DSH_SUPERAGENT_DIR" -b "agent/$DSH_SUPERAGENT_NAME"'], cwd: join(directory, 'work'),
     env: expect.objectContaining({ DSH_SUPERAGENT_DIR: ticket.execution!.directory, DSH_SUPERAGENT_NAME: ticket.execution!.name, DSH_SUPERAGENT_GITHUB_REPOSITORY: 'acme/widgets', DSH_SUPERAGENT_FEISHU_CHAT: CHAT }) })])
-  // A retry reuses the prepared directory.
+  // 重试会复用已准备好的目录。
   await runTool(`worker-${ticket.id}`, 'orchestrator_report', { state: 'failed', summary: 'offline' })
   await runtime.engine.retryTicket(ticket.id)
   await runtime.idle()
@@ -1100,7 +1100,7 @@ it('runs the prepare command once for a new ticket, under the execution root wit
 it('counts a ticket whose directory the host prepared before prepare commands existed as prepared', async () => {
   const { ticket, sessionId } = await acceptedTicket()
   await runTool(sessionId, 'orchestrator_report', { state: 'failed', summary: 'offline' })
-  // A ticket from before prepare commands has its worktree.
+  // prepare 命令之前创建的 ticket 拥有自己的 worktree。
   const stored = runtime.store.tickets.get(ticket.id)!
   runtime.store.tickets.save({ ...stored, execution: { ...stored.execution!, directory } })
   runtime.store.saveSettings({ ...runtime.store.settings(), executor: { ...runtime.store.settings().executor, prepare: 'exit 1' } })
@@ -1153,11 +1153,11 @@ it('shows a failed reply as a problem with its attempts, an error of the reply e
   await runtime.sendReplies()
   expect(outgoing()).toEqual([{ kind: 'outgoing', outgoing: expect.objectContaining({ id: 'stuck', attempts: 1, error: expect.stringContaining('2200') }) }])
   expect(runtime.health.reply).toMatchObject({ state: 'ready', detail: expect.stringContaining('1 waiting') })
-  // Its retries come after 5 and then 10 more seconds.
+  // 它的重试在 5 秒后、再 10 秒后进行。
   await at(5000); await at(15_000)
   expect(runtime.health.reply).toMatchObject({ state: 'error', detail: expect.stringContaining('2200') })
   expect(runtime.health.runtime).toMatchObject({ state: 'ready' })
-  // A withdrawn reply takes its effect with it, which clears the error at once.
+  // 撤回的回复会带走其效果，从而立即清除错误。
   runtime.outbox.withdraw('stuck')
   expect([outgoing(), runtime.health.reply, runtime.effects.pending('reply', 'stuck')])
     .toEqual([[], expect.objectContaining({ state: 'ready', detail: 'Nothing waiting' }), false])
@@ -1186,7 +1186,7 @@ describe('the order of a Ticket\'s messages to one conversation', () => {
     await runtime.sendReplies()
     refused.delete('ack-a')
     runtime.outbox.send(message('result-a', 'a'))
-    // Another Ticket in the same chat, and the same Ticket in an Issue, are other orders.
+    // 同一聊天中的另一个 Ticket，以及 Issue 中的同一 Ticket，都算其他工单。
     runtime.outbox.send(message('ack-b', 'b', feishuChannel(CHAT, 'om_2')))
     runtime.outbox.send(message('issue-a', 'a', githubChannel(7)))
     await runtime.sendReplies()
@@ -1199,7 +1199,7 @@ describe('the order of a Ticket\'s messages to one conversation', () => {
     runtime.outbox.send(message('ack-a', 'a'))
     await runtime.sendReplies()
     runtime.outbox.send(message('result-a', 'a'))
-    // Its retries come after 5 and then 10 more seconds; the third failure releases the result.
+    // 它的重试在 5 秒后、再 10 秒后进行；第三次失败会释放结果。
     await at(5000)
     expect(sent).toEqual([])
     await at(15_000)
@@ -1222,7 +1222,7 @@ it('resumes several ended tickets on one thread from one message without the lau
   const other = feishu('30', '@bot 顺手把这里也改了', { root_id: undefined })
   await receive(other)
   await route({ kind: 'attach', ticket_id: first.ticket.id, trigger_id: other.id })
-  // A request on the first ticket's thread becomes a second ticket there once the first's worker hands it back.
+  // 第一个 ticket 的 thread 上的请求，会在第一个 ticket 的 worker 交回后成为那里的第二个 ticket。
   const another = feishu('31', '@bot 另一件事', { root_id: 'om_1' })
   await receive(another)
   await runTool(first.sessionId, 'orchestrator_trigger_handback', { trigger_id: another.id, reason: 'Another change.' })
@@ -1257,7 +1257,7 @@ it('rereads a Source\'s display names on request, reports the new ones and keeps
 
 it('drops a message only when its conversation is gone or not listened to, newest drop first, and keeps it while its Source is off', async () => {
   const channel = feishu('7', 'x').channel!
-  // Messages of no Ticket keep no order, so none waits behind another.
+  // 不属于任何 Ticket 的消息不保持顺序，因此没有谁排在另一个后面等待。
   const queue = (id: string, address: Record<string, string>) => { runtime.outbox.send({ id, channel: { ...channel, address }, text: '已合并。', kind: 'notice' }) }
   queue('gone-reply', channel.address)
   queue('failing-reply', { ...channel.address, messageId: 'om_8' })
@@ -1265,11 +1265,11 @@ it('drops a message only when its conversation is gone or not listened to, newes
     const replying = args.join(' ')
     if (replying.includes('om_7')) throw new CliError('the message was withdrawn', 230011)
     if (replying.includes('om_9')) return {}
-    // Text that names a withdrawal is no answer from Feishu that the conversation is gone.
+    // 提到撤回的文本并不代表飞书回复说会话已不存在。
     throw new Error('Request failed: withdrawn tokens are not recalled messages')
   })
   await runtime.sendReplies()
-  // The Feishu Channel reads the recall code as gone; any other failure keeps the reply for a retry.
+  // Feishu Channel 把撤回码读作 gone；其他任何失败都会保留回复以待重试。
   expect(runtime.store.replyStatus('gone-reply')).toBe('dropped')
   expect(runtime.store.replyStatus('failing-reply')).toBe('pending')
   const settings = runtime.store.settings(), feishuSource = settings.sources.feishu!
@@ -1278,7 +1278,7 @@ it('drops a message only when its conversation is gone or not listened to, newes
   queue('ignored-reply', { chatId: 'oc_elsewhere', messageId: 'om_10' })
   await runtime.sendReplies()
   expect([runtime.store.replyStatus('off-reply'), runtime.store.replyStatus('ignored-reply')]).toEqual(['pending', 'pending'])
-  // Once the Source is on again, the messages that waited go out or are dropped when they are tried again, after 5 seconds.
+  // Source 重新开启后，等待中的消息会在 5 秒后被再次尝试，届时发送或丢弃。
   runtime.store.saveSettings(settings)
   vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 5000 })
   try { await runtime.sendReplies() } finally { vi.useRealTimers() }
@@ -1318,7 +1318,7 @@ it('refuses a settings save with an unknown model or a Source kind that is not i
   const huge = { ...runtime.prompts.current().config, delivery: 'x'.repeat(runtime.machine.promptMaxChars.get()) }
   expect(await request('POST', 'prompts/preview', huge)).toMatchObject({ status: 400, body: { code: 'promptTooLong' } })
   expect(await request('PUT', 'prompts', { config: huge, baseRevision: runtime.prompts.current().revision })).toMatchObject({ status: 400, body: { code: 'promptTooLong' } })
-  // An override of a part this version does not have is refused, not missing.
+  // 覆盖此版本不存在的部分会被拒绝，而不是视为缺失。
   expect(await request('PUT', 'prompts', { config: { ...runtime.prompts.current().config, overrides: { 'runtime/nothing': { text: 'x' } } },
     baseRevision: runtime.prompts.current().revision })).toMatchObject({ status: 400, body: { code: 'unknownPromptPart' } })
   expect(await request('GET', 'prompts?revision=99')).toMatchObject({ status: 404, body: { code: 'unknownPromptRevision' } })
@@ -1329,9 +1329,9 @@ it('records a report, the PR it binds and its relay together, or none of them', 
   const { ticket, sessionId } = await acceptedTicket()
   deliveries.mockClear()
   const before = runtime.store.tickets.get(ticket.id)!
-  // A report the Engine refuses binds no PR, though the PR itself could be bound.
+  // Engine 拒绝的 report 不会绑定 PR，尽管 PR 本身可以绑定。
   await expect(runTool(sessionId, 'orchestrator_report', { state: 'ready', summary: 'done', pr_number: 42, human_action: 'Ship it?' })).rejects.toThrow()
-  // A PR the pull request rules refuse records no report.
+  // pull request 规则拒绝的 PR 不会记录 report。
   vi.mocked(Commands.prototype.gh).mockImplementation(async args => args[1]?.includes('/pulls/')
     ? { state: 'open', user: { login: 'someone' }, html_url: 'https://github.com/acme/widgets/pull/7', head: { ref: 'feature/other', sha: 'h', repo: { full_name: 'acme/widgets' } } }
     : { default_branch: 'master', permissions: { push: true } })
@@ -1367,7 +1367,7 @@ it('keeps replies and acknowledgements to an IM conversation within the IM limit
 })
 
 it('refuses a second process on the same state directory before it opens the database, so it migrates nothing', () => {
-  // A database the running build would read as schema 10 stays as it is.
+  // 运行中的构建会读作 schema 10 的数据库保持原样。
   const db = new DatabaseSync(join(directory, 'orchestrator.sqlite'))
   db.prepare("UPDATE kv SET value='10' WHERE key='schema'").run()
   db.close()
@@ -1392,11 +1392,11 @@ it('applies a changed prompt size limit to the next save and request without a r
   const config = next.prompts.current().config
   const size = JSON.stringify(config).length
   expect(await put({ ...config, delivery: 'x'.repeat(size) })).toMatchObject({ status: 200 })
-  // The loader commits a lower limit in place; the next save reads it.
+  // loader 会就地提交一个更低的上限；下一次保存会读到它。
   limit.set(size + 1000)
   expect(await put({ ...config, delivery: `${config.delivery}${'y'.repeat(2000)}` }))
     .toMatchObject({ status: 400, body: { code: 'promptTooLong', values: { limit: String(size + 1000) } } })
-  // So does the request body limit, four bytes a character and a margin.
+  // 请求体上限也是如此，每字符四字节再加一点余量。
   const bytes = 4 * (size + 1000) + 4096
   expect(await put({ ...config, delivery: 'z'.repeat(bytes) })).toMatchObject({ status: 400, body: { error: `Request exceeds ${bytes} bytes` } })
   expect(restarts).not.toHaveBeenCalled()
@@ -1412,7 +1412,7 @@ it('releases the database and the state directory lock when it fails to start, s
   const fixed = new DatabaseSync(join(directory, 'orchestrator.sqlite'))
   fixed.prepare('UPDATE kv SET value=? WHERE key=?').run(String(SCHEMA_VERSION), 'schema')
   fixed.close()
-  // A lock kept by the failed start would make this throw that the lock is already held.
+  // 失败启动留下的锁会让这里抛出“锁已被持有”的错误。
   runtime = new Runtime(context(), testMachine({ stateDir: directory }), vi.fn())
   await runtime.ready
   expect(runtime.store.get(KV.store.schema)).toBe(SCHEMA_VERSION)
@@ -1421,30 +1421,30 @@ it('releases the database and the state directory lock when it fails to start, s
 it('tells the conversation that the PR merged when work a restart recovered ends with it later', async () => {
   const { ticket, sessionId } = await acceptedTicket()
   await runTool(sessionId, 'orchestrator_report', { state: 'progress', summary: 'pr open', pr_number: 42 })
-  // The host restarted with the worker mid-work: its Assignment starts again with a recovery note.
+  // 主进程在 worker 工作途中重启：其 Assignment 会带着 recovery 说明重新开始。
   const before = runtime.store.tickets.get(ticket.id)!
   runtime.engine.assignmentInterrupted(ticket.id, runningAssignment(before)!.id)
   await runtime.idle()
   expect(runtime.store.tickets.get(ticket.id)!.assignments).toHaveLength(2)
-  // The PR merged before the restart; the recovered work goes on, and nothing is said yet.
+  // PR 在重启前已合并；恢复的工作继续进行，此时还不通知。
   const merged = { number: 42, state: 'closed', merged: true, merged_at: before.assignments[0]!.createdAt, html_url: 'https://github.com/acme/widgets/pull/42',
     user: { login: 'agent-bot' }, head: { sha: 'abc', ref: 'agent/x', repo: { full_name: 'acme/widgets' } } }
   await observePull(runtime.context(githubKind), merged)
   expect(runtime.store.tickets.get(ticket.id)).not.toHaveProperty('ended')
   const id = key('pr-terminal', '42', 'feishu', JSON.stringify({ chatId: CHAT, messageId: 'om_1' }), 'merged')
   expect(runtime.store.replyStatus(id)).toBeUndefined()
-  // Its ready report ends the ticket with the PR, and the conversation hears of the merge once.
+  // 它的 ready 报告随 PR 一起结束 ticket，会话只会被告知一次合并。
   await runTool(sessionId, 'orchestrator_report', { state: 'ready', summary: 'Recovered and verified' })
   expect(runtime.store.tickets.get(ticket.id)!.ended).toMatchObject({ outcome: 'merged' })
   expect(runtime.store.replyStatus(id)).toBeDefined()
-  // The report that ended the ticket was the worker's own: its turn is not cancelled inside that tool call.
+  // 结束 ticket 的 report 是 worker 自己发的：在该工具调用内部不会取消它的 turn。
   expect(agents.get(sessionId)!.cancel).not.toHaveBeenCalled()
 })
 
 it('restarts a worker that was mid-work when the host stopped with the recovery note, and records no end of its turn', async () => {
   const { ticket, sessionId } = await acceptedTicket()
   await runTool(sessionId, 'orchestrator_report', { state: 'progress', summary: 'halfway' })
-  // Stopping cancels the worker's turn: it goes idle and reports the abort as an error, which a stopping host takes as no end.
+  // 停止会取消 worker 的 turn：它进入空闲并把中止作为错误上报，而正在停止的主进程不会把它当作结束。
   const agent = agents.get(sessionId)! as { status: string; cancel: ReturnType<typeof vi.fn> }
   const stopping = (runtime as unknown as { ctx: Context }).ctx
   agent.cancel.mockImplementation(() => {
@@ -1499,34 +1499,34 @@ it('refuses the main Session a bash command that runs sleep and a long job wait,
     '(sleep 5)', '/bin/sleep 240', 'while sleep 30; do gh pr checks 7; done', 'if sleep 5; then gh pr view 7; fi', '{ sleep 60; }', '! sleep 5',
     'nohup sleep 60', 'exec sleep 60', 'time sleep 60', 'until sleep 1; do :; done', 'command sleep 5', 'env sleep 5'])
     expect(main(bash(command)), command).toMatch(/^Reports, follow_up notices, new candidates and a background job's end/)
-  // A command that names sleep as data, not at a command position, runs.
+  // 把 sleep 作为数据而非命令位置出现的命令会执行。
   for (const command of ['gh api repos/acme/widgets/pulls', 'echo "sleep"', 'grep sleep file', 'sleeper --help', 'command -v sleep'])
     expect(main(bash(command)), command).toBeUndefined()
-  // A command that asks to hold the step longer than 30 seconds, however it waits, under any preset.
+  // 请求把该步骤拖长到 30 秒以上的命令，无论它如何等待、无论哪个 preset。
   const timed = (command: string, args: { timeoutMs?: number; run_in_background?: boolean } = {}) =>
     ({ name: 'bash', arguments: { command, description: 'x', ...args } })
   expect(main(timed('gh api repos/acme/widgets/pulls', { timeoutMs: 120_000 }))).toMatch(/^Reports/)
   expect(main(timed("python3 -c 'import time;time.sleep(240)'", { timeoutMs: 600_000 }))).toMatch(/^Reports/)
   expect(main(timed('gh api repos/acme/widgets/pulls', { timeoutMs: 20_000 }))).toBeUndefined()
-  // Under the router preset, the shell moves a command without a timeout to a background job after 5 seconds, and a job
-  // wait without one ends after 5 seconds too; a longer job wait waits for nothing that arrives that way.
+  // 在 router preset 下，shell 会在 5 秒后把没有超时的命令移到后台 job，而没有超时的 job
+  // wait 也会在 5 秒后结束；更长的 job wait 等不到任何以该方式到达的东西。
   expect(main(timed('gh pr checks 7 --watch'))).toBeUndefined()
   expect(main({ name: 'job_output', arguments: { job_id: 'j', wait: true } })).toBeUndefined()
   expect(main({ name: 'job_output', arguments: { job_id: 'j', wait: true, timeout_ms: 30_000 } })).toMatch(/^Reports/)
   expect(main({ name: 'job_output', arguments: { job_id: 'j', wait: true, timeout_ms: 5_000 } })).toBeUndefined()
   expect(main({ name: 'job_output', arguments: { job_id: 'j' } })).toBeUndefined()
-  // A main Session created before runs under standard, whose shell waits 60 seconds by default and whose job waits last 30:
-  // a command without a timeout runs in the background or names one, and a job wait names one.
+  // 之前创建的主 Session 按 standard 运行，其 shell 默认等待 60 秒、job wait 最长 30 秒：
+  // 没有超时的命令会在后台运行或指定一个超时，job wait 也必须指定一个。
   ;(agents.get(runtime.masterId) as unknown as { session: { header: { agentPreset: string } } }).session.header = { agentPreset: 'standard' }
   expect(main(timed('gh pr checks 7 --watch'))).toMatch(/^This shell waits up to 60 seconds by default: pass timeoutMs of at most 30000/)
   expect(main(timed('gh pr checks 7 --watch', { run_in_background: true }))).toBeUndefined()
   expect(main(timed('gh api repos/acme/widgets/pulls', { timeoutMs: 20_000 }))).toBeUndefined()
   expect(main({ name: 'job_output', arguments: { job_id: 'j', wait: true } })).toMatch(/^Reports/)
   expect(main({ name: 'job_output', arguments: { job_id: 'j', wait: true, timeout_ms: 5_000 } })).toBeUndefined()
-  // A worker waits for its own work as it needs.
+  // worker 可以按需等待自己的工作。
   const { sessionId } = await acceptedTicket()
   expect(guards.get(sessionId)!(bash('sleep 60'))).toBeUndefined()
-  // The main Session's role says so.
+  // 主 Session 的角色说明了这一点。
   expect(masterPrompt).toContain('Worker reports, follow_up notices, new candidates and a background job\'s end, with its output, arrive by themselves as messages')
 })
 
@@ -1539,18 +1539,18 @@ it('reads the main Session\'s preset from a registry with or without presetForSe
     await (await restart()).ready
     return guards.get(runtime.masterId)!
   }
-  // A released DSH's registry has no presetForSession: the projection says standard, so standard's caps apply, and the
-  // other tools run.
+  // 已发布的 DSH 的 registry 没有 presetForSession：投影显示为 standard，因此适用 standard 的上限，
+  // 其他工具照常运行。
   let main = await guard({ select: vi.fn() }, { stateOf: vi.fn((_session: unknown, key: string) => key === 'agentPreset' ? 'standard' : undefined) })
   expect(main(route)).toBeUndefined()
   expect(main(watch)).toMatch(/^This shell waits up to 60 seconds by default/)
-  // Without the projection either, the preset it was created with counts: the router preset.
+  // 连投影也没有时，以创建它时的 preset 为准：router preset。
   main = await guard({ select: vi.fn() })
   expect([main(route), main(watch)]).toEqual([undefined, undefined])
-  // The registry says standard though the Session was created with the router preset: standard's caps apply.
+  // registry 显示为 standard，尽管该 Session 是以 router preset 创建的：适用 standard 的上限。
   main = await guard({ select: vi.fn(), presetForSession: () => 'standard' })
   expect(main(watch)).toMatch(/^This shell waits up to 60 seconds by default/)
-  // A registry that fails is read as standard, the safer caps, and the guard does not throw.
+  // 一个 registry 读取失败时按 standard 处理，即更安全的上限，guard 不会抛错。
   main = await guard({ select: vi.fn(), presetForSession: () => { throw new Error('no projection') } })
   expect(main(route)).toBeUndefined()
   expect(main(watch)).toMatch(/^This shell waits up to 60 seconds by default/)
@@ -1562,8 +1562,8 @@ it('refuses an ended ticket\'s worker its tools, and restricts the main Session 
   runtime.engine.stopTicket(ticket.id)
   expect(guards.get(sessionId)!()).toBe('Ticket ended; new work needs a new authorized ticket')
   expect(restricts.get(runtime.masterId)).toEqual([{ allow: ['skill', 'bash', 'read', 'read_image', 'job_output', 'job_list', 'job_kill'] }])
-  // A worker keeps only the profile's work tools: none that ask a person, change the profile, schedule or start work outside
-  // the worker slots, reach other Sessions or edit documents, whenever they were registered.
+  // worker 只保留该 profile 的工作工具：不保留任何会询问人、修改 profile、安排或启动 worker 槽位之外的工作、
+  // 访问其他 Session 或编辑文档的工具，无论它们是何时注册的。
   expect(restricts.get(sessionId)).toEqual([{ allow: ['read', 'read_image', 'grep', 'bash', 'job_output', 'job_list', 'job_kill', 'web_search', 'skill'] }])
 })
 
@@ -1597,7 +1597,7 @@ it('runs a launch that fails for a passing reason again on the launch backoff th
     expect(runtime.store.tickets.get(ticket.id)!.assignments.at(-1)!.report).toMatchObject({ state: 'failed' })
     controller.resolveAgent.mockImplementation(original)
   }
-  // A prepare command whose output names a passing failure is not run again on its own.
+  // 输出中提到一个已过去的失败的 prepare 命令，不会被自行再次运行。
   const runs = () => subprocess.spawn.mock.calls.filter(([spec]) => (spec as { argv: string[] }).argv[0] === 'sh').length
   runtime.store.saveSettings({ ...runtime.store.settings(), executor: { ...runtime.store.settings().executor, prepare: 'exit 3' } })
   answers['sh -c exit 3'] = new Error('fatal: unable to access: The requested URL returned error: 503')
@@ -1606,7 +1606,7 @@ it('runs a launch that fails for a passing reason again on the launch backoff th
   await runtime.idle()
   expect(runtime.store.tickets.get(prepared.ticket.id)!.assignments.at(-1)!.report).toMatchObject({ state: 'failed', summary: expect.stringContaining('503') })
   expect(runs()).toBe(before + 1)
-  // A retry runs the prepare command again, for the directory it left empty was removed; resuming relaunches no failed launch.
+  // 重试会再次运行 prepare 命令，因为它留下的空目录已被删除；恢复不会重新启动失败的启动。
   delete answers['sh -c exit 3']
   runtime.executor.resume()
   await runtime.idle()
@@ -1623,12 +1623,12 @@ it('launches a queued Assignment once when the host resumes, and gives a failed 
   const failed = await acceptedTicket(feishu('50', '@bot 修 一', { root_id: undefined }))
   await runtime.idle()
   expect(runtime.store.tickets.get(failed.ticket.id)!.assignments.at(-1)!.report).toMatchObject({ state: 'failed' })
-  // The failed launch holds no slot: the next ticket launches in the only one.
+  // 失败的启动不占用槽位：下一个 ticket 会在唯一的槽位中启动。
   delete answers['sh -c exit 3']
   const next = await acceptedTicket(feishu('51', '@bot 修 二', { root_id: undefined }))
   await runtime.idle()
   expect(runtime.store.tickets.get(next.ticket.id)!.assignments.at(-1)).toMatchObject({ state: 'running' })
-  // A third waits for the slot; resuming queues its launch again, which runs once the slot frees.
+  // 第三个会等待槽位；恢复会重新排队它的启动，在槽位空出后运行。
   const queued = await acceptedTicket(feishu('52', '@bot 修 三', { root_id: undefined }))
   await runtime.idle()
   expect(runtime.store.tickets.get(queued.ticket.id)!.assignments.at(-1)).toMatchObject({ state: 'pending' })
@@ -1644,7 +1644,7 @@ it('shows the settings history when one revision holds values its Source kind no
   const settings = runtime.store.settings()
   await runtime.settings.save('executor', { ...settings.executor, maxWorkers: 4 }, runtime.store.blockRevision('executor'), 'panel')
   await runtime.settings.save('executor', { ...runtime.store.settings().executor, maxWorkers: 5 }, runtime.store.blockRevision('executor'), 'panel')
-  // A revision the migration left as an earlier version wrote it, which the Feishu kind's schema rejects.
+  // 迁移保留为更早版本所写形式的修订版本，会被 Feishu kind 的 schema 拒绝。
   const revision = runtime.store.get(KV.settings.revision)!
   const stored = runtime.store.get(KV.settings.version(revision - 1))!
   runtime.store.set(KV.settings.version(revision - 1), { ...stored, settings: { ...stored.settings,
@@ -1657,14 +1657,14 @@ it('shows the settings history when one revision holds values its Source kind no
 it('restarts a worker whose shell job the host stop ended with the recovery note, as a worker mid-work', async () => {
   const { ticket, sessionId } = await acceptedTicket()
   await runTool(sessionId, 'orchestrator_report', { state: 'progress', summary: 'running the tests' })
-  // Its turn ended with a test run in the background, so it is busy, not waiting.
+  // 它的 turn 以在后台运行测试结束，因此它是在忙，而不是在等待。
   jobs.run(sessionId)
   const agent = agents.get(sessionId)! as { status: string }
   agent.status = 'idle'
   ;(runtime as unknown as { ctx: Context }).ctx.emit('agent/status', { agent, status: 'idle' } as never)
   await runtime.idle()
   expect(runtime.store.tickets.get(ticket.id)!.assignments.at(-1)!.report).toMatchObject({ state: 'progress' })
-  // The host stops, and its jobs end with it.
+  // 主进程停止，其 job 也随之结束。
   jobs = jobRegistry(); services.jobs = jobs.service
   const next = await restart()
   await next.ready
@@ -1682,7 +1682,7 @@ it('creates an Executor Session under the bundle\'s worker preset, and the main 
 
 it('selects its own preset again for a main Session or worker a person switched before its first turn, and not after it', async () => {
   const { sessionId } = await acceptedTicket()
-  // DSH's preset registry, which takes a selection only before a Session's first turn.
+  // DSH 的 preset registry，它只在 Session 的首个 turn 之前接受选择。
   const started = new Set<string>()
   const presets = { select: vi.fn(async (agent: { id: string }, preset: string) => {
     if (started.has(agent.id)) throw Object.assign(new Error('This session has already started'), { code: 'agent-preset/locked' })
@@ -1691,20 +1691,20 @@ it('selects its own preset again for a main Session or worker a person switched 
   services.agentPresets = presets
   await (await restart()).ready
   const emit = (sessionId: string, preset: string) => (runtime as unknown as { ctx: Context }).ctx.emit('agent-preset/selected', sessionId, preset)
-  // A person opened the blank main Session in DSH's Web UI, which selected the default preset for it.
+  // 某人在 DSH 的 Web UI 中打开了空的主 Session，该 UI 为它选择了默认 preset。
   emit(runtime.masterId, 'standard')
   await vi.waitFor(() => expect(presets.select).toHaveBeenCalledWith(agents.get(runtime.masterId), 'dsh-superagent-router'))
-  // Its own preset, which that selection announces the same way, is left alone.
+  // 它自己的 preset 会以同样的方式在这一次选择中声明，因此保持不变。
   presets.select.mockClear()
   emit(runtime.masterId, 'dsh-superagent-router'); await Promise.resolve()
   expect(presets.select).not.toHaveBeenCalled()
   emit(sessionId, 'standard')
   await vi.waitFor(() => expect(presets.select).toHaveBeenCalledWith(agents.get(sessionId), 'dsh-superagent-worker'))
-  // Another Session is not one of dsh-superagent's.
+  // 另一个 Session 不属于 dsh-superagent。
   presets.select.mockClear()
   emit('someone-else', 'standard'); emit('worker-nothing', 'standard'); await Promise.resolve()
   expect(presets.select).not.toHaveBeenCalled()
-  // After its first turn the registry refuses any selection, which changes nothing and is not an error.
+  // 首个 turn 之后 registry 会拒绝任何选择，这不会改变任何东西，也不算错误。
   started.add(runtime.masterId)
   emit(runtime.masterId, 'standard')
   await vi.waitFor(() => expect(presets.select).toHaveBeenCalledTimes(1))
@@ -1713,7 +1713,7 @@ it('selects its own preset again for a main Session or worker a person switched 
 
 it('gives a subagent of a worker only the worker\'s work tools, and none once the ticket ended', async () => {
   const { ticket, sessionId } = await acceptedTicket()
-  // DSH creates the subagent under the standard preset, with the worker's Session as its parent.
+  // DSH 在 standard preset 下创建 subagent，以 worker 的 Session 作为其父级。
   await (controller.create as (options: { sessionId: string }) => Promise<void>)({ sessionId: 'child-1' })
   const child = agents.get('child-1')! as unknown as { session: { header: { parentSession?: string } } }
   child.session.header = { parentSession: sessionId }
@@ -1722,7 +1722,7 @@ it('gives a subagent of a worker only the worker\'s work tools, and none once th
   expect(guards.get('child-1')!()).toBeUndefined()
   runtime.engine.stopTicket(ticket.id)
   expect(guards.get('child-1')!()).toBe('Ticket ended; new work needs a new authorized ticket')
-  // Another Session's subagent is left as it is.
+  // 另一个 Session 的 subagent 保持不变。
   await (controller.create as (options: { sessionId: string }) => Promise<void>)({ sessionId: 'child-2' })
   const other = agents.get('child-2')! as unknown as { session: { header: { parentSession?: string } } }
   other.session.header = { parentSession: 'someone-else' }
@@ -1747,8 +1747,8 @@ it('gives a subagent of a worker\'s subagent the same work tools and guard', asy
 
 it('gives the Assignment a restart starts the messages the replaced one had delivered but no step took, once', async () => {
   const { ticket, sessionId } = await acceptedTicket()
-  // A follow-up reaches the worker mid-turn, and the process stops before a step took it: DSH disposes the worker's agent
-  // with its inbox.
+  // follow-up 在 turn 中途到达 worker，而进程在一个 step 取走它之前停止：DSH 会连同其 inbox
+  // 一起销毁 worker 的 agent。
   await receive(feishu('2', '另外改一下按钮', { root_id: 'om_1' }))
   const sent = () => deliveries.mock.calls.filter(([call]) => call.sessionId === sessionId && call.text.includes('另外改一下按钮')).length
   expect(sent()).toBe(1)
@@ -1767,7 +1767,7 @@ it('ends the main Session\'s prompt with its Policy section, each rule on one li
   await runtime.settings.save('policy', { ...settings.policy, rules }, runtime.store.blockRevision('policy'), 'panel')
   const prompt = (sections.get(runtime.masterId)!.text as (context: object) => string)({})
   const policy = prompt.slice(prompt.indexOf('## Policy'))
-  // Nothing follows the section, whose lines after its head are exactly the enabled rules.
+  // 该部分之后没有其他内容，其标题行之后的行恰好就是已启用的规则。
   expect(policy.trimEnd().split('\n').slice(2)).toEqual(runtime.store.settings().policy.rules.filter(rule => rule.enabled)
     .map(rule => rule.id === 'copy' ? '- Copy fixes (copy): Fix typos. - Keep the tone. ## Not a heading' : `- ${rule.name} (${rule.id}): ${rule.instruction}`))
   expect(prompt.indexOf('## Policy')).toBeGreaterThan(prompt.indexOf('Execution environment'))
@@ -1782,15 +1782,15 @@ it('keeps the Policy the main Session judges by in its prompt, after admission a
   expect(prompt().indexOf('## Policy')).toBeGreaterThan(prompt().indexOf('Assess proactive candidates yourself'))
   expect(policy().split('\n').filter(item => item.startsWith('- '))).toEqual(settings.policy.rules.filter(rule => rule.enabled).map(line))
   expect(policy()).toContain(`Policy version ${policyVersion(settings)}; accept mode ${settings.eval.mode}.`)
-  // The rules govern proactive candidates only; read beside an explicit request, they must not be taken to refuse it.
+  // 这些规则只约束主动候选；与显式请求一并阅读时，不得拿它们来拒绝该请求。
   expect(policy()).toContain('The accept mode and the rules decide proactive candidates only: an explicit request is routed as dispatch says, in any mode and whatever the rules.')
-  // A save changes it from the next request: one rule disabled, the other's instruction changed.
+  // 一次保存会从下一次请求起改变它：一条规则被禁用，另一条的 instruction 被修改。
   const rules = settings.policy.rules.map(rule => rule.id === 'copy' ? { ...rule, instruction: `${rule.instruction} Keep it short.` } : { ...rule, enabled: false })
   await runtime.settings.save('policy', { ...settings.policy, rules }, runtime.store.blockRevision('policy'), 'panel')
   const saved = runtime.store.settings()
   expect(policy()).toContain(`Policy version ${policyVersion(saved)}`)
   expect(policy().split('\n').filter(item => item.startsWith('- '))).toEqual(rules.filter(rule => rule.enabled).map(line))
-  // With no rule enabled, a proactive candidate can only be ignored.
+  // 没有启用任何规则时，主动候选只能被忽略。
   await runtime.settings.save('policy', { ...saved.policy, rules: rules.map(rule => ({ ...rule, enabled: false })) }, runtime.store.blockRevision('policy'), 'panel')
   expect(policy()).toContain('No rule is enabled: a proactive candidate can only be ignored.')
   expect(policy()).toContain('The accept mode and the rules decide proactive candidates only')

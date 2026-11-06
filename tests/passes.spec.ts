@@ -1,4 +1,4 @@
-/** Pass scheduling, coalescing, and runtime health reporting. */
+/** Pass 调度、合并与运行时健康上报。 */
 import { expect, it, vi } from 'vitest'
 import { Passes } from '../src/app/passes.ts'
 import type { Trigger } from '../src/core/index.ts'

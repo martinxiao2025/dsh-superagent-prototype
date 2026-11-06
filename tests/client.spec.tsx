@@ -21,7 +21,7 @@ function fixture(listed: string[]) {
     effect: (effect: () => unknown) => { effect() },
     sessions: { list: { getSnapshot: () => ({ phase: 'ready', byId: Object.fromEntries(listed.map(id => [id, {}])) }) }, refresh: vi.fn(async () => {}) },
     uiWorkspace: { openSession: vi.fn() },
-    // Omit config form service so Deployment renders read-only.
+    // 省略 config 表单服务，使 Deployment 以只读方式渲染。
     get: () => undefined,
   }
   apply(ctx as never)
@@ -94,7 +94,7 @@ it('polls one request at a time, keeps the data while new dependencies load, and
   const root = createRoot(container)
   await act(async () => { root.render(<Harness />) })
   expect(calls).toHaveLength(1)
-  // A slow response holds the next poll back instead of overlapping.
+  // 缓慢的响应会推迟下一次轮询，而不是与其重叠。
   await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
   expect(calls).toHaveLength(1)
   await act(async () => { calls[0]!.done(['a']) })
@@ -105,7 +105,7 @@ it('polls one request at a time, keeps the data while new dependencies load, and
   expect(shown).toEqual({ data: ['a'], limit: 2 })
   await act(async () => { calls[2]!.done(['a', 'b']) })
   expect(shown.data).toEqual(['a', 'b'])
-  // A late response to the superseded request must not replace the newer result.
+  // 对被取代请求的迟到响应不得替换更新的结果。
   await act(async () => { calls[1]!.done(['stale']) })
   expect(shown.data).toEqual(['a', 'b'])
   const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
@@ -133,7 +133,7 @@ it('tells a dsh-superagent that does not answer from a record it does not have, 
   }
   expect(await failure(async () => { throw new TypeError('Failed to fetch') })).toEqual({ message: 'offline', status: 0, missing: false,
     unreachable: true })
-  // DSH's web server answers an empty 404 while dsh-superagent's routes are unregistered.
+  // dsh-superagent 的路由未注册时，DSH 的 web 服务器返回空的 404。
   expect(await failure(async () => new Response(null, { status: 404 }))).toEqual({ message: 'not running', status: 404, missing: false,
     unreachable: true })
   expect(await failure(async () => new Response(null, { status: 502 }))).toEqual({ message: 'server 502', status: 502, missing: false,

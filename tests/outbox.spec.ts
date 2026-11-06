@@ -1,4 +1,4 @@
-/** Outbox delivery when processing is paused or a Source kind registers late. */
+/** 处理暂停或 Source kind 延迟注册时的 Outbox 投递。 */
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import type { OutboundMessage } from '../src/core/index.ts'
@@ -36,7 +36,7 @@ it('keeps a message for a Source that is not installed waiting, and sends it onc
   await h.runtime.sendReplies()
   expect([h.runtime.outbox.status('waiting'), h.runtime.health.reply?.state]).toEqual(['pending', 'ready'])
   h.runtime.sources.register(probe)
-  // A message whose Source was not installed is tried again after 5 seconds.
+  // Source 未安装的消息会在 5 秒后重试。
   await at(5000)
   expect([h.runtime.outbox.status('waiting'), sent.map(message => message.id)]).toEqual(['sent', ['waiting']])
 })

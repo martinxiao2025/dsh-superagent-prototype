@@ -1,4 +1,4 @@
-/** Reusable proactive-agent core: model, ports, engine and in-memory repositories. */
+/** 可复用的主动式 agent 核心：模型、端口、引擎与内存仓储。 */
 export * from './model.ts'
 export * from './ports.ts'
 export { Engine, type EngineForExecutor, type EngineForMainSession, type EngineForPeople, type EngineForSettings, type EngineForSources,

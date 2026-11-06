@@ -1,4 +1,4 @@
-/** Main-session assessor per-eval state and context loading. */
+/** 主会话评估器按 Eval 的状态与 context 加载。 */
 import { expect, it, vi } from 'vitest'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { AssessmentSchema, EvalReadSchema, MasterAssessor, type AssessorHost } from '../src/app/assessment.ts'
@@ -11,7 +11,7 @@ import { deferred } from './fixtures/async.ts'
 import { githubKind } from '../src/sources/github.ts'
 import { SourceRegistry } from '../src/sources/registry.ts'
 
-/** Assessor fixture backed by in-memory repositories and fake GitHub Issue and file reads. */
+/** 由内存仓库和假冒的 GitHub Issue 与文件读取支撑的评估器夹具。 */
 function setup(strength: 'explicit' | 'inferred' = 'inferred', bodies = Array.from({ length: 5 }, (_, i) => `comment ${i}`),
   threadContext?: AssessorHost['threadContext']) {
   const comments = bodies.map((body, i) => ({ id: i, html_url: `https://github.com/acme/widgets/issues/1#c${i}`,
@@ -28,7 +28,7 @@ function setup(strength: 'explicit' | 'inferred' = 'inferred', bodies = Array.fr
         user: { login: 'bob' }, created_at: '2026-09-09T00:00:00Z', title: 'Issue', body: 'body' }
     }),
     run: vi.fn(async () => 'export const value = 1\n'),
-    // A string first argument is a raw file path; otherwise validate the fake gh response against the schema.
+    // 第一个参数为字符串时视为原始文件路径；否则按 schema 校验假冒的 gh 响应。
     api: vi.fn(async (schema: unknown, ...rest: string[]) => typeof schema === 'string' ? 'export const value = 1\n'
       : (schema as { parse(value: unknown): unknown }).parse(await (commands as unknown as { gh(args: string[]): Promise<unknown> }).gh(['api', rest[0]!]))),
   } as unknown as Commands
@@ -54,7 +54,7 @@ function setup(strength: 'explicit' | 'inferred' = 'inferred', bodies = Array.fr
     const { trigger_id, ...result } = args as { trigger_id: string }
     return assessor.decide(trigger_id, AssessmentSchema.parse(result), signal)
   }
-  // Per-Eval state retained by the assessor and released when the Eval ends.
+  // 评估器保留的按 Eval 状态，在 Eval 结束时释放。
   const kept = assessor as unknown as { evals: Map<string, unknown> }
   const size = () => kept.evals.size
   return { repo, engine, assessor, tools, size, gate }
@@ -107,7 +107,7 @@ it('reads the context of a Trigger through its Source, and none for a Source tha
   expect((await s.assessor.context('other-2', signal)).thread).toMatchObject({ error: expect.stringContaining('gives no Thread context') })
   await expect(s.tools.orchestrator_eval_read!({ trigger_id: 'other-2', resource: 'thread', offset: 0 },
     signal)).rejects.toThrow('gives no Thread context')
-  // The Trigger's own text is still readable when its Source provides no Thread context.
+  // 当 Source 不提供 Thread context 时，Trigger 自身的文本仍可读取。
   expect(await s.tools.orchestrator_eval_read!({ trigger_id: 'other-2', resource: 'message', offset: 0 },
     signal)).toMatchObject({ text: 'issue 2' })
 })
@@ -144,13 +144,13 @@ it('loads a window without the assessment instructions: the trigger once, cut me
   expect(result.text).toBe(bodies[15])
   const messages = new Map(result.thread.messages.map(message => [message.id as string, message]))
   const at = (i: number) => messages.get(`https://github.com/acme/widgets/issues/1#c${i}`)!
-  // The trigger's own text is given once at top level; its two nearest neighbours keep more text than the rest of the window.
+  // trigger 自身的文本在顶层给出一次；其最近的两个相邻项比窗口其余部分保留更多文本。
   expect(at(15)).toEqual({ id: expect.any(String), from: 'bob', at: expect.any(String), trigger: true })
   expect(at(16)).toMatchObject({ chars: bodies[16]!.length, text: `${bodies[16]!.slice(0, 1200)}…` })
   expect(at(12)).toMatchObject({ chars: bodies[12]!.length, text: `${bodies[12]!.slice(0, 400)}…` })
   expect(at(14)).toMatchObject({ text: bodies[14] })
   expect(at(14)).not.toHaveProperty('chars')
-  // Messages outside the window are stubs that orchestrator_eval_read can read in full.
+  // 窗口外的消息是存根，orchestrator_eval_read 可以完整读取。
   expect(at(8)).toEqual({ id: expect.any(String), from: 'bob', preview: bodies[8]!.slice(0, 50) })
   const whole = await s.tools.orchestrator_eval_read!({ trigger_id: 'c15', resource: 'message', message_id: at(8).id }, signal)
   expect(JSON.stringify(whole)).toContain(bodies[8]!.slice(-40))
@@ -158,7 +158,7 @@ it('loads a window without the assessment instructions: the trigger once, cut me
 })
 
 it('lets the main Session read on from the cursor its loaded window ends with, and points a cut batch message at its whole text', async () => {
-  // Every page returns a next cursor so the bounded window ends with a continuation cursor.
+  // 每一页都返回 next 游标，因此有界窗口以续读游标结束。
   const page = (cursor?: string) => {
     const n = Number(cursor ?? 0)
     const message = { id: `m${n}`, from: 'bob', at: new Date(Date.UTC(2026, 8, 9, 0, 0, n)).toISOString(), text: `message ${n}` }

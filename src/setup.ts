@@ -1,4 +1,4 @@
-/** Structured startup and configuration errors with the settings location where the operator can fix them. */
+/** 结构化的启动与配置错误，并给出运维人员可以修复它们的设置位置。 */
 import { fill } from './infra/text.ts'
 
 export type SetupPlace = 'deployment' | 'github' | 'feishu'
@@ -24,8 +24,8 @@ export type SetupCode = keyof typeof SETUP_PROBLEMS
 export interface SetupProblem { place: SetupPlace; code: SetupCode; values: Record<string, string>; detail: string }
 
 /**
- * Thrown by deployment and account verification checks when a required CLI, account, or repository check fails.
- * `Setup` records it for the management overview, and the HTTP layer returns `problem` so the panel can localize it.
+ * 当所需的 CLI、账号或仓库检查失败时，由部署与账号校验逻辑抛出。
+ * `Setup` 会记录它供管理概览使用，HTTP 层则返回 `problem`，以便面板本地化显示。
  */
 export class SetupError extends Error {
   readonly place: SetupPlace

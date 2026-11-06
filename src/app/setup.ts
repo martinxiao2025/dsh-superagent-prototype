@@ -1,4 +1,4 @@
-/** Probes repository and account CLIs, configures the worker execution environment and command shims, and tracks setup readiness. */
+/** 探测仓库与账号 CLI，配置 worker 执行环境与命令 shim，并跟踪 setup 是否就绪。 */
 import type { Context } from '@deepseek-ai/cordis'
 import { UserError } from '../core/index.ts'
 import { SETUP_FIELDS, resolveDeployment, resolveFeishuBot, workerProbe, type Deployment, type Machine } from '../deployment.ts'
@@ -18,30 +18,30 @@ const setupFields = (settings: Settings) =>
 export const setupChanged = (before: Settings, after: Settings): boolean => setupFields(before) !== setupFields(after)
 
 /**
- * Resolves the target repository, GitHub account, and optional Feishu bot by probing CLIs, then writes and applies the isolated git and shim environment used by worker processes.
- * `Runtime` runs it at startup to gate orchestration readiness, while `Settings` uses it to validate account changes, update blocked command shims, and schedule restarts.
+ * 通过探测 CLI 解析目标仓库、GitHub 账号与可选的飞书机器人，然后写入并应用供 worker 进程使用的隔离 git 与 shim 环境。
+ * `Runtime` 在启动时运行它来决定编排是否就绪；`Settings` 则用它校验账号变更、更新被禁命令的 shim 并安排重启。
  */
 export class Setup {
   private resolved?: Deployment
   problem?: SetupProblem
   feishuProblem?: SetupProblem
-  /** PATH with the worker shim directory removed so the host's own CLI calls invoke the real binaries. */
+  /** 去掉 worker shim 目录后的 PATH，使宿主自身的 CLI 调用能命中真正的二进制。 */
   private readonly path: string
-  /** Environment variables pointing agent subprocesses at the isolated git config and command shims. */
+  /** 把 agent 子进程指向隔离的 git 配置与命令 shim 的环境变量。 */
   private readonly variables: Record<string, string | undefined>
   private restoreEnvironment?: () => void
   constructor(private readonly host: SetupHost) {
     this.path = withoutDirectory(process.env.PATH ?? '', workerBin(host.machine.stateDir))
     this.variables = agentVariables(host.machine.stateDir)
   }
-  /** Host command environment with agent git variables applied and the worker shim directory excluded from PATH. */
+  /** 宿主命令环境：已应用 agent 的 git 变量，且 PATH 中排除了 worker shim 目录。 */
   get commandEnvironment(): Record<string, string | undefined> { return { ...this.variables, PATH: this.path } }
   get deployment(): Deployment {
     if (!this.resolved) throw new Error(`dsh-superagent is waiting for setup: ${this.problem?.detail ?? 'setup has not run'}`)
     return this.resolved
   }
   configured(): boolean { return this.resolved !== undefined }
-  /** Resolve deployment accounts and apply the worker environment, recording `SetupError` failures in `problem`/`feishuProblem` and rethrowing unexpected errors. */
+  /** 解析部署账号并应用 worker 环境：把 `SetupError` 失败记录到 `problem`/`feishuProblem`，其余意外错误原样抛出。 */
   async run(settings: Settings): Promise<boolean> {
     try { this.resolved = await this.resolve(settings); return true }
     catch (error) {
@@ -50,14 +50,14 @@ export class Setup {
       return false
     }
   }
-  /** Trigger a restart to re-run setup, refusing if setup and Feishu are already healthy so running assignments are not interrupted. */
+  /** 触发重启以重新运行 setup；若 setup 与飞书均已健康则拒绝，以免打断运行中的 assignment。 */
   check(): void {
     if (this.configured() && !this.feishuProblem) throw new UserError('setupComplete')
     this.restart()
   }
-  /** Defer the restart to the next macrotask so the current HTTP or tool caller receives its response first. */
+  /** 把重启推迟到下一个宏任务，好让当前 HTTP 或工具调用方先收到响应。 */
   restart(): void { setTimeout(this.host.restart, 0) }
-  /** Verify account CLIs for a modified source block before saving, ignoring setup errors belonging to other blocks. */
+  /** 保存前校验被修改 Source 块的账号 CLI，忽略属于其他块的 setup 错误。 */
   async checkAccounts(block: SettingsBlock, settings: Settings): Promise<void> {
     const { machine } = this.host
     const check = block === 'source:feishu' ? resolveFeishuBot(machine, settings.sources.feishu?.config, this.probe())
@@ -68,7 +68,7 @@ export class Setup {
     if (this.resolved) await writeEnvironment(this.resolved, blocked)
   }
   restore(): void { this.restoreEnvironment?.(); this.restoreEnvironment = undefined }
-  /** Probes CLIs the way worker shells run them, using `stateDir` as `cwd` since it exists even before the repository clone is valid. */
+  /** 按 worker shell 的运行方式探测 CLI，并用 `stateDir` 作为 `cwd`，因为它在仓库克隆有效之前就已存在。 */
   private probe() {
     const { context, machine, lifetime } = this.host
     return workerProbe(context.subprocess, machine.stateDir, machine.stateDir, lifetime)

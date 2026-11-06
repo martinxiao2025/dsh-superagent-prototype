@@ -1,6 +1,6 @@
 /**
- * Deployment settings view shared between the panel Settings tab and the DSH Plugin Manager config page.
- * Edits host-level plugin configuration limits through DSH `ConfigForm` when writable.
+ * 面板 Settings 标签页与 DSH Plugin Manager 配置页共用的部署设置视图。
+ * 可写时通过 DSH `ConfigForm` 编辑主机级插件配置限制。
  */
 import { useCallback, useMemo, useSyncExternalStore } from 'react'
 import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
@@ -29,12 +29,12 @@ export function usePageForm(form: ConfigForm<Record<string, unknown>> | undefine
   return useMemo(() => form && state ? { state, mutate: form.mutate.bind(form) } : undefined, [form, state])
 }
 
-/** Deployment configuration form; falls back to read-only display when DSH config forms are unavailable or read-only. */
+/** 部署配置表单；DSH 配置表单不可用或只读时回退为只读展示。 */
 export function DeploymentPage({ setup, form, accounts: showAccounts }: { setup: SetupView; form: DeploymentForm; accounts?: boolean }) {
   const { t, notify } = usePanel()
   const snapshot = form?.state
   const editable = snapshot?.status === 'ready' && snapshot.writable
-  // Pass `revision` only while DSH serves writable values so a draft started before `ready` rebases once writable.
+  // 仅在 DSH 提供可写值时传入 `revision`，使在 `ready` 之前开始的草稿在变为可写时重新设定基准。
   const draft = useDraft({ saved: limitsOf(editable ? snapshot.value : setup.machine), revision: editable ? snapshot.revision : undefined,
     reload: async () => {},
     save: async (value, revision, base) => {
@@ -45,7 +45,7 @@ export function DeploymentPage({ setup, form, accounts: showAccounts }: { setup:
       return { revision: revision + 1, restarting: false }
     } })
   const accounts = setup.accounts
-  // Remote browsers (`memory` mode) are read-only; `unavailable` indicates `dsh-superagent` is still starting.
+  // 远程浏览器（`memory` 模式）为只读；`unavailable` 表示 `dsh-superagent` 仍在启动。
   const readOnlyHint = !form ? t('deploymentNoForms') : snapshot?.mode === 'memory' ? t('deploymentReadOnly')
     : snapshot?.status === 'loading' ? t('loading') : snapshot?.status === 'unavailable' ? t('deploymentUnavailable')
     : !editable ? t('deploymentReadOnly') : undefined
@@ -83,7 +83,7 @@ export function DeploymentPage({ setup, form, accounts: showAccounts }: { setup:
   </form>
 }
 
-/** Plugin Manager config page; includes derived repository and accounts because Source settings live in the main panel. */
+/** Plugin Manager 配置页；包含派生的仓库与账号信息，因为 Source 设置位于主面板。 */
 function PluginPage({ form }: { form: DeploymentForm }) {
   const { t } = usePanel()
   const { state, error } = usePanelData()
@@ -92,7 +92,7 @@ function PluginPage({ form }: { form: DeploymentForm }) {
       : error ? <p className="dt-error" role="alert">{error.message}</p> : <p className="dt-hint">{t('loading')}</p>}
   </div>
 }
-/** DSH Plugin Manager config view entry; renders nothing in `summary` mode because DSH displays the package description. */
+/** DSH Plugin Manager 配置视图入口；`summary` 模式下不渲染内容，因为 DSH 会显示包描述。 */
 export function PluginConfig({ t, view, form }: { t: T; view: 'page' | 'summary'; form: DeploymentForm }) {
   return view === 'page' ? <PanelProvider t={t} interval={10_000}><PluginPage form={form} /></PanelProvider> : null
 }

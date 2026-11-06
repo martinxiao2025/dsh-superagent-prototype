@@ -6,7 +6,7 @@ it('drops the least recently used texts once they exceed the limit, but never th
   cache.set('a', 'aaaa'); cache.set('b', 'bbbb')
   expect(cache.get('a')).toBe('aaaa')
   cache.set('c', 'cccc')
-  // Reading `a` made `b` the least recently used.
+  // 读取 `a` 之后，`b` 成了最久未使用的。
   expect([...cache.entries()]).toEqual([['a', 'aaaa'], ['c', 'cccc']])
   cache.set('a', 'a')
   expect([...cache.entries()]).toEqual([['c', 'cccc'], ['a', 'a']])

@@ -4,15 +4,15 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-/** Documentation always uses `/`, so every path this test reads or compares is normalized to it. */
+/** 文档始终使用 `/`，因此本测试读取或比较的每个路径都会归一化为它。 */
 const posix = (path: string): string => path.split(sep).join('/')
 const NUMBERED = /^(\d{3})-[a-z0-9-]+\.md$/
-/** Links may also reach a two-digit working note such as `00-phase1-...md`; compare their numbers numerically. */
+/** 链接也可能指向两位数的工作文档，例如 `00-phase1-...md`；因此按数值比较它们的编号。 */
 const LINKED = /^(\d{2,3})-[a-z0-9-]+\.md$/
 const numbered = readdirSync(join(ROOT, 'docs')).filter(name => NUMBERED.test(name)).sort()
 const entries = ['README.md', 'SETUP.md']
 const documents = [...entries, ...readdirSync(join(ROOT, 'docs')).filter(name => name.endsWith('.md')).map(name => `docs/${name}`)]
-/** Line endings are normalized so headings and table rows match the same way on every checkout. */
+/** 换行符会被归一化，使标题和表格行在每种检出下都以相同方式匹配。 */
 const read = (path: string): string => readFileSync(join(ROOT, path), 'utf8').replace(/\r\n/g, '\n')
 function links(file: string): string[] {
   return [...readFileSync(file, 'utf8').matchAll(/\]\(([^)\s]+)\)/g)].map(match => match[1]!.split('#')[0]!).filter(target => target && !/^[a-z]+:/.test(target))
@@ -20,15 +20,15 @@ function links(file: string): string[] {
 const files = (directory: string): string[] => readdirSync(join(ROOT, directory), { recursive: true, withFileTypes: true })
   .filter(entry => entry.isFile()).map(entry => posix(relative(ROOT, join(entry.parentPath, entry.name))))
 /**
- * Extract repo-relative file paths from the first column of a table under `## <heading>` in `docs/007-architecture.md`.
- * Bare filenames inherit the directory of the preceding path in the same cell. The headings are Chinese, so the
- * constants passed in are the literal section titles (`模块`, `测试`).
+ * 从 `docs/007-architecture.md` 中 `## <heading>` 下表格的第一列提取仓库相对路径。
+ * 裸文件名继承同一单元格中前一个路径的目录。标题是中文，因此传入的
+ * 常量就是字面的章节标题（`模块`、`测试`）。
  */
 function listed(heading: string): string[] {
   const lines = read('docs/007-architecture.md').split('\n')
   const start = lines.indexOf(`## ${heading}`)
   const end = lines.findIndex((line, index) => index > start && line.startsWith('## '))
-  // The first two rows are the header and its separator.
+  // 前两行是表头和分隔行。
   const rows = lines.slice(start, end < 0 ? undefined : end).filter(line => line.startsWith('| ')).slice(2)
   return rows.flatMap(row => {
     let directory = ''

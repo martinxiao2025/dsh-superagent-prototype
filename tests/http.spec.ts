@@ -9,7 +9,7 @@ import { SetupError } from '../src/setup.ts'
 
 type Handler = (req: unknown, res: unknown) => Promise<void>
 type Headers = Record<string, string | undefined>
-/** Mount management HTTP routes on a fake web server and return a request helper that includes default panel headers. */
+/** 在假 Web 服务器上挂载管理 HTTP 路由，返回一个带默认面板请求头的请求辅助函数。 */
 function serve(runtime: Partial<Record<keyof HttpHost, unknown>>, host = '127.0.0.1') {
   let handler: Handler = async () => {}
   const ctx = { webServer: { host, port: 3082, register: (route: { handler: Handler }) => { handler = route.handler; return () => {} } } }
@@ -43,7 +43,7 @@ it('answers each kind of failure with its own status', async () => {
   expect(await call('PUT', 'settings/executor', { value: 'invalid', revision: 0 })).toMatchObject({ status: 400, body: { issues: [{ path: 'maxWorkers' }] } })
   expect(await call('PUT', 'settings/source:github', { value: 'refused', revision: 0 })).toMatchObject({ status: 400, body: { setup: { code: 'agentCliUnset', place: 'github' } } })
   expect(await call('PUT', 'settings/executor', { value: 'broken', revision: 0 })).toEqual({ status: 500, body: { error: 'disk full' } })
-  // Block names are validated before calling settings.save: reject unknown blocks or non-existent Sources.
+  // 调用 settings.save 之前会校验 block 名称：拒绝未知 block 或不存在的 Source。
   expect(await call('PUT', 'settings/pause', { value: {}, revision: 0 })).toMatchObject({ status: 400 })
   expect(await call('PUT', 'settings/source:feishu', { value: {}, revision: 0 })).toEqual({ status: 404, body: { error: 'Source not found' } })
   expect(saves).toHaveLength(4)
@@ -62,7 +62,7 @@ it('decodes path parameters and parses each route\'s query', async () => {
     sessions: { delivery: async () => 'injected' },
   })
   expect(await call('POST', `threads/${encodeURIComponent('feishu:oc_1:om/root')}/unsubscribe`)).toMatchObject({ status: 200, body: { context_delivery: 'injected' } })
-  // Invalid offsets default to 0, and limits above the route maximum are clamped.
+  // 非法的 offset 默认为 0，超过路由上限的 limit 会被截断。
   expect(await call('GET', 'decisions?kind=accept%2Creopen&limit=500&offset=x&window=24h')).toEqual({ status: 200, body: { items: [], next_offset: null } })
   expect(seen).toEqual(['feishu:oc_1:om/root', { filter: { kinds: ['accept', 'reopen'], since: expect.any(String) }, offset: 0, limit: 200 }])
 })
@@ -76,7 +76,7 @@ it('answers only a same-origin request from the panel on the loopback address', 
       body: { error: 'Same-origin management request required' } })
   }
   expect(await post({ host: 'localhost:3082', origin: 'http://localhost:3082' })).toMatchObject({ status: 200 })
-  // Management routes require a loopback Web server.
+  // 管理路由要求回环地址上的 Web 服务器。
   expect(() => serve({}, '0.0.0.0')).toThrow('Orchestrator management requires a loopback Web server')
 })
 

@@ -1,7 +1,7 @@
 /**
- * Process environment and CLI shims that bind git, gh, and lark-cli to the deployment's accounts and block disallowed commands.
- * Variables read by workers avoid `KEY|PASSWORD|SECRET|TOKEN` in their names because DSH strips credential-shaped variables from child environments.
- * Provides default-path guardrails rather than an OS-level security boundary, as workers run under the operator's OS user.
+ * 进程环境与 CLI shim：把 git、gh、lark-cli 绑定到部署的账号，并阻止不允许的命令。
+ * worker 读取的变量名中避开 `KEY|PASSWORD|SECRET|TOKEN`，因为 DSH 会从子进程中剥离形似凭据的变量。
+ * 这里提供的是默认路径层面的护栏，而非操作系统级的安全边界，因为 worker 以运维人员的 OS 用户身份运行。
  */
 import { lstat, mkdir, readdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { realpathSync } from 'node:fs'
@@ -12,9 +12,9 @@ import { SetupError } from '../setup.ts'
 import { CliError } from './commands.ts'
 
 const MARKER = '# Written by dsh-superagent on every start; edits are lost.'
-/** Markers of files written under the project's earlier names (`dsh-tag`, `dsh-go`, `dsh-freelancer`), which `dsh-superagent` owns and replaces too. */
+/** 项目较早名称（`dsh-tag`、`dsh-go`、`dsh-freelancer`）下写入文件的标记；这些文件同样归 `dsh-superagent` 所有并被替换。 */
 const LEGACY_MARKERS = ['dsh-tag', 'dsh-go', 'dsh-freelancer'].map(name => `# Written by ${name} on every start; edits are lost.`)
-/** Commands workers need, which `blockedCommands` cannot block: the shims and git. */
+/** worker 需要的命令，`blockedCommands` 无法阻止它们：各 shim 与 git。 */
 export const WORKER_COMMANDS: readonly string[] = ['gh', 'git', 'lark-cli']
 export const workerBin = (stateDir: string): string => join(stateDir, 'worker-bin')
 export const workerGitConfig = (stateDir: string): string => join(stateDir, 'worker-gitconfig')
@@ -31,33 +31,33 @@ export function withoutDirectory(path: string, dir: string): string {
 }
 
 /**
- * The variables that tell git which repository, work tree and index to act on. A host started inside git, such as by
- * `git rebase --exec`, passes them on, and a git started below it would act on that repository. GIT_CEILING_DIRECTORIES is
- * kept: it names no repository, and it stops git's search for one where the operator chose.
+ * 告诉 git 作用于哪个仓库、工作树与索引的变量。在 git 内部启动的宿主（例如通过
+ * `git rebase --exec`）会把它们传下去，而在其下启动的 git 会作用于那个仓库。GIT_CEILING_DIRECTORIES
+ * 会保留：它不指向任何仓库，并在运维人员选定的位置停止 git 的仓库搜索。
  */
 export const GIT_LOCATION: readonly string[] = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_PREFIX', 'GIT_COMMON_DIR', 'GIT_OBJECT_DIRECTORY',
   'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_NAMESPACE']
 
 /**
- * Returns environment variable overrides that strip ambient GitHub tokens, interactive prompts, the repository the host's own
- * environment may name, and operator git identity/config overrides.
+ * 返回环境变量覆盖，用于剥离环境中已有的 GitHub token、交互式提示、宿主自身环境可能指定的仓库，
+ * 以及运维人员的 git 身份/配置覆盖。
  */
 export function agentVariables(stateDir: string): Record<string, string | undefined> {
   return {
     GH_TOKEN: undefined, GITHUB_TOKEN: undefined,
-    // A worker's git finds the repository from its directory, never from the host's environment.
+    // worker 的 git 从其目录确定仓库，绝不从宿主环境。
     ...Object.fromEntries(GIT_LOCATION.map(name => [name, undefined])),
     GIT_CONFIG_GLOBAL: workerGitConfig(stateDir), GIT_CONFIG_NOSYSTEM: '1',
-    // Clear environment git config overrides; configuration passed through the environment would otherwise reach every git command the agent runs.
+    // 清除环境中的 git 配置覆盖；否则通过环境传入的配置会作用于 agent 运行的每条 git 命令。
     GIT_CONFIG_COUNT: undefined, GIT_CONFIG_PARAMETERS: undefined,
-    // When the credential helper has no answer, git must fail rather than prompt; `GIT_ASKPASS: ''` also overrides `core.askPass` and `SSH_ASKPASS`.
+    // 凭据助手无答案时，git 必须失败而不是提示；`GIT_ASKPASS: ''` 也会覆盖 `core.askPass` 与 `SSH_ASKPASS`。
     GIT_ASKPASS: '', SSH_ASKPASS: undefined, GIT_TERMINAL_PROMPT: '0',
-    // Clear operator commit identity variables; prompts specify commit identity and operator env vars would override what a worker sets.
+    // 清除运维人员的提交身份变量；提示词会指定提交身份，而运维环境变量会覆盖 worker 设置的值。
     GIT_AUTHOR_NAME: undefined, GIT_COMMITTER_NAME: undefined, GIT_AUTHOR_EMAIL: undefined, GIT_COMMITTER_EMAIL: undefined,
   }
 }
 
-/** True when a regular file starts with the dsh-superagent marker in its first two lines; a symbolic link, directory, or other non-regular file never counts as written by dsh-superagent. */
+/** 当普通文件的前两行中包含 dsh-superagent 标记时为 true；符号链接、目录或其他非普通文件永不算作 dsh-superagent 写入的。 */
 async function written(file: string): Promise<boolean> {
   if (!(await lstat(file)).isFile()) return false
   const head = (await readFile(file, 'utf8')).split('\n', 2)
@@ -65,7 +65,7 @@ async function written(file: string): Promise<boolean> {
 }
 async function own(file: string, text: string, mode = 0o644): Promise<void> {
   let foreign = false
-  try { foreign = !await written(file) } catch { /* The file does not exist yet. */ }
+  try { foreign = !await written(file) } catch { /* 文件尚不存在。 */ }
   if (foreign) throw new SetupError('foreignFile', { file })
   const temporary = `${file}.${process.pid}.tmp`
   await writeFile(temporary, text, { mode })
@@ -73,8 +73,8 @@ async function own(file: string, text: string, mode = 0o644): Promise<void> {
 }
 
 /**
- * Atomically writes worker CLI shims and the isolated git configuration file into the state directory, refusing to overwrite foreign files.
- * Each shim strips the shim directory from PATH before exec so wrapper scripts resolving `gh` or `lark-cli` by name reach the real binary.
+ * 把 worker 的 CLI shim 与隔离的 git 配置文件原子地写入 state 目录，拒绝覆盖非本程序写入的文件。
+ * 每个 shim 在 exec 前从 PATH 中移除 shim 目录，使按名称解析 `gh` 或 `lark-cli` 的包装脚本能到达真正的二进制文件。
  */
 export async function writeEnvironment(deployment: Pick<Deployment, 'stateDir' | 'repository' | 'github' | 'feishu'>, blockedCommands: readonly string[]): Promise<void> {
   const { stateDir, repository, github, feishu } = deployment
@@ -82,7 +82,7 @@ export async function writeEnvironment(deployment: Pick<Deployment, 'stateDir' |
   await mkdir(dir, { recursive: true })
   const before = await readdir(dir)
   for (const name of before) { const file = join(dir, name); if (!await written(file)) throw new SetupError('foreignFile', { file }) }
-  // Workers may be running concurrently: write each shim to a temp file and atomically rename it so no command ever resolves past the shim directory.
+  // worker 可能并发运行：把每个 shim 写入临时文件再原子重命名，使任何命令都不会绕过 shim 目录去解析。
   const kept = new Set<string>()
   const shim = async (name: string, body: string): Promise<void> => {
     const temporary = join(dir, `.${name}.${process.pid}.tmp`)
@@ -105,17 +105,17 @@ export async function writeEnvironment(deployment: Pick<Deployment, 'stateDir' |
   for (const name of before) if (!kept.has(name)) await unlink(join(dir, name))
   await own(workerGitConfig(stateDir), [
     MARKER,
-    // Make git refuse to commit without an explicit identity set by the worker instead of guessing from the operator's OS user.
+    // 让 git 在没有 worker 显式设置身份时拒绝提交，而不是从运维人员的 OS 用户猜测。
     '[user]', '\tuseConfigOnly = true',
     '[credential]', '\thelper =',
     '[credential "https://github.com"]', `\thelper = ${gitQuote(credentialHelper(github.cli))}`,
     '[url "https://github.com/"]', '\tinsteadOf = git@github.com:', '\tinsteadOf = ssh://git@github.com/',
-    // Include Git LFS filters because the operator's global gitconfig (which usually holds them) is ignored.
+    // 包含 Git LFS 过滤器，因为运维人员的全局 gitconfig（通常存放它们）已被忽略。
     '[filter "lfs"]', '\tclean = git-lfs clean -- %f', '\tsmudge = git-lfs smudge -- %f', '\tprocess = git-lfs filter-process', '\trequired = true',
   ].join('\n') + '\n')
 }
 
-/** Applies environment overrides and prepends worker shims to `process.env.PATH`, returning a restore callback. */
+/** 应用环境变量覆盖，并把 worker shim 置于 `process.env.PATH` 最前，返回一个恢复回调。 */
 export function applyEnvironment(variables: Record<string, string | undefined>, stateDir: string, path: string): () => void {
   const values = { ...variables, PATH: [workerBin(stateDir), path].join(delimiter) }
   const previous = Object.fromEntries(Object.keys(values).map(name => [name, process.env[name]]))
@@ -124,7 +124,7 @@ export function applyEnvironment(variables: Record<string, string | undefined>, 
   return () => { apply(previous) }
 }
 
-/** Spawns a command through the DSH subprocess runtime, which strips credential-shaped environment variables. */
+/** 通过 DSH 子进程运行时启动命令，该运行时会剥离形似凭据的环境变量。 */
 export async function runAsWorker(subprocess: SubprocessRuntime, argv: string[], cwd: string, signal: AbortSignal, env?: Record<string, string>): Promise<string> {
   const handle = subprocess.spawn({ argv, cwd, graceMs: 2000, signal, ...env ? { env } : {}, stdio: { stdin: 'ignore', stdout: { maxBytes: 1 << 20 }, stderr: { maxBytes: 1 << 16 } } })
   const { exitCode } = await handle.done
@@ -134,21 +134,21 @@ export async function runAsWorker(subprocess: SubprocessRuntime, argv: string[],
   throw new CliError(read(handle.collected.stderr).trim() || `${argv.join(' ')} ${ended}`, undefined, exitCode ?? undefined)
 }
 
-/** Verifies that worker git invocations resolve the deployment's GitHub credential helper. */
+/** 校验 worker 的 git 调用能解析到部署的 GitHub 凭据助手。 */
 export async function verifyEnvironment(deployment: Pick<Deployment, 'github' | 'stateDir'>, subprocess: SubprocessRuntime, signal: AbortSignal): Promise<void> {
   const { github, stateDir } = deployment
-  // `-z` separates fields with NUL and never quotes paths.
+  // `-z` 用 NUL 分隔字段，且从不对路径加引号。
   const helpers = (await runAsWorker(subprocess, ['git', 'config', '-z', '--show-origin', '--get-all', 'credential.https://github.com.helper'], stateDir, AbortSignal.any([signal, AbortSignal.timeout(60_000)])).catch(() => '')).split('\0')
   if (helpers.join('\0') !== [`file:${workerGitConfig(stateDir)}`, credentialHelper(github.cli), ''].join('\0')) throw new SetupError('gitTooOld')
 }
 
 /**
- * Verifies that a ticket directory's local or worktree git config defines no custom `credential.*` or `http.*extraheader`
- * keys, which the agent's git would read from the repository's own config and act on.
+ * 校验工单目录的本地或 worktree git 配置未定义自定义的 `credential.*` 或 `http.*extraheader`
+ * 键——agent 的 git 会从仓库自身配置中读取它们并据此行动。
  */
 export async function verifyDirectory(directory: string, subprocess: SubprocessRuntime, signal: AbortSignal): Promise<void> {
   const keys = ['git', 'config', '-z', '--show-scope', '--get-regexp', '^(credential\\..*|http\\..*extraheader)$']
-  // `git config --get-regexp` exits with code 1 when no keys match.
+  // 没有匹配的键时，`git config --get-regexp` 以退出码 1 结束。
   const output = await runAsWorker(subprocess, keys, directory, AbortSignal.any([signal, AbortSignal.timeout(60_000)]))
     .catch((error: unknown) => { if (error instanceof CliError && error.exitCode === 1) return ''; throw error })
   const scoped = output.split('\0')

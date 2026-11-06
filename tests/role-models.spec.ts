@@ -30,7 +30,7 @@ it('keeps prompt variables and initial routing on the role model without saving 
   expect(agent.session.snapshotEvents().some(event => event.type === 'model/selection')).toBe(true)
   expect(flush).toHaveBeenCalledOnce()
   record(selected)
-  // A retry of the same assembled step keeps the same model even after the header is persisted.
+  // 同一已组装步骤的重试保持相同模型，即使 header 已持久化。
   expect(await request()).toEqual(selected)
   await ctx.systemPrompt.assemble()
   expect(await request()).toEqual(selected)

@@ -61,7 +61,7 @@ it('keeps independent sessions and starts a fresh status for a new provider or c
   health.observe('a', retry(1, { retry: 12 })); health.observe('b', retry(1, { provider: 'provider-b' }))
   health.observe('a', retry(2, { provider: 'fallback', retry: 1 }))
   expect(health.get('a')).toMatchObject({ provider: 'fallback', attempts: 1, since: '2026-09-21T08:00:02.000Z' })
-  health.observe('a', success(3)) // An old provider output must not clear the current chain.
+  health.observe('a', success(3)) // 旧的 provider 输出不得清除当前的重试链。
   expect(health.get('a')?.provider).toBe('fallback')
   health.observe('a', retry(4, { provider: 'fallback', retryId: 'chain-b', retry: 1 }))
   expect(health.get('a')?.since).toBe('2026-09-21T08:00:04.000Z')

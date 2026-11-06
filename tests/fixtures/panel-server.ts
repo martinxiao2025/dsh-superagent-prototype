@@ -1,6 +1,6 @@
 /**
- * Typed fake management API server for panel tests. Implements every route in `src/app/api.ts` and records any
- * undeclared query parameter or body mismatch in `server.misuse`, which `usePanelServer` asserts is empty after each test.
+ * 供面板测试使用的类型化假管理 API 服务器。实现 `src/app/api.ts` 中的每条路由，并把任何
+ * 未声明的查询参数或 body 不匹配记录到 `server.misuse`，`usePanelServer` 在每个测试后断言其为空。
  */
 import { afterEach, beforeEach, expect, vi } from 'vitest'
 import { z } from 'zod'
@@ -26,7 +26,7 @@ import { testDeployment } from './deployment.ts'
 export const MEMBER = 'ou_alice'
 const ALLOWED: Record<string, { id: string; name?: string }[]> = { feishu: [{ id: MEMBER, name: 'Alice' }], github: [{ id: 'alice' }] }
 type Actor = TriggerRow['actor']
-/** Resolve an actor display label using the fixture policy's allowed list or the source kind's unnamed fallback. */
+/** 使用夹具 policy 的允许列表或 Source kind 的未命名回退项，解析 actor 的显示标签。 */
 export function actor(source: string, id: string, human = true): Actor {
   if (!id) return { source, id }
   const entry = ALLOWED[source]?.find(item => item.id.toLowerCase() === id.toLowerCase())
@@ -50,7 +50,7 @@ export const threadSummary = (fields: Partial<ThreadRow> = {}): ThreadRow => ({
   pending: 0, pollError: undefined, url: undefined, facts: { chat: { value: '团队群' } }, ...fields,
 })
 type TriggerFields = Partial<Omit<TriggerRow, 'disposition' | 'actions'>> & { disposition?: Partial<TriggerRow['disposition']> }
-/** Build a trigger row on the default thread and compute `actions.requeue` using the host's eligibility rules. */
+/** 在默认 thread 上构造一行 trigger，并按宿主的资格规则计算 `actions.requeue`。 */
 export function trigger(id: string, at: string, { disposition, ...fields }: TriggerFields = {}): TriggerRow {
   const row = { id, source: 'feishu', actor: actor('feishu', MEMBER), human: true, at, text: `message ${id}`, preview: `message ${id}`,
     url: undefined, threads: ['feishu:oc_1:om_root'], ...fields,
@@ -68,7 +68,7 @@ export function found(id: string, at: string, { threadTitle, filtered,
 }
 export const promptVersion = (revision: number, config: PromptsView['current']['config']): PromptsView['current'] =>
   ({ revision, previousRevision: revision ? revision - 1 : null, savedAt: '', source: 'panel', config })
-/** Build a dropped outbound reply fixture (`feishu` replies to `oc_1`/`om_root`; `github` comments on PR #42). */
+/** 构造一条已丢弃的出站回复夹具（`feishu` 回复 `oc_1`/`om_root`；`github` 在 PR #42 上评论）。 */
 export const droppedReply = (id: string, hoursAgo: number, source: 'feishu' | 'github', reason: DroppedReply['dropped']['reason'],
   { ticket, thread }: { ticket?: DroppedReply['ticket']; thread?: false } = {}): DroppedReply => ({
   id, preview: `Reply ${id}`, kind: 'reply',
@@ -78,7 +78,7 @@ export const droppedReply = (id: string, hoursAgo: number, source: 'feishu' | 'g
 })
 const dayAgo = () => new Date(Date.now() - 86_400_000).toISOString()
 export const problemOf = (code: SetupCode, values: Record<string, string> = {}) => new SetupError(code, values).problem
-// The kinds' configurations differ, and the fake reads them only as the records the views carry.
+// 各 kind 的配置不同，假实现只按视图携带的记录来读取它们。
 const KINDS = [feishuKind, githubKind] as unknown as SourceKind[]
 export const MACHINE = { stateDir: '/srv/dsh-superagent', promptMaxChars: 100000, admissionContextMaxPages: 10,
   admissionContextTimeoutMs: 15000 }
@@ -94,15 +94,15 @@ export interface PanelServer {
   threadPages: (key: string, query: { before?: string; around?: string }) => ThreadPageView | undefined
   person: TicketRow[]; search: Pick<ApiResponse<'GET search'>, 'items' | 'threads'>; history: HistoryView
   requests: { path: string; method: string; body?: unknown }[]
-  /** Requests with undeclared query params or invalid body presence; asserted empty after each test. */
+  /** 带未声明查询参数或 body 存在性非法的请求；每个测试后断言其为空。 */
   misuse: string[]
   queued: Set<string>
   searching?: (query: string) => Promise<void>
   setup: SetupView
   health: Record<string, Health>
-  /** When true, all API requests return an empty 404 to simulate the host plugin being stopped. */
+  /** 为 true 时，所有 API 请求返回空的 404，以模拟宿主插件被停止。 */
   down: boolean
-  /** Count of responses not yet consumed by the client. */
+  /** 客户端尚未消费的响应数量。 */
   pending: number
   form?: ConfigForm<Record<string, unknown>> | undefined
   opened: string[]
@@ -116,7 +116,7 @@ function resolved() {
   return accounts ? testDeployment({ repository: accounts.repository, github: { cli: '/bin/false', login: accounts.agent, noreply: '' },
     ...accounts.feishu ? { feishu: { cli: '/bin/false', ...accounts.feishu } } : { feishu: undefined } }) : undefined
 }
-/** Default source health: paused during setup; Feishu defaults to `socket closed` unless overridden or paused by setup. */
+/** 默认 Source health：setup 期间为 paused；除非被覆盖或被 setup 暂停，Feishu 默认为 `socket closed`。 */
 function healthOf(name: string): Health {
   if (server.setup.problem) return { state: 'paused', detail: 'Waiting for setup', code: 'setupPending' }
   if (server.health[name]) return server.health[name]
@@ -160,7 +160,7 @@ function sourceStatuses(): SourceStatusRow[] {
 const stateView = (): StateView => ({
   setup: server.setup, load: { running: server.setup.problem ? 0 : 2, queued: 0, maxWorkers: server.settings.executor.maxWorkers },
   masterId: 'master', paused: server.settings.paused,
-  // The panel does not read health; the service script does.
+  // 面板不读取 health；服务脚本会读取。
   health: {},
 })
 const settingsView = (): ApiResponse<'GET settings'> => ({
@@ -189,7 +189,7 @@ const overviewView = (): ApiResponse<'GET overview'> => {
         .map(thread => ({ kind: 'eval-overdue' as const, thread })),
       { kind: 'eval-unavailable' as const, decisionId: 'u1', thread: threadSummary(), reason: [{ code: 'timeout' }], triggerId: 'e3' },
       ...server.settings.paused ? [{ kind: 'executor-paused' as const }] : [],
-      // As on the host, every entry in error that is not a Source's own, a Policy sync, or the individually listed unavailable Evals is a runtime-error.
+      // 与宿主一致，处于 error 的条目中，除 Source 自身的、Policy sync 的和单独列出的不可用 Eval 之外，都是 runtime-error。
       ...Object.entries(server.health).filter(([name, item]) => item.state === 'error' && !KINDS.some(kind => kind.health.includes(name))
         && !name.startsWith('sync:') && name !== 'evals')
         .map(([name, item]) => ({ kind: 'runtime-error' as const, name, detail: item.detail })),
@@ -276,7 +276,7 @@ function initial(): PanelServer {
   }
 }
 
-/** A refusal response carrying the host's HTTP status code and JSON error body. Returned by route handlers when a request is rejected. */
+/** 携带宿主 HTTP 状态码与 JSON 错误体的拒绝响应。请求被拒绝时由路由处理器返回。 */
 class Refusal { constructor(readonly status: 400 | 404 | 409 | 500, readonly body: Record<string, unknown>) {} }
 const refuse = (status: Refusal['status'], error: string, more: Record<string, unknown> = {}) => new Refusal(status, { error, ...more })
 type Query<K extends keyof Api> = Api[K] extends { query?: infer Q } ? keyof NonNullable<Q> & string : never
@@ -301,7 +301,7 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
   'GET sources': { answer: sourceStatuses },
   'GET settings': { answer: settingsView },
   'POST sources/:id/labels': { answer: () => {
-    // Label refresh failures come from the bot CLI and are returned verbatim.
+    // 标签刷新失败来自 bot CLI，会原样返回。
     if (server.joinError) return refuse(500, server.joinError)
     const added = Object.values(server.joining ?? {}); server.joined = { ...server.joined, ...server.joining }; server.joining = undefined
     return { added }
@@ -310,7 +310,7 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
   'GET threads/:key': { query: ['limit', 'before', 'around'], answer: ({ params, query }) => {
     const found = server.threadPages(params.key, query)
     if (!found) return refuse(404, 'Thread not found')
-    // A Trigger sent to Eval again is queued and cannot be requeued.
+    // 再次送去 Eval 的 Trigger 已排队，不能再重新排队。
     const queued = (item: TriggerRow) => ({ ...item, disposition: { ...item.disposition, queued: true }, actions: { requeue: false } })
     return { ...found, timeline: found.timeline.map(item => server.queued.has(item.id) ? queued(item) : item) }
   } },
@@ -355,7 +355,7 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
     else if (source) {
       const { enabled, config: value } = SourceSave.parse(body.value)
       const config = source.schema.parse(value)
-      // As on the server, a changed CLI that fails its check refuses the save with the setup problem.
+      // 与服务端一致，变更后的 CLI 若检查失败，会以该 setup 问题拒绝保存。
       if (config.cli === 'lark-broken') {
         const refused = new SetupError('feishuCliFailed', { output: 'lark-cli: app secret missing' })
         return refuse(400, refused.message, { setup: refused.problem })
@@ -377,7 +377,7 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
     const { revision } = server.prompts
     if (body.baseRevision !== revision) return refuse(409,
       `Prompt version changed to ${revision}; compare the latest version before saving`)
-    // As the host does: a template keeps its placeholders, and no overrides are stored as none.
+    // 与宿主一致：模板保留其占位符，没有覆盖项时也不存储。
     const { overrides = {}, ...config } = body.config as PromptsView['current']['config']
     for (const [part, override] of Object.entries(overrides)) {
       if (!builtInPart(part)) return refuse(400, 'refused', { code: 'unknownPromptPart', values: { part } })
@@ -391,7 +391,7 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
   'POST prompts/preview': { body: true, answer: ({ body }) => {
     const skills = [...server.setup.accounts?.feishu ? ['feishu'] : [], 'github', ...Object.keys(body.skills)].map(name => [name,
       composeSkill(body, name)])
-    // The generated parts from their templates, without variables or rules.
+    // 由模板生成的部分，不含变量与规则。
     const environment = environmentSection(body, []), policy = policySection(SettingsSchema.parse({ policy: { rules: [] } }), body)
     return { parts: { orchestrator: promptParts(body, 'orchestrator', environment, policy), worker: promptParts(body, 'worker', environment) },
       skills: Object.fromEntries(skills),
@@ -420,8 +420,8 @@ async function run<K extends keyof Api>(key: K, params: Record<string, string>, 
   return route.answer({ params: params as RouteParams<K>, query: values, body: body as Body<K> })
 }
 /**
- * Response wrapper that increments `server.pending` when constructed and decrements it when `.text()` is consumed.
- * Requests held back by `server.searching` are not constructed until `searching` resolves, so they do not count as pending early.
+ * 响应包装器：构造时递增 `server.pending`，`.text()` 被消费时递减。
+ * 被 `server.searching` 拦住的请求在 `searching` 完成前不会构造，因此不会过早计入 pending。
  */
 class Reply extends Response {
   constructor(value: unknown, status: number) { super(JSON.stringify(value), { status,
@@ -453,7 +453,7 @@ export function usePanelServer(cleanup: () => void) {
 }
 
 type Ops = Parameters<ConfigForm<Record<string, unknown>>['mutate']>[0]
-/** Fake DSH host configuration form that records mutations and optionally applies them to its snapshot. */
+/** 假冒的 DSH 主机配置表单，记录变更，并可选地把它们应用到其快照。 */
 export function fakeForm(writable = true, accept = true) {
   const listeners = new Set<() => void>()
   let snapshot: ConfigFormSnapshot<Record<string, unknown>> = { status: 'ready', value: { ...MACHINE }, base: undefined, user: undefined,

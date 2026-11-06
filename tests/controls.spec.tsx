@@ -61,7 +61,7 @@ it('keeps the focus inside the dialog when its parent re-renders, and Tab and Sh
   function Harness() {
     const [, setCount] = useState(0)
     rerender = () => setCount(count => count + 1)
-    // Pass a new inline onClose on each render (as polling parents do) to verify the effect does not reset focus.
+    // 每次渲染都传入新的内联 onClose（如轮询的父组件那样），以验证 effect 不会重置焦点。
     return <Modal open onClose={() => {}} title="Title" closeLabel="Close" footer={<button type="button">last</button>}><input aria-label="first field" /></Modal>
   }
   const container = document.createElement('div'); document.body.append(container)

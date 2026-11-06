@@ -1,4 +1,4 @@
-/** Feishu source kind definition, policy synchronization, and Cordis plugin entry. */
+/** 飞书 source kind 定义、policy 同步与 Cordis 插件入口。 */
 import type { Context } from '@deepseek-ai/cordis'
 import { z } from 'zod'
 import { FeishuBotSchema } from '../deployment.ts'
@@ -57,7 +57,7 @@ export const feishuKind: SourceKind<FeishuConfig> = {
     if (chat) return { listened: true, observed: chat.listen === 'all', row: chat.chatId }
     return config.otherChats === 'mentions' ? { listened: true, observed: false, row: 'other' } : { listened: false, reason: 'chat_not_allowed' }
   },
-  // A reply goes only to a chat the Source still receives.
+  // 只向 Source 仍在接收的群聊回复。
   channel: {
     allowed: (address, config) =>
       feishuKind.scope!({ meta: { chatId: address.chatId ?? '', direct: address.direct === 'true' } }, config).listened,
@@ -65,7 +65,7 @@ export const feishuKind: SourceKind<FeishuConfig> = {
   },
   threadContext: feishuThreadContext,
   find: query => ({ threads: [], terms: [...new Set(query.match(/om_[A-Za-z0-9_-]+/g) ?? [])] }),
-  // A message's Trigger is named after the message, so the one it answers is named after its parent.
+  // 消息的 Trigger 以该消息命名，因此它回复的那条消息以其父消息命名。
   repliesTo: trigger => typeof trigger.meta.parentId === 'string' ? feishuTriggerId(trigger.meta.parentId) : undefined,
   policy: {
     unnamed: { person: { zh: '飞书用户', en: 'Feishu user' }, bot: { zh: '飞书机器人', en: 'Feishu bot' } },
@@ -108,7 +108,7 @@ export const feishuKind: SourceKind<FeishuConfig> = {
         const members = ['im', '+chat-members-list', '--chat-id', chat, '--member-types', 'user', '--page-all', '--page-limit', '0']
         const result = MembersSchema.parse(await commands.lark(members))
         if (result.has_more || result.truncations?.length) throw new Error('Feishu returned an incomplete member list')
-        // Preserve existing member order so policy version hashes stay stable; update names in place and append new members.
+        // 保持现有成员顺序，使 policy 版本哈希保持稳定；原地更新名称并追加新成员。
         const users = new Map(result.users.map(user => [user.member_id, user.name]))
         const known = new Set(part.allowed.map(entry => entry.id))
         return { ...part, allowed: [...part.allowed.filter(entry => users.has(entry.id)).map(entry => ({ ...entry, name: users.get(entry.id)! })), ...result.users.filter(user => !known.has(user.member_id)).map(user => ({ id: user.member_id, name: user.name }))] }
@@ -124,7 +124,7 @@ export const feishuKind: SourceKind<FeishuConfig> = {
   },
   facts: (deployment): Record<string, Localized | string> => deployment?.feishu ? { cli: { zh: `当前机器人 ${deployment.feishu.name || deployment.feishu.botId}`, en: `Current bot ${deployment.feishu.name || deployment.feishu.botId}` } } : {},
 }
-/** Returns the Feishu Source's settings, falling back to schema defaults while the Feishu plugin is disabled. */
+/** 返回飞书 Source 的设置；飞书插件禁用时回退到 schema 默认值。 */
 export const feishuSettings = (sources: SourceRegistry): FeishuConfig => sources.instance<FeishuConfig>(SOURCE)?.config ?? FeishuConfigSchema.parse({})
 
 export const name = 'dsh-superagent-feishu'

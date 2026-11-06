@@ -1,4 +1,4 @@
-/** Concurrency, retry, and validation tests for settings saves, pause toggling, and policy synchronization. */
+/** 设置保存、暂停开关与策略同步的并发、重试与校验测试。 */
 import { afterEach, expect, it, vi } from 'vitest'
 import { UserError } from '../src/core/index.ts'
 import { Commands } from '../src/infra/commands.ts'
@@ -28,7 +28,7 @@ it('refuses a save of a block that another save changed during its model or acco
   check.resolve(model)
   await expect(slow).rejects.toThrow(SettingsConflict)
   expect(store.settings().executor).toMatchObject({ maxWorkers: 2, model: executor.model })
-  // An account check that a save of the same Source outruns is refused the same way.
+  // 被同一 Source 的保存抢先的账号检查，同样会被拒绝。
   const accounts = deferred<void>()
   vi.spyOn(Setup.prototype, 'checkAccounts').mockImplementationOnce(() => accounts.promise)
   const github = settings.block('source:github')
@@ -60,7 +60,7 @@ it('refuses a Policy sync that a Policy save outran, reports it on sync:feishu, 
 it('syncs a Policy part again after a failed sync, a minute later and then after a wait that doubles, until it succeeds', async () => {
   h = await startRuntime()
   const { settings } = h.runtime
-  // The syncs the Runtime runs as it starts finish first.
+  // 先让 Runtime 启动时执行的同步完成。
   await vi.waitFor(() => expect(h!.runtime.health['sync:feishu']).toMatchObject({ state: 'ready' }))
   await h.runtime.idle()
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
@@ -72,7 +72,7 @@ it('syncs a Policy part again after a failed sync, a minute later and then after
     const calls = () => lark.mock.calls.filter(([args]) => args.includes('+chat-members-list')).length
     const before = calls()
     await vi.advanceTimersByTimeAsync(60_000)
-    // The first retry fails too, so the next waits two minutes.
+    // 第一次重试也失败，因此下一次等待两分钟。
     expect(calls()).toBe(before + 1)
     lark.mockResolvedValueOnce({ users: [{ member_id: 'ou_alice', name: 'Alice' }], has_more: false })
     await vi.advanceTimersByTimeAsync(60_000)
@@ -80,7 +80,7 @@ it('syncs a Policy part again after a failed sync, a minute later and then after
     await vi.advanceTimersByTimeAsync(60_000)
     await vi.waitFor(() => expect(h!.runtime.health['sync:feishu']).toMatchObject({ state: 'ready' }))
     expect(calls()).toBe(before + 2)
-    // A success ends the retries.
+    // 一次成功后不再重试。
     await vi.advanceTimersByTimeAsync(3_600_000)
     expect(calls()).toBe(before + 2)
   } finally { vi.useRealTimers() }

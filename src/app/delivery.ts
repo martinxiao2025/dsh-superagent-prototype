@@ -1,4 +1,4 @@
-/** Idempotent message delivery to DSH agents across Session restarts. */
+/** 跨 Session 重启向 DSH agent 幂等投递消息。 */
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { freezeMessage, MessageId, type ContextFormed, type UserMessage } from '@deepseek-ai/dsh-llm'
@@ -12,21 +12,21 @@ declare module '@deepseek-ai/dsh-llm' {
 }
 
 type Seen = { ids: Set<string>; loaded?: Promise<void> }
-/** The id of the message delivered under `requestId`, the same on every retry. */
+/** `requestId` 下所投递消息的 id，每次重试都相同。 */
 export const messageId = (requestId: string) => MessageId(`dsh-superagent:${requestId}`)
-/** Extracts the idempotency key from current or legacy plugin message sources. */
+/** 从当前或旧的插件消息来源中提取幂等键。 */
 function deliveryId(message: UserMessage): string | undefined {
-  // Persisted sources may predate the current producer-specific source map.
+  // 已持久化的 source 可能早于当前按生产者划分的 source 映射。
   const source: { kind: string; plugin?: unknown; rpcId?: unknown } = message.source
   if (source.kind === 'dsh-superagent' || (source.kind === 'plugin' && source.plugin === 'dsh-superagent')) return message.id
-  // Requests admitted by the former user RPC retain their original attribution.
+  // 旧版用户 RPC 准入的请求保留其原始归属。
   if (source.kind === 'user' && 'rpcId' in source && typeof source.rpcId === 'string') return messageId(source.rpcId)
 }
 
 /**
- * Delivers messages to DSH agents at most once per request ID across active and restored Sessions.
- * Tracks delivered message IDs from live Session events, persisted history, and pending inboxes so retries from `Sessions` do not duplicate messages,
- * and marks delivered messages with `dsh-superagent`'s own source (`dsh-superagent`) rather than user RPCs so they are never mistaken for messages written by a person.
+ * 在活跃与已恢复的 Session 中，按 request ID 向 DSH agent 至多投递一次消息。
+ * 从实时 Session 事件、已持久化历史与待处理收件箱追踪已投递消息 ID，使 `Sessions` 的重试不会重复投递，
+ * 并把已投递消息标记为 `dsh-superagent` 自身的来源（`dsh-superagent`）而非用户 RPC，以免被误认为人写的消息。
  */
 export class AgentDelivery {
   private readonly seen = new WeakMap<Session, Seen>()
@@ -62,7 +62,7 @@ export class AgentDelivery {
     const id = messageId(requestId)
     return (await this.history(agent)).ids.has(id) || [...agent.inbox.nextTurn, ...agent.inbox.nextStep].some(message => deliveryId(message) === id)
   }
-  /** Delivers once to the selected inbox, or injects into history without waking the agent, and flushes Session persistence before acknowledging the producer. */
+  /** 向选定的收件箱投递一次，或注入历史而不唤醒 agent，并在向生产者确认之前刷新 Session 持久化。 */
   async send(agent: Agent, requestId: string, text: string, mode: 'queue' | 'steer' | { inject: string }, signal: AbortSignal, authorize?: () => void,
     accepted?: () => void): Promise<void> {
     signal.throwIfAborted()

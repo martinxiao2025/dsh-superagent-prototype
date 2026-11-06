@@ -35,7 +35,7 @@ it('reads any requested PR’s CI on demand without restricting the author', asy
   expect(gh).toHaveBeenCalledTimes(2)
 })
 
-/** Fake GitHub REST API pull request review comment payload. */
+/** 假的 GitHub REST API PR 审查评论响应体。 */
 const reviewComment = (id: number, reply?: number) => ({ id, url: `https://api.github.com/repos/acme/widgets/pulls/comments/${id}`,
   pull_request_review_id: 77, node_id: 'PRRC_x', path: 'src/render.ts', line: 43, original_line: 43, side: 'RIGHT', commit_id: 'abc',
   diff_hunk: '@@ -40,6 +40,8 @@\n   const title = view.title\n   const margin = 12\n+  const padding = 8',

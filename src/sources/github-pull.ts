@@ -1,4 +1,4 @@
-/** Pull request binding, lifecycle observation, and terminal IM notification helpers. */
+/** PR 绑定、生命周期观察与终态 IM 通知的辅助函数。 */
 import { z } from 'zod'
 import { key, liveTicket, type Follow, type OutboundMessage, type ThreadFact, type Ticket } from '../core/index.ts'
 import type { Deployment } from '../deployment.ts'
@@ -19,18 +19,19 @@ const pullNumber = (thread: string): number | undefined => thread.startsWith(`${
 export const pullsOf = (ticket: Pick<Ticket, 'follows'>, open = false): number[] =>
   (ticket.follows ?? []).filter(item => !open || !item.closed).flatMap(item => pullNumber(item.thread) ?? [])
 export const pullOf = (ticket: Pick<Ticket, 'follows'>): number | undefined => pullsOf(ticket, true).at(-1) ?? pullsOf(ticket).at(-1)
-/** True when the PR was opened by the agent account from a branch in the configured repository (not a fork). */
+/** 当该 PR 由 agent 账号从已配置仓库中的分支（而非 fork）开启时为 true。 */
 export const agentPull = (pr: { user: { login: string }; head?: { repo?: { full_name: string } | null } | null },
   deployment: Pick<Deployment, 'github' | 'repository'>): boolean =>
   sameName(pr.user.login, deployment.github.login) && sameName(pr.head?.repo?.full_name ?? '', deployment.repository)
-/** True when a branch belongs to the ticket: its last path segment is the ticket's short name, such as `agent/<name>`. */
+/** 当分支属于该工单时为 true：其最后一段路径就是工单的短名称，例如 `agent/<name>`。 */
 export const ticketBranch = (ticket: Pick<Ticket, 'execution'>, ref: string): boolean =>
   !!ticket.execution?.name && ref.split('/').at(-1) === ticket.execution.name
 const AUTO_MERGE_ON: ThreadFact = { label: { zh: '自动合并', en: 'Auto-merge' }, value: { zh: '已开启', en: 'on' } }
 
 /**
- * Validates and binds an open PR to a ticket when the PR is either the ticket's origin PR or an agent-authored PR on the ticket's branch, enforcing that one PR binds to at most one open ticket.
- * Returns an error message when binding is rejected, or undefined when the PR is bound or when the PR is not open (which is not an error).
+ * 校验并把一个开放的 PR 绑定到工单：该 PR 要么是工单的来源 PR，要么是 agent 在工单分支上创建的 PR；
+ * 并确保一个 PR 至多绑定一个未结工单。
+ * 绑定被拒绝时返回错误消息；PR 已绑定或 PR 未打开（不算错误）时返回 undefined。
  */
 export function claimPull(ctx: SourceContext, ticketId: string, pr: Pull): string | undefined {
   const ticket = ctx.tickets.get(ticketId)
@@ -49,10 +50,10 @@ export function claimPull(ctx: SourceContext, ticketId: string, pr: Pull): strin
   return undefined
 }
 /**
- * Reconciles a polled PR's open/merged/closed state and auto-merge fact with any bound or branch-matching ticket.
- * An open agent PR auto-binds to the single open ticket on its branch unless that ticket already follows another open PR
- * (which only the Executor's report changes).
- * @returns whether the PR has ended.
+ * 把轮询到的 PR 的 open/merged/closed 状态与自动合并事实，同任何已绑定或分支匹配的工单核对。
+ * 开放的 agent PR 会自动绑定到其分支上唯一的未结工单，除非该工单已跟随另一个开放的 PR
+ * （这种情况只能由 Executor 的报告改变）。
+ * @returns PR 是否已结束。
  */
 export async function observePull(ctx: SourceContext, pr: Pull): Promise<boolean> {
   const ended = pr.state === 'closed' || !!pr.merged
@@ -60,7 +61,7 @@ export async function observePull(ctx: SourceContext, pr: Pull): Promise<boolean
   else {
     const candidates = agentPull(pr, ctx.deployment) ? ctx.tickets.open().filter(ticket => ticketBranch(ticket, pr.head.ref)) : []
     const ticket = candidates.length === 1 ? candidates[0]! : undefined
-    // A PR the ticket followed until it closed, and that is open again, is followed again.
+    // 工单曾跟随某个 PR 直到其关闭；该 PR 再次打开时会被再次跟随。
     const reopened = ticket?.follows?.some(item => item.thread === `${SOURCE}:${pr.number}` && item.closed)
     if (ticket && (reopened || pullsOf(ticket, true).every(number => number === pr.number))) claimPull(ctx, ticket.id, pr)
   }
@@ -74,8 +75,8 @@ function bind(ctx: SourceContext, ticketId: string, pr: Pull, own: boolean): voi
   })
 }
 /**
- * Reports a merged or closed PR once to the open tickets that follow it, whose end the core decides.
- * Their subscription to the PR stays so a later human comment there resumes the ticket.
+ * 把已合并或已关闭的 PR 报告一次给跟随它的未结工单，其结束由核心决定。
+ * 它们对该 PR 的订阅会保留，使之后人在那里的评论能恢复该工单。
  */
 function closePull(ctx: SourceContext, pr: Pull): void {
   if (!ctx.tickets.open().some(ticket => pullsOf(ticket, true).includes(pr.number))) return
@@ -83,9 +84,8 @@ function closePull(ctx: SourceContext, pr: Pull): void {
   ctx.tickets.threadClosed({ source: SOURCE, id: String(pr.number) }, pr.merged ? 'merged' : 'closed', at)
 }
 /**
- * Builds idempotent outbound notices for IM conversations when a ticket ends with its PR (selecting the last-closed PR it
- * opened, else the last one it followed). The notice language follows the ticket's source request: Chinese when it contains
- * Han characters and no kana, otherwise English.
+ * 当工单随其 PR 结束时，为 IM 会话构建幂等的出站通知（选择它开启的最近关闭的 PR，
+ * 否则选择它跟随的最近一个）。通知语言跟随工单的来源请求：含汉字且不含假名时用中文，否则用英文。
  */
 export function pullEndNotices(ticket: Ticket, request: string, repository: string): OutboundMessage[] {
   const outcome = ticket.ended?.outcome
@@ -99,7 +99,7 @@ export function pullEndNotices(ticket: Ticket, request: string, repository: stri
   const text = chinese
     ? outcome === 'merged' ? `[PR #${number}](${url}) 已合并。` : `[PR #${number}](${url}) 已关闭，未合并。`
     : outcome === 'merged' ? `[PR #${number}](${url}) has merged.` : `[PR #${number}](${url}) was closed without merging.`
-  // GitHub timelines and linked issues already show the merge or closure, so GitHub channels are skipped.
+  // GitHub 时间线与关联 issue 已显示合并或关闭，因此跳过 GitHub channel。
   return ticket.channels.filter(channel => channel.source !== SOURCE).map(channel => ({
     id: key('pr-terminal', String(number), channel.source, JSON.stringify(channel.address), outcome), channel, text, kind: 'notice', ticketId: ticket.id }))
 }

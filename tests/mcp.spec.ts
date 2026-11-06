@@ -1,6 +1,6 @@
 /**
- * The MCP surface: the same fourteen tools the DSH main Session registers, over Streamable HTTP on loopback only, with
- * argument validation, structured failures, and a noisy port that must not stop the orchestrator.
+ * MCP 表面：与 DSH 主 Session 注册的同样十四个工具，仅通过回环上的 Streamable HTTP 提供，并带有
+ * 参数校验、结构化失败，以及一个不得让 orchestrator 停摆的嘈杂端口。
  */
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
@@ -17,7 +17,7 @@ import { feishu, startRuntime, type Host } from './fixtures/host.ts'
 
 type TextContent = { type: 'text'; text: string }
 const payload = (result: unknown) => JSON.parse((result as { content: TextContent[] }).content[0]!.text) as Record<string, any>
-/** A client and server pair over an in-memory transport, closed by the test. */
+/** 基于内存传输的客户端与服务端组合，由测试关闭。 */
 async function inMemory(tools: ReturnType<typeof mainTools>) {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
   const server = new Server({ name: 'dsh-superagent-test', version: '0.0.0' }, { capabilities: { tools: {} } })
@@ -27,7 +27,7 @@ async function inMemory(tools: ReturnType<typeof mainTools>) {
   await client.connect(clientTransport)
   return { client, server }
 }
-/** Connects a client to the running endpoint, or fails when the endpoint did not start. */
+/** 将客户端连接到运行中的端点；端点未启动时失败。 */
 async function connect(host: Host) {
   const port = host.mcpPort()
   expect(port).toBeTypeOf('number')
@@ -121,7 +121,7 @@ describe('MCP endpoint', () => {
     expect(malformed.status).toBe(400)
     expect(((await malformed.json()) as { error: { message: string } }).error.message).toBe('The MCP request body is not JSON')
 
-    // An established session must be bounded too, not only initialize.
+    // 已建立的 session 也必须受限，而不只是 initialize。
     const transport = new StreamableHTTPClientTransport(new URL(url))
     const client = new Client({ name: 'dsh-superagent-test', version: '0.0.0' })
     await client.connect(transport)

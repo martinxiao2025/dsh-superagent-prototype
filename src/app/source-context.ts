@@ -1,4 +1,4 @@
-/** Scoped runtime context exposed to each Source kind, isolating Sources from direct Store or Engine access. */
+/** 暴露给每个 Source 类型的受限运行时上下文，使 Source 无法直接访问 Store 或 Engine。 */
 import type { EngineForSources, ReceiveResult, Trigger } from '../core/index.ts'
 import type { Deployment } from '../deployment.ts'
 import type { Commands } from '../infra/commands.ts'
@@ -14,21 +14,21 @@ export interface SourceContextDeps {
   readonly engine: Pick<EngineForSources, 'bindThread' | 'threadClosed'>
   readonly commands: Commands
   readonly sources: SourceRegistry
-  /** Throws when accessed before initial setup completes. */
+  /** 在初始 setup 完成前访问会抛错。 */
   readonly deployment: Deployment
   readonly ready: Promise<void>
   configured(): boolean
-  /** Setup problem whose `place` matches the Source kind receives it on `context.problem`. */
+  /** `place` 与该 Source 类型匹配的 setup 问题会通过 `context.problem` 交给它。 */
   readonly setupProblem?: SetupProblem | undefined
-  /** Why setup found no Feishu bot even though the Feishu Source names a CLI. */
+  /** 飞书 Source 虽指定了 CLI，setup 却未找到飞书机器人的原因。 */
   readonly feishuProblem?: SetupProblem | undefined
-  /** Hands a Trigger to the Engine and schedules the pass that assesses it. */
+  /** 把 Trigger 交给 Engine，并调度评估它的 pass。 */
   receive(trigger: Trigger): ReceiveResult | Promise<ReceiveResult>
 }
 
 /**
- * Builds the context for one Source kind. Health reports are restricted to entries declared by the kind and
- * bound to the active registration, becoming no-ops once unregistered.
+ * 为某个 Source 类型构建上下文。健康上报被限制在该类型声明的条目内，并绑定到当前注册实例；
+ * 注销后变为空操作。
  */
 export function sourceContextOf(deps: SourceContextDeps, kind: { kind: string; health: readonly string[] }): SourceContext {
   const { store } = deps

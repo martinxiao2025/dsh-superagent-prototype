@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// Panel search, glossary, route persistence, and host-down fallback.
+// 面板搜索、术语表、路由持久化，以及主机不可用时的回退。
 import { act } from 'react'
 import { expect, it } from 'vitest'
 import { en, zh } from '../src/client/locales.ts'
@@ -51,7 +51,7 @@ it('shows domain terms in the interface language only and lists both languages i
   const row = [...dialog.querySelectorAll('tr')].find(item => item.textContent?.startsWith('Ticket'))!
   expect([...row.querySelectorAll('td')].map(cell => cell.textContent)).toEqual(['Ticket', '工单', 'An authorized unit of work'])
   expect(dialog.textContent).toContain('Accept 接单')
-  // Terms are grouped the way the tabs follow the flow, after the roles that act in it.
+  // 术语按标签页跟随流程的方式分组，排在流程中行动的角色之后。
   expect([...dialog.querySelectorAll('th.dt-glossary-group')].map(cell => cell.textContent)).toEqual(['Roles', 'Source', 'Trigger', 'Eval',
     'Execution'])
   expect([...dialog.querySelectorAll('tr')].find(item => item.textContent?.startsWith('Main Session'))!.textContent).toContain('prompts call it the orchestrator')

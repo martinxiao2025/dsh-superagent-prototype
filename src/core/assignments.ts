@@ -1,4 +1,4 @@
-/** What the Executor and its workers report about the Assignments that run tickets. */
+/** Executor 及其 worker 就运行 ticket 的 assignment 所报告的内容。 */
 import { key } from './ids.ts'
 import { UserError } from './errors.ts'
 import { latestAssignment, liveTicket, runningAssignment } from './model.ts'
@@ -7,30 +7,29 @@ import { EnginePart, type EngineOptions } from './part.ts'
 import type { Replies } from './replies.ts'
 import { automatic, type Tickets } from './tickets.ts'
 
-/** What an Assignment reports: a worker's report, or the Executor's own (`waiting` after an idle turn, `failed` after an error). */
+/** Assignment 报告的内容：worker 的报告，或 Executor 自己的报告（空闲一轮后为 `waiting`，出错后为 `failed`）。 */
 export interface WorkerReport {
   state: ReportState
   summary: string
-  /** Open question for a person: a string asks it, `null` clears an open one, and `undefined` keeps the current one. */
+  /** 向人提出的未决问题：字符串表示提出问题，`null` 清除已有的问题，`undefined` 保持当前问题不变。 */
   question?: string | null
-  /** The person's message whose request raised the question; routes the question to the channel where it was written. */
+  /** 其请求引出该问题的人的消息；用于把问题路由到该消息所在的通道。 */
   askedBy?: string
-  /** The person's question this report answers, which the worker thereby takes up; authorizes the main Session to send an answer reply. */
+  /** 该报告所回答的人的问题，worker 因此接手了它；由此授权主 Session 发送回答回复。 */
   answers?: string
 }
 const RECOVERY_NOTE = 'The host restarted during this ticket. Inspect the current worktree, git history and GitHub state before continuing. Do not repeat an already completed external operation. Finish the original assignment and report its status.'
 
 /**
- * Assignments records what the Executor and its workers report about the Assignments that run tickets: one started, Inputs
- * reached it or failed to, its worker's Session took Inputs into a step, a turn of its worker ended, a host restart
- * interrupted it, and a worker's report with its question for a person. It depends on
- * Tickets to restart or end a ticket and on Replies to withdraw a question a report replaced; the Engine routes the
- * Executor's lifecycle callbacks and its workers' reports here.
+ * Assignments 记录 Executor 及其 worker 就运行 ticket 的 Assignment 所报告的内容：某个 Assignment 已启动、Input 抵达
+ * 或投递失败、其 worker 的 Session 把 Input 带入步骤、其 worker 的一轮结束、宿主机重启导致中断，以及带有人工问题的
+ * worker 报告。它依赖 Tickets 重启或结束 ticket、依赖 Replies 撤回被报告替换的问题；由 Engine 把 Executor 的生命周期
+ * 回调与 worker 报告路由到这里。
  */
 export class Assignments extends EnginePart {
   constructor(options: EngineOptions, private readonly tickets: Tickets, private readonly replies: Replies) { super(options) }
 
-  /** Marks a non-ended assignment running, queues delivery of waiting undelivered inputs on an open ticket, and emits `assignment.started`. */
+  /** 把未结束的 assignment 标记为运行中，在开放 ticket 上排队投递等待中的未投递 input，并发出 `assignment.started`。 */
   started(ticketId: string, assignmentId: string): void {
     const ticket = this.require(ticketId)
     const assignment = ticket.assignments.find(item => item.id === assignmentId)
@@ -42,8 +41,8 @@ export class Assignments extends EnginePart {
     this.emit('assignment.started', { ticketId, assignmentId })
   }
   /**
-   * Marks `inputIds` delivered on the ticket's running assignment and clears any prior `delivery` failure; ignored if no
-   * longer running. Its worker reads each once its Session takes it into a step (see `read`).
+   * 在 ticket 运行中的 assignment 上把 `inputIds` 标记为已投递，并清除此前的 `delivery` 失败；若已不再运行则忽略。
+   * 其 worker 会在 Session 把每条带入步骤后读取它（见 `read`）。
    */
   delivered(ticketId: string, assignmentId: string, inputIds: string[]): void {
     const ticket = this.running(ticketId, assignmentId)
@@ -56,7 +55,7 @@ export class Assignments extends EnginePart {
     delete ticket.delivery
     this.repo.tickets.save(ticket)
   }
-  /** Records when the worker's Session of an open ticket took `inputIds` into a step, from which its model reads them. */
+  /** 记录开放 ticket 的 worker Session 何时把 `inputIds` 带入步骤，其模型从此读取它们。 */
   read(ticketId: string, inputIds: string[]): void {
     const ticket = this.require(ticketId)
     if (!liveTicket(ticket)) return
@@ -76,9 +75,8 @@ export class Assignments extends EnginePart {
     this.repo.tickets.save(ticket)
   }
   /**
-   * Handles a running assignment interrupted by a host restart: restarts it with a recovery note unless its latest report is
-   * `waiting`, `ready`, `blocked`, or `failed` and no input was delivered after that report, in which case it keeps its
-   * session and flushes any waiting undelivered inputs.
+   * 处理被宿主机重启打断的运行中 assignment：除非其最近报告为 `waiting`、`ready`、`blocked` 或 `failed` 且该报告之后
+   * 没有 input 被投递，否则带恢复说明重启它；后一种情况下它保留其 session 并冲刷所有等待中的未投递 input。
    */
   interrupted(ticketId: string, assignmentId: string): void {
     const ticket = this.running(ticketId, assignmentId)
@@ -91,10 +89,10 @@ export class Assignments extends EnginePart {
     else if (ticket.undelivered.length) this.options.executor.deliver(ticket, running)
   }
   /**
-   * Records a worker status report on an open ticket's current assignment, updating `attention`, `answers`, held automated
-   * inputs, and ending the ticket when `dropped` or when `ready` and not waiting on followed threads (`followsDone`).
-   * @throws UserError for an unknown or ended ticket, an ended assignment, a question combined with a ready result or answer,
-   * or a question/answer referencing a non-human or unreached trigger.
+   * 在开放 ticket 当前的 assignment 上记录一份 worker 状态报告，更新 `attention`、`answers`、被拦下的自动 input，
+   * 并在 `dropped` 时、或在 `ready` 且未在等待跟随的 thread（`followsDone`）时结束 ticket。
+   * @throws UserError 对于未知或已结束的 ticket、已结束的 assignment、与 ready 结果或回答同时给出的问题，
+   * 或引用了非人或未抵达 trigger 的问题/回答。
    */
   report(ticketId: string, report: WorkerReport): Ticket {
     const ticket = this.require(ticketId)
@@ -117,7 +115,7 @@ export class Assignments extends EnginePart {
     const attention = report.question === null || report.state === 'ready' ? undefined : asked
     if (attention) ticket.attention = attention
     else delete ticket.attention
-    // A replaced or cleared attention question withdraws any pending unsent reply for the previous question from the outbox.
+    // 被替换或清除的 attention 问题会把此前问题尚未发出的待发回复从 outbox 撤回。
     if (previous && previous.id !== attention?.id) this.replies.withdrawAttention(previous.id)
     assignment.report = { state: report.state, summary: report.summary, at }
     ticket.updatedAt = at
@@ -125,14 +123,14 @@ export class Assignments extends EnginePart {
     if (report.answers) this.takeUp(ticketId, report.answers)
     if (report.state === 'blocked' || report.state === 'failed') ticket.undelivered = ticket.undelivered.filter(id => !automatic(ticket.inputs.find(input => input.id === id)))
     this.repo.tickets.save(ticket)
-    // A ticket that follows Threads ends with them: a ready report ends it only once followsDone holds, with that outcome.
+    // 跟随 Thread 的 ticket 随它们一起结束：ready 报告只有在 followsDone 成立后才以该结果结束它。
     const ready = !ticket.follows?.length ? 'completed' : this.tickets.followsDone(ticket)?.outcome
-    // A dropped report after a close the ticket deferred ends it as the close did, which its final notice tells.
+    // 在 ticket 推迟的关闭之后到来的 dropped 报告，按该关闭的结果结束它，最终通知会说明这一点。
     const outcome = report.state === 'dropped' ? this.tickets.followsDone(ticket)?.outcome ?? 'dropped' : report.state === 'ready' ? ready : undefined
     if (outcome) this.tickets.end(ticketId, 'executor', outcome, at)
     return this.require(ticketId)
   }
-  /** The ticket, while it is open and `assignmentId` runs it. */
+  /** 当 ticket 开放且由 `assignmentId` 运行时，返回该 ticket。 */
   private running(ticketId: string, assignmentId: string): Ticket | undefined {
     const ticket = this.require(ticketId)
     return liveTicket(ticket) && runningAssignment(ticket)?.id === assignmentId ? ticket : undefined

@@ -1,4 +1,4 @@
-/** Shared settings context, block draft hook, form controls, Source schema field renderer, and configuration history. */
+/** 共享的设置上下文、块草稿 hook、表单控件、Source schema 字段渲染器与配置历史。 */
 import { cloneElement, createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ReactElement,
   type ReactNode } from 'react'
 import type { ApiResponse } from '../app/api.ts'
@@ -11,7 +11,7 @@ import { settingsRoute } from './route.ts'
 import { errorText, localized, valueLabel, when, type T } from './text.ts'
 import { Hint, LoadState } from './widgets.tsx'
 
-/** Parse a numeric input string, returning `null` when empty so the server rejects blank required numbers instead of coercing to 0. */
+/** 解析数字输入字符串，为空时返回 `null`，使服务端拒绝空白的必填数字，而不是强制转换为 0。 */
 export const numberOf = (text: string): number | null => text.trim() ? Number(text) : null
 interface SettingsData { settings: SettingsView; reload: () => Promise<void> }
 const SettingsContext = createContext<SettingsData | undefined>(undefined)
@@ -41,7 +41,7 @@ export function useBlockDraft<V>(block: string, saved: V, revision: number, toVa
   } })
 }
 
-/** Fieldset wrapper that restores focus to the previously active input after a save completes and re-enables the form. */
+/** Fieldset 包装组件；保存完成并重新启用表单后，把焦点恢复到此前活动的输入框。 */
 export function Fields({ disabled, children }: { disabled: boolean; children: ReactNode }) {
   const set = useRef<HTMLFieldSetElement>(null)
   const focused = useRef<HTMLElement | null>(null)
@@ -117,8 +117,8 @@ function changeText(t: T, change: HistoryChange, sources: SourceView[]): string 
     field: field ? localized(t, field.label) : change.field ?? '' })
 }
 /**
- * Collapsible revision history for the specified settings blocks, optionally including all Policy-changing saves.
- * Revisions saved before per-block tracking existed have no `block` and appear under `policy`.
+ * 指定设置块的可折叠版本历史，可选择包含所有改变 Policy 的保存。
+ * 在按块追踪功能出现之前保存的版本没有 `block`，会归入 `policy` 下显示。
  */
 export function ConfigHistory({ blocks, versions, focus }: { blocks: string[]; versions?: boolean; focus?: string }) {
   const { t, call } = usePanel()
@@ -132,7 +132,7 @@ export function ConfigHistory({ blocks, versions, focus }: { blocks: string[]; v
   const listed = (block: string | undefined) => block ? blocks.some(item => item === block || (item.endsWith(':')
     && block.startsWith(item))) : blocks.includes('policy')
   const items = data?.items.filter(item => (versions && item.policyChanged) || listed(item.block)) ?? []
-  // Match the oldest save that produced the focused Policy version (where that version originated).
+  // 匹配生成了所聚焦 Policy 版本的最早一次保存（即该版本的来源）。
   const target = focus ? items.filter(item => item.policyChanged && item.policyVersion.startsWith(focus)).at(-1) : undefined
   const scroll = (element: HTMLLIElement | null) => { if (element
     && !element.dataset.scrolled) { element.dataset.scrolled = '1'; element.scrollIntoView?.({ block: 'center' }) } }
@@ -183,11 +183,11 @@ function RowsField({ field, value, saved, onChange, labels, refreshLabels }: {
   const key = field.columns[0]!
   const savedKeys = new Set((Array.isArray(saved) ? saved as Row[] : []).map(row => row[key.key]))
   const choose = key.type === 'text' && key.choose && Object.keys(labels).length ? localized(t, key.choose) : ''
-  // Exclude options already selected in another row.
+  // 排除已在其他行中选择过的选项。
   const choices = (id: string) => Object.entries(labels).filter(([option]) => option === id
     || !rows.some(other => other[key.key] === option)).sort(byName)
   const blank = Object.fromEntries(field.columns.map(column => [column.key, column.type === 'select' ? column.options[0]!.value : '']))
-  // Summarize a row by its second column only when that column is free text (e.g., a display name), not a select option.
+  // 仅当第二列是自由文本（例如显示名）时才用它概括该行，而不是下拉选项。
   const named = field.columns[1]?.type === 'text' ? field.columns[1] : undefined
   const rowName = (row: Row) => (named && row[named.key]) || labels[row[key.key] ?? ''] || row[key.key] || ''
   const cell = (row: Row, index: number, column: Column) => {

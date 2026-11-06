@@ -1,4 +1,4 @@
-/** A loopback Streamable HTTP MCP endpoint that exposes the main Session's tools to agent-plugins clients. */
+/** 仅限回环的 Streamable HTTP MCP 端点，把主 Session 的工具暴露给 agent-plugins 客户端。 */
 import { randomUUID } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from 'node:http'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
@@ -9,13 +9,13 @@ import { mountTools } from './mcp-tools.ts'
 import type { Tool } from './tools/tool.ts'
 
 const PATH = '/mcp'
-/** Largest request body the endpoint reads; the test asserts the 413 by sending one byte more. */
+/** 端点读取的最大请求体；测试会多发一个字节来断言 413。 */
 export const MAX_BODY = 4 * 1024 * 1024
 const IDLE_MS = 10 * 60 * 1000
 const SWEEP_MS = 60 * 1000
 const HEADERS_TIMEOUT_MS = 10 * 1000
 const REQUEST_TIMEOUT_MS = 30 * 1000
-/** Reported in `initialize`; `tests/mcp.spec.ts` asserts it equals `package.json`'s version. */
+/** 在 `initialize` 中上报；`tests/mcp.spec.ts` 断言它等于 `package.json` 的版本。 */
 export const SERVER_VERSION = '0.1.0'
 
 export interface McpEndpointOptions {
@@ -29,16 +29,16 @@ interface Session {
   readonly server: Server
   last: number
 }
-/** Replies in JSON-RPC shape so clients see the failure before any session exists. */
+/** 以 JSON-RPC 形状回复，使客户端在任何 session 建立之前也能看到失败。 */
 const rpcError = (res: ServerResponse, status: number, code: number, message: string): void => {
   res.writeHead(status, { 'content-type': 'application/json' })
   res.end(JSON.stringify({ jsonrpc: '2.0', error: { code, message }, id: null }))
 }
-/** Marks a body the endpoint rejected and already answered. */
+/** 标记端点已经拒绝并已答复的请求体。 */
 const Rejected: unique symbol = Symbol('rejected')
-/** The body exceeded `MAX_BODY`; the caller answers 413 instead of resetting the connection. */
+/** 请求体超过 `MAX_BODY`；调用方直接答复 413，而不是重置连接。 */
 class BodyTooLarge extends Error {}
-/** Reads and parses a request body, bounded so a client cannot exhaust memory; it stops buffering once over the limit. */
+/** 读取并解析请求体，并加以限额以免客户端耗尽内存；超过上限后立即停止缓冲。 */
 const readBody = (req: IncomingMessage): Promise<unknown> => new Promise((resolve, reject) => {
   const chunks: Buffer[] = []
   let size = 0
@@ -59,8 +59,8 @@ const readBody = (req: IncomingMessage): Promise<unknown> => new Promise((resolv
 })
 
 /**
- * Owns one loopback listener and one transport per MCP session. It binds `127.0.0.1` only and enables the transport's
- * DNS rebinding protection, so a browser page cannot drive the orchestrator through this port.
+ * 持有单个回环监听器，并为每个 MCP session 持有一个 transport。只绑定 `127.0.0.1` 并启用 transport 的
+ * DNS rebinding 防护，使浏览器页面无法经此端口驱动编排器。
  */
 export class McpEndpoint {
   private readonly sessions = new Map<string, Session>()
@@ -69,15 +69,15 @@ export class McpEndpoint {
   private bound?: number
   private stopping?: Promise<void>
   constructor(private readonly options: McpEndpointOptions) {}
-  /** The port actually bound; differs from the configured one when that was 0. */
+  /** 实际绑定的端口；当配置值为 0 时与配置值不同。 */
   get port(): number { return this.bound ?? this.options.port }
-  /** Starts listening; rejects when the port is unavailable so the caller can report it in health. */
+  /** 开始监听；端口不可用时拒绝，以便调用方在健康状态中上报。 */
   async start(): Promise<void> {
     const http = createServer((req, res) => { void this.handle(req, res) })
     this.http = http
-    // An error after startup has no startup promise to reject; without a listener it would end the process.
+    // 启动之后的错误没有启动 promise 可拒绝；若没有监听器，它会终结进程。
     http.on('error', error => { this.options.log('MCP server error', error) })
-    // Bound slow clients: headers must arrive quickly, and the whole request within a loopback-sized window.
+    // 约束慢客户端：请求头必须尽快到达，整个请求需在回环场景合理的窗口内完成。
     http.headersTimeout = HEADERS_TIMEOUT_MS
     http.requestTimeout = REQUEST_TIMEOUT_MS
     http.on('clientError', (error, socket) => {
@@ -93,9 +93,9 @@ export class McpEndpoint {
         http.listen(this.options.port, '127.0.0.1')
       })
     } catch (error) {
-      // A failed listen leaves no listener to stop; forget the server so `stop()` does not report a stale endpoint.
+      // 监听失败不会留下可停止的监听器；忘掉该 server，使 `stop()` 不会报告过期的端点。
       this.http = undefined
-      http.close(() => { /* A server that never listened has nothing to close. */ })
+      http.close(() => { /* 从未监听过的 server 没有可关闭的内容。 */ })
       throw error
     }
     const address = http.address()
@@ -104,7 +104,7 @@ export class McpEndpoint {
     this.sweepTimer.unref()
     this.options.health.set({ state: 'ready', detail: `MCP endpoint on http://127.0.0.1:${this.port}${PATH}` })
   }
-  /** Stops listening and closes every session; repeated calls share one promise. */
+  /** 停止监听并关闭所有 session；重复调用共享同一个 promise。 */
   stop(): Promise<void> { return this.stopping ??= this.closeAll() }
   private async closeAll(): Promise<void> {
     if (this.sweepTimer) clearInterval(this.sweepTimer)
@@ -115,7 +115,7 @@ export class McpEndpoint {
     }
     this.options.health.set({ state: 'paused', detail: 'MCP endpoint stopped' })
   }
-  /** The host and origin values the transport accepts for DNS rebinding protection. */
+  /** transport 为 DNS rebinding 防护所接受的 host 与 origin 值。 */
   private allowed(): string[] { return [`127.0.0.1:${this.port}`, `localhost:${this.port}`] }
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const path = new URL(req.url ?? '/', 'http://127.0.0.1').pathname
@@ -129,7 +129,7 @@ export class McpEndpoint {
     const session = id ? this.sessions.get(id) : undefined
     if (session) {
       session.last = Date.now()
-      // Read POST bodies here too, so the 4 MB cap covers every request, not only initialize.
+      // 这里也读取 POST 请求体，使 4 MB 上限覆盖每个请求，而不只是 initialize。
       if (req.method !== 'POST') { await this.forward(session.transport, req, res); return }
       const body = await this.receive(req, res)
       if (body !== Rejected) await this.forward(session.transport, req, res, body)
@@ -143,13 +143,13 @@ export class McpEndpoint {
     try {
       await this.open(req, res, body)
     } catch (error) {
-      // The client sees a fixed message; the detail stays in the log so a path or stack cannot leak over the port.
+      // 客户端只看到固定消息；细节留在日志中，避免路径或堆栈经该端口泄漏。
       this.options.log('MCP initialize failed', error)
       if (!res.headersSent) rpcError(res, 500, -32603, 'The MCP session could not be initialized')
       else res.end()
     }
   }
-  /** Reads one body, answering the client itself when it is too large or not JSON. */
+  /** 读取一个请求体；过大或非 JSON 时由端点自行答复客户端。 */
   private async receive(req: IncomingMessage, res: ServerResponse): Promise<unknown> {
     try { return await readBody(req) }
     catch (error) {
@@ -161,7 +161,7 @@ export class McpEndpoint {
       return Rejected
     }
   }
-  /** Creates the session's server and transport, then hands it the initialize request. */
+  /** 创建该 session 的 server 与 transport，然后把 initialize 请求交给它。 */
   private async open(req: IncomingMessage, res: ServerResponse, body: unknown): Promise<void> {
     let server: Server | undefined
     const hosts = this.allowed()
@@ -182,7 +182,7 @@ export class McpEndpoint {
       await server.connect(transport)
       await this.forward(transport, req, res, body)
     } catch (error) {
-      await transport.close().catch(() => { /* Closing an unconnected transport is harmless. */ })
+      await transport.close().catch(() => { /* 关闭未连接的 transport 是无害的。 */ })
       throw error
     }
   }
@@ -194,13 +194,13 @@ export class McpEndpoint {
       else res.end()
     }
   }
-  /** Closes one session and forgets it. */
+  /** 关闭一个 session 并遗忘它。 */
   private async close(id: string): Promise<void> {
     const session = this.sessions.get(id)
     this.sessions.delete(id)
-    if (session) await session.transport.close().catch(() => { /* Already closed. */ })
+    if (session) await session.transport.close().catch(() => { /* 已经关闭。 */ })
   }
-  /** Reclaims sessions that have been idle past `IDLE_MS`, so disconnected clients do not pin transports forever. */
+  /** 回收空闲超过 `IDLE_MS` 的 session，使断开的客户端不会永久占住 transport。 */
   private async sweep(): Promise<void> {
     const deadline = Date.now() - IDLE_MS
     const idle = [...this.sessions.entries()].filter(([, session]) => session.last < deadline).map(([id]) => id)

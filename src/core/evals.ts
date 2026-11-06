@@ -1,4 +1,4 @@
-/** Evals: the Thread-level assessments of queued Triggers, and the Decisions they end with. */
+/** Evals：对排队 Trigger 的 Thread 级评估，以及它们最终形成的 Decision。 */
 import { key } from './ids.ts'
 import { UserError } from './errors.ts'
 import { liveTicket, threadKey } from './model.ts'
@@ -8,29 +8,28 @@ import { said, type Reason } from './reasons.ts'
 import { EnginePart, type EngineOptions } from './part.ts'
 import type { Tickets } from './tickets.ts'
 
-/** An outcome for the Eval that holds a Trigger; `evalId` names the Eval it was judged for, so a later Eval refuses it. */
+/** 针对持有某个 Trigger 的 Eval 的结果；`evalId` 指明它是为哪个 Eval 判定的，之后的 Eval 会拒绝它。 */
 export type Outcome = AssessmentOutcome & { evalId?: string }
-/** What an Eval ends with, as its Decision records it. */
+/** Eval 结束时产出的内容，即其 Decision 所记录的内容。 */
 interface Finished { kind: DecisionKind; reason: Reason[]; audit?: Record<string, unknown>; ticketId?: string; mandate?: Mandate }
-/** An outcome's reason: a code it carries, else the words its assessor or person wrote. */
+/** 结果的原因：它携带的码，否则是评估者或人所写的文字。 */
 const reasonOf = (reason: string | Reason): Reason[] => [typeof reason === 'string' ? said(reason) : reason]
 const stronger = (a: Strength, b: Strength): Strength => a === 'explicit' || b === 'explicit' ? 'explicit' : 'inferred'
-/** How many times in a row an expired Eval queues its Triggers again before it is recorded unavailable. */
+/** 过期的 Eval 在记为 unavailable 之前，连续把其 Trigger 重新排队的最大次数。 */
 const REQUEUES = 2
 
 /**
- * Evals runs the Evals of Threads: it batches a Thread's queued Triggers into one Eval, takes its strength, actor, and basis
- * from the gate, asks the assessor, keeps its deadline through a pause, and records the Decision it ends with: accept, stop,
- * ignore, or unavailable. It depends on Tickets to create the ticket an accept decides and to end the one a stop names; the
- * Engine routes the main Session's decisions, people's replays, worker handbacks, and the pass's Eval work here.
+ * Evals 负责运行 Thread 的评估：把一个 Thread 排队的 Trigger 合并为一次 Eval，从闸门取得其强度、行为者与 basis，
+ * 询问评估者，在暂停期间保持其截止时间，并记录它最终形成的 Decision：accept、stop、ignore 或 unavailable。
+ * 它依赖 Tickets 创建 accept 所决定的 ticket、结束 stop 所指的 ticket；Engine 把主 Session 的决策、人的重放、
+ * worker 交还以及每轮的 Eval 工作路由到这里。
  */
 export class Evals extends EnginePart {
   constructor(options: EngineOptions, private readonly tickets: Tickets) { super(options) }
 
   /**
-   * Expire a Thread's Eval past its deadline (see `expire`), unless processing is paused: then the Eval notes when the
-   * processing pause began, and once processing resumes its deadline moves forward by the pause's length. An Eval whose
-   * candidate has not reached the assessor's Session does not expire.
+   * 让超过截止时间的 Thread Eval 过期（见 `expire`），除非处理已暂停：此时该 Eval 记下暂停开始的时刻，恢复后其截止
+   * 时间顺延暂停时长。候选尚未抵达评估者 Session 的 Eval 不会过期。
    */
   due(thread: Thread, policy: Policy): void {
     const evaluation = thread.evaluating
@@ -44,7 +43,7 @@ export class Evals extends EnginePart {
     else return
     this.repo.threads.save(thread)
   }
-  /** An Eval's candidate reached the assessor's Session: its deadline counts from now. */
+  /** Eval 的候选已抵达评估者 Session：其截止时间从此起算。 */
   delivered(evalId: string, policy: Policy): void {
     const thread = this.repo.threads.active().find(item => item.evaluating?.id === evalId)
     if (!thread?.evaluating || thread.evaluating.delivered) return
@@ -54,8 +53,8 @@ export class Evals extends EnginePart {
     this.repo.threads.save(thread)
   }
   /**
-   * An Eval past its deadline queues its Triggers again for a fresh Eval, up to `REQUEUES` times in a row, so a busy
-   * assessor does not drop requests; after that it is recorded unavailable.
+   * 超过截止时间的 Eval 会将其 Trigger 重新排入新的 Eval，连续最多 `REQUEUES` 次，以免繁忙的评估者丢弃请求；
+   * 之后则记为 unavailable。
    */
   private expire(thread: Thread): void {
     const expired = (thread.expired ?? 0) + 1
@@ -67,11 +66,11 @@ export class Evals extends EnginePart {
     this.repo.threads.save(thread)
     this.options.assessor.release?.(id)
   }
-  /** Start one Eval of the Triggers queued on a Thread, judged by the gate, and ask the assessor for it. */
+  /** 对某个 Thread 上排队的 Trigger 启动一次 Eval，由闸门判定，并向评估者发起请求。 */
   start(threadKeyValue: string, policy: Policy): void {
     const thread = this.repo.threads.get(threadKeyValue)!
     const at = this.now()
-    // A person's follow-up a ticket still decides is that ticket's: one an older version queued leaves the queue without a Decision.
+    // 仍由某个 ticket 裁决的人的后续消息属于该 ticket：旧版本排入队列的会在没有 Decision 的情况下离开队列。
     const delivered = (id: string) => {
       const trigger = this.repo.triggers.get(id)
       return !!trigger && this.owners(trigger).length > 0
@@ -83,7 +82,7 @@ export class Evals extends EnginePart {
       for (const triggerId of followups) this.emit('trigger.followup', { triggerId })
       if (!thread.pending.length) return
     }
-    // Triggers that already originated a ticket cannot lend authority to a new evaluation or spawn a duplicate ticket.
+    // 已经产生过 ticket 的 Trigger 不能为新评估提供授权，也不能生成重复 ticket。
     const accepted = this.accepted(thread.key)
     const started = thread.pending.filter(id => accepted.has(id))
     const startedTicket = (id: string): Reason => ({ code: 'startedTicket', triggerId: id, values: { ticket: accepted.get(id)!.ticketId! } })
@@ -117,26 +116,25 @@ export class Evals extends EnginePart {
     this.emit('eval.started', { evalId, threadKey: thread.key, triggerIds: thread.evaluating.triggerIds, strength: strongest.strength })
     this.options.assessor.request(this.candidateOf(thread))
   }
-  /** The candidate of the Eval that holds `triggerId`, or undefined while no Eval holds it. */
+  /** 持有 `triggerId` 的那个 Eval 的候选；没有 Eval 持有时为 undefined。 */
   candidate(triggerId: string): Candidate | undefined {
     const thread = this.holding(triggerId)
     return thread && this.candidateOf(thread)
   }
   /**
-   * Decide a Trigger: the Eval that holds it, or a direct Eval of it alone when none does.
-   * @throws UserError when the Trigger is unknown or not admissible, `outcome.evalId` names an Eval that has finished, a
-   * ticket's worker still decides the Trigger and the outcome is not a stop, or an inferred candidate is accepted outside `auto`
-   * mode or without enabled matching rules.
+   * 裁决一个 Trigger：由持有它的 Eval 裁决，若无则对它单独做一次直接 Eval。
+   * @throws UserError 当 Trigger 未知或不可准入、`outcome.evalId` 指向已结束的 Eval、某个 ticket 的 worker 仍在裁决
+   * 该 Trigger 而结果不是 stop，或在 `auto` 之外、或没有已启用且命中的规则时接受推断候选。
    */
   decide(triggerId: string, outcome: Outcome): Decision {
     const trigger = this.repo.triggers.get(triggerId)
     if (!trigger) throw new UserError('unknownTrigger')
     const held = this.holding(triggerId)
     if (outcome.evalId && held?.evaluating?.id !== outcome.evalId) throw new UserError('evalFinished', { eval: outcome.evalId })
-    // Prevent a replayed trigger that already created a ticket from spawning a second one.
+    // 防止已创建过 ticket 的重放 trigger 再生成第二个 ticket。
     const earlier = outcome.kind === 'accept' ? this.accepted(threadKey(trigger.threads[0]!)).get(triggerId) : undefined
     if (earlier) {
-      // Only an Eval started by an earlier version can still hold it; reassess the remaining triggers without it, or ignore it if alone.
+      // 只有旧版本启动的 Eval 仍可能持有它；对其余 trigger 不带它重新评估，若只有它则忽略。
       const others = held?.evaluating?.triggerIds.filter(id => id !== triggerId) ?? []
       if (held && others.length) this.reassess(held, { code: 'acceptedBefore', values: { trigger: triggerId } }, [triggerId])
       else if (held) {
@@ -144,26 +142,26 @@ export class Evals extends EnginePart {
       }
       return earlier
     }
-    // A follow-up that reached a ticket is its worker's to judge: the main Session may only stop the work on it.
+    // 已抵达 ticket 的后续消息由其 worker 裁决：主 Session 只能停止其上的工作。
     if (outcome.kind !== 'stop') this.leftToWorkers(trigger)
     const thread = held ?? this.thread(trigger.threads[0]!)
     const evaluation = held?.evaluating ?? this.directEval(thread, trigger, outcome.kind, outcome.kind === 'stop' ? outcome.ticketId : undefined)
-    // An inferred candidate is accepted only on enabled rules its assessment matched, while assessments may accept.
+    // 推断候选只有在评估命中的规则均已启用时才被接受，而评估本身可以接受。
     if (outcome.kind === 'accept' && evaluation.strength !== 'explicit' && !this.policy().admitsInferred(outcome.rules ?? [])) {
       throw new UserError('notExplicit')
     }
     return this.decideEval(thread, evaluation, outcome)
   }
   /**
-   * Queue a stored Trigger for a fresh Eval on its primary Thread and emit `trigger.requeued`; returns false while an Eval holds it.
-   * @throws UserError when the Trigger is unknown.
+   * 将已存储的 Trigger 排入其主 Thread 的新 Eval，并发出 `trigger.requeued`；当某个 Eval 持有时返回 false。
+   * @throws UserError 当 Trigger 未知。
    */
   reevaluate(triggerId: string): boolean {
     if (!this.requeue(triggerId)) return false
     this.emit('trigger.requeued', { triggerId })
     return true
   }
-  /** Queue a Trigger for a fresh Eval on its primary Thread; false while an Eval holds it. */
+  /** 将 Trigger 排入其主 Thread 的新 Eval；当某个 Eval 持有时返回 false。 */
   private requeue(triggerId: string): boolean {
     const trigger = this.repo.triggers.get(triggerId)
     if (!trigger) throw new UserError('unknownTrigger')
@@ -174,11 +172,10 @@ export class Evals extends EnginePart {
     return true
   }
   /**
-   * Record that a ticket's Executor hands back a Trigger that reached it as beyond the ticket, and queue it for a fresh Eval
-   * when the ticket decided it and no other ticket still does (see `handBack`): the gate judges it as any message on its
-   * Thread, and its candidate carries the reasons, so no requeue notice comes before it. The ticket keeps its Subscription,
-   * and hands a Trigger back once.
-   * @returns whether it was queued: false while another ticket decides it, and for one the ticket did not decide.
+   * 记录某个 ticket 的 Executor 将已抵达它、但超出该 ticket 范围的 Trigger 交还；当该 ticket 裁决过它且没有其他 ticket
+   * 仍在裁决时，把它排入新的 Eval（见 `handBack`）：闸门会像对待其 Thread 上的任何消息一样判定它，其候选会携带原因，
+   * 因此之前不会出现重新排队的通知。ticket 保留其订阅，且每个 Trigger 只交还一次。
+   * @returns 是否已排队：当另一个 ticket 仍在裁决它，或该 ticket 并未裁决它时为 false。
    */
   handback(ticketId: string, triggerId: string, reason: string): boolean {
     const ticket = this.require(ticketId)
@@ -187,8 +184,8 @@ export class Evals extends EnginePart {
     return this.handBack(ticketId, this.repo.triggers.get(triggerId)!, reason)
   }
   /**
-   * Marks an `unavailable` Decision dismissed so the overview lists it no more.
-   * @throws UserError when the Decision is unknown or not `unavailable`.
+   * 把某个 `unavailable` 的 Decision 标记为已忽略，使概览不再列出它。
+   * @throws UserError 当 Decision 未知或并非 `unavailable`。
    */
   dismiss(decisionId: string): Decision {
     const decision = this.repo.decisions.get(decisionId)
@@ -197,7 +194,7 @@ export class Evals extends EnginePart {
     this.repo.decisions.save(decision)
     return decision
   }
-  /** Take a Trigger out of its Thread's queue because it was routed by hand. */
+  /** 因 Trigger 已被手动路由，将其从所在 Thread 的队列中取出。 */
   withdraw(trigger: Trigger): void {
     const thread = this.repo.threads.get(threadKey(trigger.threads[0]!))
     if (!thread?.pending.includes(trigger.id)) return
@@ -205,8 +202,8 @@ export class Evals extends EnginePart {
     this.repo.threads.save(thread)
   }
   /**
-   * End the Eval that holds a Trigger routed to a ticket, since the ticket has it now: one that holds other Triggers too
-   * queues them again for a fresh Eval without it.
+   * 结束持有某个已路由到 ticket 的 Trigger 的 Eval（ticket 现在已拥有它）：若该 Eval 还持有其他 Trigger，
+   * 会在不带它的情况下把它们重新排入新的 Eval。
    */
   routed(triggerId: string, ticketId: string): void {
     const held = this.holding(triggerId)
@@ -214,12 +211,12 @@ export class Evals extends EnginePart {
     if (held?.evaluating?.triggerIds.length === 1) this.finish(held, held.evaluating, { kind: 'ignore', reason: [reason] })
     else if (held) this.reassess(held, { ...reason, triggerId }, [triggerId])
   }
-  /** Start the Evals in progress again under the new Policy version, and say that it changed. */
+  /** 在新 Policy 版本下重新启动进行中的 Eval，并说明 Policy 已变更。 */
   policyChanged(from: string, to: string): void {
     for (const thread of this.repo.threads.active()) if (thread.evaluating) this.reassess(thread, { code: 'policyChanged' })
     this.emit('policy.changed', { from, to })
   }
-  /** End a Thread's Eval as unavailable for `reason` and queue its Triggers, except `without`, for a new Eval ahead of the others. */
+  /** 以 `reason` 为由把某个 Thread 的 Eval 结束为 unavailable，并把其 Trigger（`without` 除外）排入新的 Eval，且优先于其他。 */
   private reassess(thread: Thread, reason: Reason, without: string[] = []): Decision {
     const ids = thread.evaluating!.triggerIds.filter(id => !without.includes(id))
     const decision = this.finish(thread, thread.evaluating!, { kind: 'unavailable', reason: [reason] })
@@ -228,7 +225,7 @@ export class Evals extends EnginePart {
     this.repo.threads.save(current)
     return decision
   }
-  /** The Thread whose Eval holds a Trigger: an Eval runs on the primary Thread of each Trigger it holds. */
+  /** 其 Eval 持有某个 Trigger 的 Thread：Eval 运行在它所持有的每个 Trigger 的主 Thread 上。 */
   private holding(triggerId: string): Thread | undefined {
     const trigger = this.repo.triggers.get(triggerId)
     const thread = trigger && this.repo.threads.get(threadKey(trigger.threads[0]!))
@@ -241,8 +238,8 @@ export class Evals extends EnginePart {
     return { evalId, thread, triggers, strength, policyVersion, tickets: this.ticketsOnThread(thread) }
   }
   /**
-   * Record that the queued Triggers `ids` of a Thread start no Eval, for `reason`, and take them out of its queue. Its id
-   * differs from an Eval's, so it never replaces the Decision of an earlier Eval of the same Triggers.
+   * 记录某个 Thread 排队中的 Trigger `ids` 因 `reason` 而不会启动 Eval，并把它们从队列中取出。其 id 与 Eval 的不同，
+   * 因此绝不会替换同一批 Trigger 早先 Eval 的 Decision。
    */
   private ignore(thread: Thread, ids: string[], reason: Reason[], policy: Policy, at: string): void {
     const evaluation = { id: key('eval', thread.key, 'ignored', policy.version, at, ...ids), threadKey: thread.key, triggerIds: ids, strength: 'inferred' as const,
@@ -252,8 +249,8 @@ export class Evals extends EnginePart {
     delete thread.expired
   }
   /**
-   * The accept Decisions of the Triggers whose primary Thread is `threadKey`, by Trigger: what each one started. An Eval and
-   * its Decision run on its Triggers' primary Thread, so the Thread's Decisions, read by their index, hold them all.
+   * 主 Thread 为 `threadKey` 的那些 Trigger 的 accept Decision，按 Trigger 索引：即每个 Trigger 启动了哪个 ticket。
+   * Eval 及其 Decision 在其 Trigger 的主 Thread 上运行，因此按索引读取该 Thread 的 Decision 就能全部得到。
    */
   private accepted(threadKey: string): Map<string, Decision> {
     const accepted = new Map<string, Decision>()
@@ -264,9 +261,9 @@ export class Evals extends EnginePart {
     return accepted
   }
   /**
-   * A gate-only Eval of one Trigger, for an outcome decided without a queued Eval, such as on a follow-up that reached a
-   * ticket. It is decided at once, beside an Eval its Thread may have in progress, and takes the Trigger out of the queue.
-   * Its id names the outcome's kind, so a stop and an accept of one message at the same moment are two Decisions.
+   * 针对单个 Trigger 的仅走闸门的 Eval，用于没有排队 Eval 时直接裁决的结果，例如抵达 ticket 的后续消息。
+   * 它立即被裁决，可与该 Thread 进行中的 Eval 并存，并把该 Trigger 从队列中取出。其 id 包含结果的种类，
+   * 因此针对同一条消息同时发生的 stop 与 accept 会是两个 Decision。
    */
   private directEval(thread: Thread, trigger: Trigger, kind: AssessmentOutcome['kind'], ticketId?: string): Evaluation {
     const policy = this.policy()
@@ -278,15 +275,15 @@ export class Evals extends EnginePart {
     return { id, threadKey: thread.key, triggerIds: [trigger.id], primary: trigger.id,
       strength: gate.strength, actor: trigger.actor, basis: gate.basis, policyVersion: policy.version, startedAt: at, deadline: at }
   }
-  /** Apply an outcome to an Eval of a Thread: the one in progress, or a gate-only one. */
+  /** 把结果应用到某个 Thread 的 Eval 上：进行中的那个，或仅走闸门的那个。 */
   private decideEval(thread: Thread, evaluation: Evaluation, outcome: AssessmentOutcome): Decision {
     const audit = outcome.audit ? { audit: outcome.audit } : {}
-    // Requeue if Policy changed without a live policyChanged call (such as across an upgrade or restart).
+    // 若 Policy 已变更但没有实时的 policyChanged 调用（例如跨升级或重启），则重新排队。
     if (this.policy().version !== evaluation.policyVersion) {
       if (thread.evaluating?.id === evaluation.id) return this.reassess(thread, { code: 'policyChanged' })
       return this.finish(thread, evaluation, { kind: 'unavailable', reason: [{ code: 'policyChanged' }], ...audit })
     }
-    // An inferred candidate ignored without an assessment, from its card, says so beside the reason given.
+    // 未经评估、直接从卡片上忽略的推断候选，会在给定原因旁注明这一点。
     const unassessed = outcome.kind === 'ignore' && evaluation.strength !== 'explicit' && !outcome.audit ? [{ code: 'ignoredFromCard' }] : []
     if (outcome.kind === 'ignore' || outcome.kind === 'unavailable') return this.finish(thread, evaluation, { kind: outcome.kind,
       reason: [...unassessed, ...reasonOf(outcome.reason)], ...audit })
@@ -302,7 +299,7 @@ export class Evals extends EnginePart {
     }
     return this.accept(thread, evaluation, outcome)
   }
-  /** Record an accept with the Mandate the Eval gives, and have Tickets create its ticket. */
+  /** 以该 Eval 给出的 Mandate 记录一次 accept，并由 Tickets 创建对应 ticket。 */
   private accept(thread: Thread, evaluation: Evaluation, outcome: Extract<AssessmentOutcome, { kind: 'accept' }>): Decision {
     const at = this.now()
     const basis = { ...evaluation.basis, ...(outcome.rules ? { rules: outcome.rules } : {}) }
@@ -314,10 +311,10 @@ export class Evals extends EnginePart {
     this.tickets.create(ticketId, decision.id, mandate, evaluation, outcome, at)
     return decision
   }
-  /** Record an Eval's Decision; the Thread's own Eval ends with it, while a gate-only one leaves the Thread's Eval going. */
+  /** 记录 Eval 的 Decision；Thread 自身的 Eval 随之结束，而仅走闸门的 Eval 不会影响 Thread 的 Eval。 */
   private finish(thread: Thread, evaluation: Evaluation, outcome: Finished): Decision {
     const decision = this.record(thread, evaluation, outcome)
-    // Direct (gate-only) evaluations do not clear the thread's active evaluation.
+    // 直接（仅走闸门）的评估不会清除 thread 当前活跃的评估。
     if (thread.evaluating?.id !== evaluation.id) return decision
     delete thread.evaluating; delete thread.expired
     this.repo.threads.save(thread)

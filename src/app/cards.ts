@@ -1,10 +1,10 @@
-/** Compact, bounded model-facing projections of triggers, tickets, threads, and decisions; full texts stay behind readable resources. */
+/** 面向模型的紧凑有界投影：trigger、工单、thread 与决策；完整文本留在可读资源里。 */
 import { latestReport, reasonText, threadKey, ticketStage, type Decision, type Mandate, type Thread, type Ticket, type TicketInput,
   type Trigger, type TriggerDisposition } from '../core/index.ts'
 import { pullOf } from '../sources/github-pull.ts'
 import { batchLine, inputResource } from '../executor/dsh.ts'
 
-/** Collapses whitespace and truncates text for display previews while keeping code, angle brackets, and links intact for model readers. */
+/** 压缩空白并截断文本以用于预览，同时为模型读者保留代码、尖括号与链接的原貌。 */
 export function preview(text: string): string { return text.replace(/\s+/g, ' ').slice(0, 160) }
 export function triggerCard(trigger: Trigger, disposition?: TriggerDisposition) {
   return { trigger_id: trigger.id, source: trigger.source, ...(trigger.url ? { source_url: trigger.url } : {}), actor: trigger.actor.id, thread: threadKey(trigger.threads[0]!), human: trigger.human, at: trigger.at,
@@ -13,7 +13,7 @@ export function triggerCard(trigger: Trigger, disposition?: TriggerDisposition) 
       ...(disposition.decisionId ? { decision_id: disposition.decisionId } : {}),
       delivered_to: disposition.fanout } } : {}) }
 }
-/** The states a ticket card shows: an open ticket's stage (docs/003), and an ended ticket's outcome. */
+/** 工单卡片展示的状态：未结束工单的阶段（docs/003），以及已结束工单的结局。 */
 export const TICKET_STATES = ['person/delivery', 'person/answer', 'person/review', 'person/blocked', 'person/failed', 'working', 'working/queued', 'idle',
   'completed', 'merged', 'closed', 'dropped', 'stopped'] as const
 export type TicketCardState = typeof TICKET_STATES[number]
@@ -31,11 +31,11 @@ export function ticketCard(ticket: Ticket) {
     ...(attention ? { attention: { question: attention.question, ...attention.triggerId ? { trigger_id: attention.triggerId } : {} } } : {}),
     preview: preview(latestReport(ticket)?.summary ?? ''), read: `ticket/${ticket.id}` }
 }
-/** Strips `policyVersion`, an internal hash that callers never query by. */
+/** 去掉 `policyVersion`，这是调用方从不用来查询的内部哈希。 */
 const mandateOf = ({ policyVersion: _version, ...mandate }: Mandate) => mandate
 export const INPUTS = 10, ASSIGNMENTS = 3
 const INPUT_TEXT = 80
-/** Summarizes a ticket input inline for short text or as a resource reference, omitting decision IDs for worker Sessions. */
+/** 把工单输入内联摘要为短文本或资源引用；对 worker Session 省略决策 ID。 */
 export function inputLine(ticket: Ticket, input: TicketInput, worker = false) {
   const read = { read: inputResource(ticket.id, input.id) }
   const names = input.kind === 'trigger' || input.kind === 'resumed' ? { trigger_id: input.triggerId }
@@ -56,9 +56,9 @@ export function newestPage<T, L>(items: readonly T[], offset: number, size: numb
   return { items: newest.slice(offset, offset + size).map(line), ...more ? { next_resource: next, next_offset: offset + size } : {} }
 }
 export interface TicketThread { thread: string; context?: true; bound?: true }
-/** Projects a ticket with its linked triggers, threads, and first pages of assignments and inputs, omitting decision IDs for workers. */
+/** 投影工单及其关联的 trigger、thread，以及首页的 assignment 与 input；对 worker 省略决策 ID。 */
 export function ticketDetails(ticket: Ticket, threads: TicketThread[], batch: readonly Trigger[], worker = false) {
-  // Drop card preview because the latest report's preview is already shown on the first assignment entry.
+  // 去掉卡片预览，因为最新报告的预览已显示在首条 assignment 条目上。
   const { preview: _preview, ...card } = ticketCard(ticket)
   return { ...card, trigger_id: ticket.origin.triggerId, ...batch.length ? { batch: batch.map(batchLine) } : {},
     ...worker ? {} : { decision_id: ticket.decisionId }, threads, directory: ticket.execution?.directory,
@@ -85,7 +85,7 @@ export function decisionDetails(decision: Decision) {
   return { ...decisionCard(decision), ...(decision.mandate ? { mandate: mandateOf(decision.mandate) } : {}),
     ...(decision.audit ? { audit: decision.audit } : {}) }
 }
-/** Slices text by UTF-16 code units so concatenated pages reconstruct the exact string. */
+/** 按 UTF-16 码元切分文本，使拼接后的各页能精确还原原字符串。 */
 export function textPage(resource: string, text: string, offset: number, limit: number) {
   const end = Math.min(text.length, offset + limit)
   return { resource, offset, total_chars: text.length, next_offset: end < text.length ? end : null, text: text.slice(offset, end) }

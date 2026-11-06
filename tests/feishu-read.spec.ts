@@ -12,7 +12,7 @@ it('resolves legacy source metadata and reads merged forwards without embedding 
   const lark = vi.spyOn(commands, 'lark').mockResolvedValueOnce({ items: [source] }).mockResolvedValueOnce({ messages: [{ ...message, thread_replies: [{ content: 'Automatic expansion omitted' }] }] })
   const result = await readFeishu(commands, event, 'feishu/source/root', 20)
   expect(result).toMatchObject({ status: 'available', message: { content: message.content } })
-  // The read response states no limitations of its own; the skill states them once.
+  // read 响应本身不声明任何限制；由 skill 统一声明一次。
   expect(result).not.toHaveProperty('limitations')
   expect(JSON.stringify(result)).not.toContain('Automatic expansion omitted')
   expect(lark.mock.calls[1]![0]).toEqual(['im', '+messages-mget', '--message-ids', 'om_root', '--no-reactions'])

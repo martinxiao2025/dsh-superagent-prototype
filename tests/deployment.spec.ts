@@ -11,7 +11,7 @@ const exec = promisify(execFile)
 type Answers = (args: string[]) => string
 let dir: string
 let path: string
-/** Stand-ins for the CLIs, answered in-process so no platform needs a POSIX shell to run them. */
+/** CLI 的替身，在进程内应答，因此任何平台都不需要 POSIX shell 来运行它们。 */
 const programs = new Map<string, Answers>()
 const program = (file: string, answers: Answers = () => { throw new Error(`${file} was run with no answers`) }): string => {
   writeFileSync(file, '')
@@ -19,14 +19,14 @@ const program = (file: string, answers: Answers = () => { throw new Error(`${fil
   programs.set(file, answers)
   return file
 }
-/** Fake gh CLI signed in as `login` with configurable push access to acme/widgets (including its former name acme/gadgets). */
+/** 假冒的 gh CLI，以 `login` 身份登录，对 acme/widgets（含其旧名 acme/gadgets）的 push 权限可配置。 */
 const gh = (file: string, login: string, push = true): string => program(file, args => {
   const line = args.join(' ')
   if (line === 'api user') return JSON.stringify({ login, id: 7 })
   if (line.startsWith('api repos/acme/') && line.endsWith('--jq {name: .full_name, push: .permissions.push}')) return JSON.stringify({ name: 'acme/widgets', push })
   throw new Error(`unexpected gh arguments: ${line}`)
 })
-/** Fake lark-cli answers for auth status, strict-mode, and bot info. */
+/** 假冒的 lark-cli 对 auth status、strict-mode 和 bot info 的应答。 */
 const lark = (status: object, mode = 'bot', bot: object = { bot: { open_id: 'ou_bot', app_name: 'Widgets Bot' }, code: 0 }): Answers => args => {
   const line = args.join(' ')
   if (line === 'auth status') return JSON.stringify(status)
@@ -34,10 +34,10 @@ const lark = (status: object, mode = 'bot', bot: object = { bot: { open_id: 'ou_
   if (line === 'api GET /open-apis/bot/v3/info --as bot --format ndjson') return JSON.stringify(bot)
   throw new Error(`unexpected lark-cli arguments: ${line}`)
 }
-// The configuration schema documents a POSIX absolute path; the setup cases below use a real directory instead.
+// 配置 schema 描述的是 POSIX 绝对路径；下面的 setup 用例改用真实目录。
 const minimal = (overrides: Record<string, unknown> = {}) => ({ stateDir: '/srv/state', ...overrides })
 const machine = (overrides: Partial<Machine> = {}): Machine => ({ ...machineOf(Config(minimal())), stateDir: join(dir, 'state'), ...overrides })
-/** Answers the CLI a worker shell would have started, after the `env` prefix the Feishu probe adds. */
+/** 在飞书探测添加的 `env` 前缀之后，应答 worker shell 本会启动的那个 CLI。 */
 const probe: Probe = async argv => {
   let at = 0
   if (argv[0] === 'env') { at = 1; while (at < argv.length && argv[at]!.includes('=')) at++ }
@@ -55,7 +55,7 @@ beforeEach(async () => {
     ...(process.platform === 'win32' ? [] : ['/usr/bin', '/bin'])].join(delimiter)
   gh(join(dir, 'bin', 'gh'), 'Agent-Bot')
   program(join(dir, 'bin', 'lark-cli'), lark({ appId: 'cli_bot', brand: 'lark', identities: { bot: { status: 'ready' } } }))
-  // Stale worker shims with the same binary name must be skipped regardless of PATH normalization or symlinks.
+  // 无论 PATH 是否归一化或是否存在符号链接，同名的陈旧 worker shim 都必须被跳过。
   program(join(dir, 'state', 'worker-bin', 'gh'))
   symlinkSync(join(dir, 'state'), join(dir, 'state-link'), process.platform === 'win32' ? 'junction' : 'dir')
   await exec('git', ['init', '-q', join(dir, 'widgets')], { env: gitEnv() })
@@ -63,14 +63,14 @@ beforeEach(async () => {
 })
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
-// Setup spawns CLI subprocesses that can take several seconds when tests run in parallel.
+// setup 会 spawn CLI 子进程，测试并行运行时可能耗时数秒。
 vi.setConfig({ testTimeout: 30_000 })
 
 describe('configuration schema', () => {
   it('requires only the state directory and reads the editable fields through references', () => {
     expect(() => Config({})).toThrow('stateDir')
     const read = machineOf(Config({ stateDir: '/srv/state' }))
-    // Limits are volatile references that the loader updates in place and callers read when used.
+    // 限制值是易失引用，loader 就地更新，调用方在使用时读取。
     expect({ ...read, promptMaxChars: read.promptMaxChars.get(), admissionContextMaxPages: read.admissionContextMaxPages.get(),
       admissionContextTimeoutMs: read.admissionContextTimeoutMs.get() })
       .toEqual({ stateDir: '/srv/state', promptMaxChars: 100000, admissionContextMaxPages: 10, admissionContextTimeoutMs: 15000,
@@ -90,7 +90,7 @@ describe('setup', () => {
     expect(deployment).toMatchObject({ repository: 'acme/widgets', github: { cli: join(dir, 'bin', 'gh'), login: 'Agent-Bot', noreply: '7+Agent-Bot@users.noreply.github.com' } })
     expect(deployment.github).toEqual({ cli: join(dir, 'bin', 'gh'), login: 'Agent-Bot', noreply: '7+Agent-Bot@users.noreply.github.com' })
     expect(deployment).not.toHaveProperty('feishu')
-    // A renamed repository is still resolved by its old name; notifications carry GitHub's current full_name.
+    // 重命名后的仓库仍能按其旧名解析；通知中携带 GitHub 当前的 full_name。
     expect((await resolveDeployment(machine(), { repository: 'acme/gadgets', cli: 'gh' }, probe, path)).repository).toBe('acme/widgets')
   })
   it('names what setup needs and where it is set', async () => {
@@ -103,7 +103,7 @@ describe('setup', () => {
     await needs('github', 'agentCliMissing', { output: 'bin/gh must be a command name or an absolute path' }, { repository, cli: 'bin/gh' })
     await needs('github', 'agentCliSignedOut', {}, { repository, cli: program(join(dir, 'bin', 'gh-broken'), () => { throw new Error('not signed in') }) })
     await needs('github', 'repositoryReadOnly', { account: 'Agent-Bot', repository: 'acme/widgets' }, { repository, cli: gh(join(dir, 'bin', 'gh-reader'), 'Agent-Bot', false) })
-    // Signed in, but the account cannot read the repository, or the CLI names no account.
+    // 已登录，但该账号无法读取仓库，或者 CLI 未指明账号。
     const unreadable = program(join(dir, 'bin', 'gh-outsider'), args => {
       if (args.join(' ') === 'api user') return JSON.stringify({ login: 'Agent-Bot', id: 7 })
       throw new Error('HTTP 404')

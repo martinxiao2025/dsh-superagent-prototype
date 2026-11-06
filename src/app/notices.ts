@@ -1,4 +1,4 @@
-/** Formats background notices and steering relays delivered to the main Session via the effect queue. */
+/** 格式化通过 effect 队列投递给主 Session 的后台通知与引导中继。 */
 import { randomUUID } from 'node:crypto'
 import { followupOwners, key, liveTicket, type DomainEvent, type Ticket, type WorkerReport } from '../core/index.ts'
 import { triggerMessage } from '../executor/dsh.ts'
@@ -8,21 +8,21 @@ import type { Store } from './store.ts'
 import { ticketCard } from './cards.ts'
 
 /**
- * A background notice tuple for the main Session: `[name, value, summary]`, where `name` is the coalescing key in
- * `Effects` (a newer notice with the same `name` overwrites an unsent waiting one, rather than permanently deduplicating future notices).
+ * 面向主 Session 的后台通知元组：`[name, value, summary]`，其中 `name` 是 `Effects` 中的合并键
+ * （同一 `name` 的较新通知会覆盖尚未发送的等待通知，而不是永久去重后续通知）。
  */
 export type Notice = readonly [name: string, value: Record<string, unknown>, summary: string]
-/** Builds a notice for a saved prompt configuration revision, coalescing under `'prompts'`. */
+/** 为已保存的提示词配置修订构建通知，按 `'prompts'` 合并。 */
 export const promptsNotice = (revision: number): Notice =>
   ['prompts', { prompt_config_saved: revision, effect: 'next-request', read: `prompts/${revision}` }, `Prompt configuration saved (revision ${revision})`]
 /**
- * Builds a notice for a saved settings block with the changed dot-separated paths (coalescing per block under
- * `settings:<block>`), or for the whole settings on legacy saves that recorded no block.
+ * 为已保存的设置块构建通知，附带变更的点分路径（按块在 `settings:<block>` 下合并）；
+ * 对未记录块的旧版保存则针对整体设置。
  */
 export const settingsNotice = (block?: string, changed: string[] = []): Notice => block
   ? [`settings:${block}`, { settings_saved: block, changed, read: `settings/${block}` }, `Settings saved: ${block}`]
   : ['settings', { settings_saved: true, read: 'settings' }, 'Settings saved']
-/** Returns up to 20 dot-separated paths where two values differ (e.g. `eval.mode` or `policy.rules.1.enabled`). */
+/** 返回最多 20 个两值不同的点分路径（例如 `eval.mode` 或 `policy.rules.1.enabled`）。 */
 export function changedPaths(before: unknown, after: unknown, path = ''): string[] {
   if (JSON.stringify(before) === JSON.stringify(after)) return []
   if (!before || !after || typeof before !== 'object' || typeof after !== 'object') return [path]
@@ -30,20 +30,20 @@ export function changedPaths(before: unknown, after: unknown, path = ''): string
   const at = (value: object, name: string) => (value as Record<string, unknown>)[name]
   return keys.flatMap(name => changedPaths(at(before, name), at(after, name), path ? `${path}.${name}` : name)).slice(0, 20)
 }
-/** Strips the latest report preview from a ticket card when the relay already carries or does not need the summary. */
+/** 当 relay 已携带或无需该摘要时，从工单卡片中去掉最新报告的预览。 */
 function brief(ticket: Ticket) {
   const { preview: _preview, ...card } = ticketCard(ticket)
   return card
 }
-/** Creates a one-off receipt notice with a unique `name` key so repeated occurrences of the same event are each delivered instead of coalescing. */
+/** 创建带唯一 `name` 键的一次性回执通知，使同一事件的多次发生各自投递而不合并。 */
 export const receiptNotice = (value: Record<string, unknown>, summary: string): Notice => [key('receipt', randomUUID()), value, summary]
-/** Builds a notice that a person removed a thread's subscriptions at `at`; a later removal of the same thread replaces an unsent waiting notice. */
+/** 构建“某人在 `at` 时刻移除了 thread 订阅”的通知；同一 thread 之后再次移除会替换尚未发送的等待通知。 */
 export const subscriptionNotice = (thread: string, at?: string): Notice => [`subscription:${thread}`,
   { subscription_changes: [{ thread, removed: true }], ...at ? { at } : {} }, `Removed the subscriptions on thread ${thread}`]
 
 /**
- * Converts an unsolicited domain event into a main-Session notice (`ticket.ended`, `trigger.requeued`, or
- * `thread.unsubscribed` by a person or executor); returns `undefined` for events that require no notice.
+ * 把非请求触发的领域事件转换为主 Session 通知（`ticket.ended`、`trigger.requeued`，或由真人或执行器触发的
+ * `thread.unsubscribed`）；无需通知的事件返回 `undefined`。
  */
 export function eventNotice(event: DomainEvent, ticket: (id: string) => Ticket | undefined = () => undefined): Notice | undefined {
   const { at } = event
@@ -67,21 +67,21 @@ export function eventNotice(event: DomainEvent, ticket: (id: string) => Ticket |
   return undefined
 }
 
-/** Builds a background notice when a ticket's worker subscribes to a related thread for context only. */
+/** 当工单的 worker 仅为上下文而关注相关 thread 时，构建后台通知。 */
 export const threadFollowedNotice = (ticketId: string, thread: string, reason: string): Notice =>
   receiptNotice({ thread_followed: { ticket_id: ticketId, thread, reason },
     note: 'For context only: its messages reach this ticket and grant nothing.' },
     `Ticket ${ticketId} follows thread ${thread} for context: ${reason}`)
 
-/** Steering relay payload for the main Session: `id` is the request ID that makes delivery idempotent, and `text` is the message body. */
+/** 面向主 Session 的引导中继载荷：`id` 是保证投递幂等的 request ID，`text` 是消息正文。 */
 export interface Relay { id: string; text: string }
-/** What a follow-up asks of the main Session: nothing but a stop the person asks for, since its ticket's worker decides it. */
+/** 后续跟进对主 Session 的要求：除了真人要求的停止之外别无其他，因为该工单的 worker 会自行决定。 */
 const FOLLOWUP_NOTE = 'Its ticket\'s worker has it and decides; act only if the person asks to stop the work '
   + '(orchestrator_route kind stop with this trigger_id).'
 /**
- * Builds a steering relay for a human follow-up trigger that reached at least one live ticket (including an ended ticket
- * that resumed on the follow-up), with the trigger rendered as workers read it, the replied-to message, and the open
- * tickets it reached; returns `undefined` while no ticket's worker decides it (see `followupOwners`) or it reached no live ticket.
+ * 为至少送达一个未结束工单的真人后续 trigger 构建引导中继（包括因该后续跟进而复活的已结束工单），
+ * 其中 trigger 按 worker 读取的形式呈现，并附上所回复的消息与它送达的未结束工单；
+ * 当没有任何工单的 worker 决定它（见 `followupOwners`），或它未送达任何未结束工单时返回 `undefined`。
  */
 export function followupNotice(store: Store, sources: SourceRegistry, triggerId: string): Relay | undefined {
   const trigger = store.triggers.get(triggerId)
@@ -96,15 +96,15 @@ export function followupNotice(store: Store, sources: SourceRegistry, triggerId:
   return followupRelay(triggerMessage(trigger, {}, undefined, repliedTo({ store, sources }, trigger)), tickets)
 }
 /**
- * A person's message that reached tickets, as the main Session hears of it: the message as their workers read it, and the
- * tickets it reached with their state. Their workers decide it; the main Session may only stop the work on it.
+ * 真人消息送达工单后，主 Session 听到的版本：消息按各 worker 读取的形式呈现，并附上它送达的工单及其状态。
+ * 由各 worker 决定处理；主 Session 只能停止其上的工作。
  */
 export function followupRelay(message: { trigger_id: string },
   tickets: readonly { ticket_id: string; title: string; state: string; context?: boolean }[]): Relay {
   return { id: `followup:${message.trigger_id}`, text: JSON.stringify({ kind: 'follow_up', ...message, delivered_to: tickets,
     note: FOLLOWUP_NOTE }) }
 }
-/** Formats a worker report relay for the main Session (truncating summaries over 600 characters behind `ticket/<id>/result`); `replyTo` names the human question trigger it answers. */
+/** 为主 Session 格式化 worker 报告中继（超过 600 字符的摘要截断，完整内容在 `ticket/<id>/result`）；`replyTo` 指明它所回答的真人提问 trigger。 */
 export function resultRelay(ticket: Ticket, state: string, text: string, replyTo?: string): Relay {
   const id = key('worker-result', ticket.id, ticket.updatedAt, text)
   const summary = text.length > 600 ? { summary: text.slice(0, 600), chars: text.length } : { summary: text }
@@ -113,10 +113,10 @@ export function resultRelay(ticket: Ticket, state: string, text: string, replyTo
   return { id: `report:${id}`, text: JSON.stringify(report) }
 }
 /**
- * Converts a worker report recorded on `ticket` into a main-Session relay: a question for a person produces a
- * `worker_attention` relay, and a result, blocker, end, or answer to a question produces a `worker_report` relay, while
- * routine `progress` reports without `answers` stay internal.
- * @returns The steering `Relay`, or `undefined` when the report is not relayed to the main Session.
+ * 把记录在 `ticket` 上的 worker 报告转换为主 Session 中继：向真人提出的问题会生成
+ * `worker_attention` 中继；结果、阻塞、结束或对提问的回答会生成 `worker_report` 中继；
+ * 而不带 `answers` 的常规 `progress` 报告保持内部。
+ * @returns 引导用的 `Relay`；报告不向主 Session 中继时返回 `undefined`。
  */
 export function reportRelay(ticket: Ticket, report: Pick<WorkerReport, 'state' | 'summary' | 'question' | 'answers'>): Relay | undefined {
   const asked = report.question ? ticket.attention : undefined

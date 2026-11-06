@@ -1,4 +1,4 @@
-/** User-facing error codes mapped to their category ('missing' or 'refused') and English message template. */
+/** 面向用户的错误码，映射到其类别（'missing' 或 'refused'）与英文消息模板。 */
 export const USER_ERRORS = {
   unknownTicket: ['missing', 'Unknown ticket'],
   unknownProblem: ['missing', 'Unavailable Eval not found'],
@@ -48,8 +48,8 @@ export const USER_ERRORS = {
 export type UserErrorCode = keyof typeof USER_ERRORS
 
 /**
- * Structured error thrown by Engine parts and application services when a caller request is invalid or references missing state.
- * Tool handlers and HTTP routes inspect its code and missing flag to return appropriate status responses, while the web panel localizes the code.
+ * 当调用方请求无效或引用了缺失状态时，由 Engine 各部分与应用服务抛出的结构化错误。
+ * 工具处理器与 HTTP 路由通过检查其 code 与 missing 标志返回合适的状态响应，Web 面板则对 code 做本地化。
  */
 export class UserError extends Error {
   readonly missing: boolean

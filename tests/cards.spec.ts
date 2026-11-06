@@ -6,9 +6,9 @@ import { TICKET_STATES, decisionCard, decisionDetails, ticketCard, ticketDetails
 import { key, said, type Decision, type Thread, type Ticket, type Trigger } from '../src/core/index.ts'
 
 /**
- * Built-in prompt and skill contract: target file (`skill <name>` for a bundled skill, `*` for both composed prompts),
- * required phrases, and forbidden phrases (case-insensitive).
- * Words no text may use, tool names and schema options are checked in tests/model-surface.spec.ts.
+ * 内置 prompt 与 skill 的契约：目标文件（内置 skill 为 `skill <name>`，两个组合 prompt 为 `*`）、
+ * 必需短语和禁止短语（不区分大小写）。
+ * 任何文本都不得使用的词、工具名和 schema 选项在 tests/model-surface.spec.ts 中检查。
  */
 const RULES: [rule: string, file: string, says: string[], gone?: string[]][] = [
   ['A message attaches to a ticket only on an explicit pointer', 'dispatch',
@@ -25,7 +25,7 @@ const RULES: [rule: string, file: string, says: string[], gone?: string[]][] = [
   ['An out-of-scope proactive ticket ends as dropped', 'work', ['stop and report dropped without expanding scope'], ['report blocked internally']],
   ['An out-of-scope proactive ticket ends as dropped', 'team/scope', ['report blocked, or dropped on a proactive ticket']],
   ['A report is progress, ready, blocked, failed or dropped', 'work', ['Call orchestrator_report with progress, ready, blocked, failed or dropped;']],
-  // The assessment rules are stated once, in the main Session's admission text, which orchestrator_eval no longer repeats.
+  // 评估规则只声明一次，位于主 Session 的 admission 文本中，orchestrator_eval 不再重复。
   ['An assessment judges every enabled rule and accepts only a settled, bounded change', 'dispatch', [], ['Submit rule_assessments']],
   ['An assessment judges every enabled rule and accepts only a settled, bounded change', 'admission',
     ['Return rule_assessments with exactly one entry for every enabled rule',
@@ -36,7 +36,7 @@ const RULES: [rule: string, file: string, says: string[], gone?: string[]][] = [
         'Never replay old messages or dispatch invalidated historical approvals']],
   ['A stop goes through orchestrator_route, not through an assessment', 'dispatch', [], ['decision=stop']],
   ['A stop goes through orchestrator_route, not through an assessment', 'admission', [], ['decision=stop']],
-  // A follow-up has one decider, the worker of the ticket it reached; the main Session only stops the work on a person's request.
+  // follow-up 只有一个决策者，即它到达的 ticket 的 worker；主 Session 只在有人要求时停止工作。
   ['A person\'s follow-up is its ticket\'s worker\'s to decide; the main Session only stops the work on request', 'orchestrator',
     ['goes straight to its workers and resumes an ended ticket a person did not stop', 'that ticket\'s worker decides it'],
     ['arrive to you as candidates too', 'dispatch says when it needs a tool call']],
@@ -142,15 +142,15 @@ it('shows a trigger and a ticket as cards with a short preview and references to
     assignments: { items: [{ id: 'a1', state: 'running', at: '2026-09-09T00:00:00Z', report: { state: 'ready', at: '', preview: expect.stringMatching(/^The focused/),
       chars: SUMMARY.length, read: 'ticket/ticket-1/report/a1' } }] },
     assignment: 'ticket/ticket-1/assignment', result: 'ticket/ticket-1/result', transcript: 'ticket/ticket-1/transcript' })
-  // Its worker reads no Decision, so it sees no Decision's id.
+  // 其 worker 不读取任何 Decision，因此看不到任何 Decision 的 id。
   expect(ticketDetails({ ...ticket, inputs: [{ id: 'r', kind: 'reopen', decisionId: 'd2', at: '1' }] }, threads, [], true)).toMatchObject({
     inputs: { items: [{ kind: 'reopen', read: `ticket/ticket-1/input/${key('r')}` }] } })
   expect(JSON.stringify(ticketDetails({ ...ticket, inputs: [{ id: 'r', kind: 'reopen', decisionId: 'd2', at: '1' }] }, threads, [], true))).not.toMatch(/"d[12]"/)
-  // The latest ten Inputs, newest first, each read by the name its line gives; the next page reads from the Inputs' own list.
+  // 最新的十条 Input，按由新到旧排列，每条按行中给出的名称读取；下一页从 Input 自己的列表读取。
   const inputs = Array.from({ length: 12 }, (_, n) => ({ id: `text:${n}`, kind: 'text' as const, text: `Note ${n}`, at: String(n) }))
   const page = ticketDetails({ ...ticket, inputs: [...inputs, { id: 'text:long', kind: 'text', text: 'Long note. '.repeat(10), at: '12' }], undelivered: ['text:11'] },
     [], []).inputs
-  // A short text is inline; a longer one shows a preview and reads through the Input's resource.
+  // 短文本内联显示；较长的文本显示预览，并通过 Input 的 resource 读取。
   expect([page.items.length, page.items[0], page.items[1], page.next_resource, page.next_offset]).toEqual([10, { kind: 'text', at: '12',
     preview: expect.stringMatching(/^Long note\./), chars: 110, read: `ticket/ticket-1/input/${key('text:long')}` },
     { kind: 'text', at: '11', text: 'Note 11', undelivered: true }, 'ticket/ticket-1/inputs', 10])
@@ -177,7 +177,7 @@ it('shows a decision with snake_case keys and a reference to its details', () =>
   expect(decisionCard(decision)).toEqual({ decision_id: 'd1', kind: 'accept', reason: 'r', strength: 'explicit', thread: 'github:42', trigger_ids: ['request-1'],
     ticket_id: 'ticket-1', at: 'a', read: 'decision/d1' })
   expect(decisionDetails(decision)).toMatchObject({ decision_id: 'd1', audit: { matches: [] } })
-  // An Eval's id and a Policy version are hashes nothing reads by.
+  // Eval 的 id 和 Policy 版本是哈希值，没有任何东西按它来读取。
   expect(decisionDetails(decision)).not.toHaveProperty('eval_id')
   expect(decisionDetails(decision)).not.toHaveProperty('policy_version')
 })

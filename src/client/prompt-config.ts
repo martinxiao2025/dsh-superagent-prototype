@@ -1,31 +1,31 @@
-/** Pure helpers for editing prompt sections/skills and computing folded line diffs. */
+/** 编辑提示词分区/技能并计算折叠行差异的纯辅助函数。 */
 import type { PromptConfig, PromptsView } from './api.ts'
 import { valueLabel, type T } from './text.ts'
 
 type TeamSection = PromptsView['sections'][number]
 export type BuiltInPart = PromptsView['parts'][number]
 export const isSkill = (name: string): name is `skill/${string}` => name.startsWith('skill/')
-/** A built-in part, which the editor names `part/<key>`, apart from the team skills (`skill/<name>`). */
+/** 内置片段，编辑器将其命名为 `part/<key>`，以区别于团队技能（`skill/<name>`）。 */
 export const isPart = (name: string): name is `part/${string}` => name.startsWith('part/')
 export const partKey = (name: `part/${string}`): string => name.slice(5)
 export const sections = (config: PromptConfig): string[] => [...Object.keys(config).filter(name => name !== 'skills' && name !== 'overrides'),
   ...Object.keys(config.skills).map(name => `skill/${name}`), ...Object.keys(config.overrides ?? {}).map(key => `part/${key}`)]
-/** Returns a team section or team skill's text, a built-in part's override, or `undefined` for one the team did not write. */
+/** 返回团队分区或团队技能的文本、内置片段的覆盖文本，或团队未编写时返回 `undefined`。 */
 export const sectionText = (config: PromptConfig, name: string): string | undefined => isPart(name) ? config.overrides?.[partKey(name)]?.text
   : isSkill(name) ? config.skills[name.slice(6)]
   : name !== 'skills' && name !== 'overrides' && Object.hasOwn(config, name) ? config[name as TeamSection] : undefined
 /**
- * A configuration with its overrides, none as an empty map, as the editor keeps it: a draft and the version it moves onto then
- * merge override by override, as a host stores no overrides as none. With `parts`, only the overrides of those parts stay, as
- * a version loaded from the history may override a part this version no longer has.
+ * 带覆盖项的配置，没有覆盖项时为空映射，与编辑器的维护方式一致：草稿与它要迁移到的版本
+ * 随后逐覆盖项合并，因为主机把「没有覆盖项」存为「无」。传入 `parts` 时只保留这些片段的覆盖项，
+ * 因为从历史加载的版本可能覆盖了当前版本已不存在的片段。
  */
 export const withOverrides = (config: PromptConfig, parts?: readonly { key: string }[]): PromptConfig => ({ ...config,
   overrides: Object.fromEntries(Object.entries(config.overrides ?? {}).filter(([key]) => !parts || parts.some(part => part.key === key))) })
-/** The text a built-in part reads with: the team's override, else its built-in text. */
+/** 内置片段实际读取的文本：团队的覆盖文本，否则为其内置文本。 */
 export const partText = (config: PromptConfig, part: BuiltInPart): string => config.overrides?.[part.key]?.text ?? part.text
 /**
- * Override a built-in part with `text`: an override keeps the built-in text it was edited from, the current one when new or
- * when `rebase`, and goes when its text is the built-in text again.
+ * 用 `text` 覆盖内置片段：覆盖项保留编辑时所依据的内置文本，新建或 `rebase` 时保留当前内置文本，
+ * 而当文本重新等于内置文本时移除该覆盖项。
  */
 export function withOverride(config: PromptConfig, part: BuiltInPart, text: string | undefined, rebase = false): PromptConfig {
   const { [part.key]: previous, ...others } = config.overrides ?? {}
@@ -39,7 +39,7 @@ export function withoutSkill(config: PromptConfig, name: string): PromptConfig {
   const { [name.slice(6)]: _removed, ...skills } = config.skills
   return { ...config, skills }
 }
-/** The sections, skills and overrides of a draft that differ from the saved version; an override re-based counts too. */
+/** 草稿中与已保存版本不同的分区、技能和覆盖项；重新设定基准的覆盖项也算在内。 */
 export const changedSections = (config: PromptConfig, saved: PromptConfig): string[] =>
   [...new Set([...sections(config), ...sections(saved)])].filter(name => isPart(name)
     ? JSON.stringify(config.overrides?.[partKey(name)]) !== JSON.stringify(saved.overrides?.[partKey(name)])
@@ -48,15 +48,15 @@ export const sectionLabel = (t: T, view: Pick<PromptsView, 'skillPrefix'>, name:
   isPart(name) ? valueLabel(t, 'promptPart', partKey(name)) : isSkill(name) ? `${view.skillPrefix}${name.slice(6)}` : valueLabel(t, 'promptPart', name)
 export const skillNameFree = (name: string, config: PromptConfig, view: Pick<PromptsView, 'skillName' | 'builtin'>): boolean =>
   new RegExp(view.skillName).test(name) && !Object.hasOwn(config.skills, name) && !view.builtin.includes(name)
-/** Formats a team prompt part with its heading (omitted for skills, which have no heading). */
+/** 格式化团队提示词片段及其标题（技能没有标题，故省略）。 */
 export const partWith = (part: { name: string; heading?: string | undefined }, base: string): string =>
   part.heading === undefined ? base : `${part.heading}\n${base}`
 
 export type DiffLine = { kind: 'same' | 'del' | 'ins'; text: string } | { kind: 'fold'; count: number }
-/** Compute a line diff, folding runs of more than four unchanged lines to their boundary lines and a count. */
+/** 计算行差异，把超过四行的连续未变更行折叠为其边界行加一个计数。 */
 export function lineDiff(before: string, after: string): DiffLine[] {
   const a = before.split('\n'), b = after.split('\n')
-  // Fill LCS table from the end so the forward pass below reconstructs the diff in order.
+  // 从末尾填充 LCS 表，使下面的正向遍历能按顺序重建差异。
   const lcs = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0))
   for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--) lcs[i]![j] = a[i] === b[j] ? lcs[i + 1]![j + 1]! + 1
     : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!)

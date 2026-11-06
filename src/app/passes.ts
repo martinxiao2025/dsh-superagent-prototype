@@ -1,4 +1,4 @@
-/** Coordinates periodic and on-demand orchestration passes that drive due effects and Engine evaluations. */
+/** 协调周期性触发的与按需的编排 pass，驱动到期的 effect 与 Engine 评估。 */
 import type { Engine, ReceiveResult, Trigger } from '../core/index.ts'
 import type { HealthEntry } from '../infra/health.ts'
 import type { Effects } from './effects.ts'
@@ -15,9 +15,9 @@ export interface PassesHost {
 const now = (): string => new Date().toISOString()
 
 /**
- * Schedules and serializes orchestration passes that kick due `Effects` and advance `Engine` evaluations.
- * `Runtime` manages its lifecycle, while sources, tools, `Settings`, and HTTP routes trigger immediate passes when new work arrives or state changes.
- * Updates the runtime `HealthEntry` when a pass fails and clears the error once a subsequent pass succeeds.
+ * 调度并串行化编排 pass，用于触发到期的 `Effects` 并推进 `Engine` 评估。
+ * 生命周期由 `Runtime` 管理；当有新工作到达或状态变化时，Source、工具、`Settings` 与 HTTP 路由会触发即时 pass。
+ * pass 失败时更新运行时的 `HealthEntry`，并在随后的 pass 成功后清除该错误。
  */
 export class Passes {
   private timer?: ReturnType<typeof setInterval>
@@ -44,7 +44,7 @@ export class Passes {
       health.set({ state: 'ready', detail: 'Orchestrator is ready', at: now() })
     }, (error: unknown) => { health.set({ state: 'error', detail: `A pass failed: ${String(error)}`, at: now() }) })
   }
-  /** Wait until no pass or effect that can start now is running. */
+  /** 等待直到当前可启动的 pass 与 effect 都不再运行。 */
   async idle(): Promise<void> {
     for (;;) {
       await Promise.allSettled([this.pumping, this.pumpAgain])
@@ -52,9 +52,9 @@ export class Passes {
       if (!this.pumping && !this.pumpAgain) return
     }
   }
-  /** Run one pass, coalescing concurrent callers into a single follow-up pass. */
+  /** 执行一次 pass，并把并发调用合并为一次后续 pass。 */
   async pump(): Promise<void> {
-    // Do not assess, dispatch, or send while waiting for setup; queued work waits for the restart that completes setup.
+    // 等待 setup 期间不做评估、派发或发送；排队的工作会等完成 setup 的那次重启。
     if (!this.host.configured() || this.host.closing()) return
     if (!this.pumping) return this.pumping = this.pumpOnce().finally(() => { this.pumping = undefined })
     const next = () => { this.pumpAgain = undefined; return this.pump() }
@@ -63,7 +63,7 @@ export class Passes {
   private async pumpOnce(): Promise<void> {
     this.host.effects.kick()
     if (this.host.closing()) return
-    // While processing is paused, the Engine only records the pause on active Evals so they do not expire.
+    // 处理暂停期间，Engine 只在活跃 Eval 上记录暂停，以免它们过期。
     this.host.engine.evaluateDue()
   }
 }

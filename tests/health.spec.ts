@@ -1,4 +1,4 @@
-/** Runtime health reporting: per-component error states and recovery on subsequent success. */
+/** Runtime 健康上报：各组件各自的错误状态，以及随后成功时的恢复。 */
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { Commands } from '../src/infra/commands.ts'
 import { feishu, startRuntime, type Host } from './fixtures/host.ts'
@@ -7,12 +7,12 @@ let h: Host
 beforeEach(async () => { h = await startRuntime() })
 afterEach(async () => { await h.stop() })
 
-/** Advance fake `Date.now()` by `ms` and pump due runtime work. */
+/** 将伪造的 `Date.now()` 前进 `ms`，并驱动到期的运行时工作。 */
 async function at(ms: number) {
   vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + ms })
   try { await h.runtime.pump(); await h.runtime.idle() } finally { vi.useRealTimers() }
 }
-/** Retry a failed effect until it failed three times, after which its kind reports an error. */
+/** 重试失败的效果直到其连续失败三次，此后该 kind 会上报错误。 */
 async function failThrice() { await at(2000); await at(6000) }
 
 it('reports a relay in error once it failed three times, clears it once the relay reached the main Session, and leaves the runtime ready', async () => {
@@ -35,7 +35,7 @@ it('keeps a failing relay\'s error while replies recover, and a failing reply\'s
   h.runtime.sessions.relay('r2', JSON.stringify({ kind: 'note' }))
   lark.mockRejectedValue(new Error('internal error (2200)'))
   reply('stuck')
-  // Each fails three times in a row: the relay after 0, 2 and 6 seconds, the reply after 0, 5 and 15.
+  // 两者都连续失败三次：relay 在 0、2、6 秒后，reply 在 0、5、15 秒后。
   await h.runtime.idle(); await at(5000); await at(15_000)
   expect(h.runtime.health).toMatchObject({ relay: { state: 'error' }, reply: { state: 'error', detail: expect.stringContaining('2200') } })
   lark.mockResolvedValue({})
@@ -57,6 +57,6 @@ it('reports a notice the main Session did not receive three times, until one rea
   inject.mockClear()
   await h.runtime.settings.pause(false, 'panel')
   expect(h.runtime.health).toMatchObject({ notice: { state: 'ready' }, runtime: { state: 'ready' } })
-  // The waiting pause notice was updated in place by the resume value and injected once.
+  // 等待中的 pause 通知被 resume 值就地更新，并且只注入一次。
   expect(inject).toHaveBeenCalledOnce()
 })

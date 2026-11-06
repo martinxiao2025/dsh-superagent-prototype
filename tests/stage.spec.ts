@@ -6,12 +6,12 @@ const reported = (state: ReportState, overrides: Partial<Assignment> = {}) => as
 const ticket = (overrides: Partial<Ticket> = {}): Ticket => ({ id: 't', title: 'x', decisionId: 'd', mandate: { strength: 'explicit', policyVersion: 'v', basis: { via: 'listed' }, actor: { source: 'feishu', id: 'ou' }, scope: '' },
   channels: [], assignments: [assignment()], inputs: [], undelivered: [], createdAt: '', updatedAt: '', origin: { triggerId: 'x', triggerIds: ['x'] }, ...overrides })
 const attention = { id: 'q', question: '?' }
-/** A person's message that reached the Ticket after its report. */
+/** 在报告之后到达 Ticket 的人的消息。 */
 const answered = { inputs: [{ id: 'i', kind: 'trigger' as const, triggerId: 'e', at: 'later', human: true as const }] }
 const reportedAt = (state: ReportState) => reported(state, { report: { state, summary: '', at: 'earlier' } })
 const ended = { at: '', by: 'executor' as const, reason: 'closed', outcome: 'closed' as const }
 
-// The rows of the docs/003 table, in order; a Ticket that matches several rows takes the first.
+// 按顺序对应 docs/003 表格的各行；匹配多行的 Ticket 取第一行。
 describe('ticketStage', () => {
   it.each([
     ['an undelivered Input', ticket({ delivery: { error: 'offline', at: '' } }), { stage: 'person', action: 'delivery' }],
@@ -45,9 +45,9 @@ describe('canRetry', () => {
     ['a ready Ticket', false, ticket({ assignments: [reported('ready')] })],
     ['a running Ticket', false, ticket()],
     ['a Ticket without an Assignment', false, ticket({ assignments: [] })],
-    // The worker has the person's message, as the Ticket's stage says, so a retry would only interrupt it.
+    // 正如 Ticket 阶段所示，worker 已持有该人的消息，因此重试只会打断它。
     ['a failed Ticket a person answered since', false, ticket({ ...answered, assignments: [reportedAt('failed')] })],
-    // Unless delivering that message failed: a new Assignment starts the worker again and takes the message.
+    // 除非该消息投递失败：新的 Assignment 会重新启动 worker 并接收该消息。
     ['a failed Ticket whose delivery of a person\'s answer failed', true,
       ticket({ ...answered, delivery: { error: 'offline', at: '' }, assignments: [reportedAt('failed')] })],
     ['a working Ticket whose Input could not be delivered', true, ticket({ delivery: { error: 'offline', at: '' } })],

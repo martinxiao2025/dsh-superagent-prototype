@@ -27,12 +27,12 @@ it('removes a key one side removed, unless the other side changed it', () => {
 it('merges lists of named elements element by element, in their order, with what each side added', () => {
   const rule = (id: string, name: string) => ({ id, name, enabled: true })
   const base = [rule('a', 'A'), rule('b', 'B'), rule('c', 'C')]
-  // Mine renames a, removes c, and adds d after b; theirs renames b, prepends e, and removes nothing.
+  // 我方重命名 a、删除 c，并在 b 之后新增 d；对方重命名 b、在最前面新增 e，且没有删除。
   const mine = [rule('a', 'A!'), rule('b', 'B'), rule('d', 'D')]
   const theirs = [rule('e', 'E'), rule('a', 'A'), rule('b', 'B?'), rule('c', 'C')]
   expect(merged({ rules: base }, { rules: mine }, { rules: theirs }))
     .toEqual({ value: { rules: [rule('e', 'E'), rule('a', 'A!'), rule('b', 'B?'), rule('d', 'D')] }, conflicts: [] })
-  // Chat rows are keyed by chatId; concurrent edits to the same row field conflict on that row only.
+  // 聊天行以 chatId 为键；对同一行字段的并发修改只在该行上产生冲突。
   const chats = (listen: string, other: string) => [{ chatId: 'oc_1', listen }, { chatId: 'oc_2', listen: other }]
   expect(merged(chats('mentions', 'mentions'), chats('all', 'mentions'), chats('none', 'all')))
     .toEqual({ value: chats('all', 'all'), conflicts: [['oc_1', 'listen']] })
@@ -74,7 +74,7 @@ it('merges another saved revision into a draft, tells a merge from a conflict, a
   expect(saveBarText(t, conflict)).toEqual({ error: 'saveConflict', status: '' })
   expect(after([edit({ mode: 'auto', limit: 6 }, { mode: 'off', limit: 5 }, 2)], merged).notice).toBeUndefined()
   expect(after([edit({ mode: 'auto', limit: 2 }, { mode: 'observe', limit: 1 }, 2)], conflict).notice).toMatchObject({ kind: 'conflict' })
-  // Another save that made the same change leaves nothing to save.
+  // 另一次做出相同更改的保存不会留下待保存的内容。
   expect(after([arrived({ mode: 'auto', limit: 1 }, 2)], editing)).toEqual({ phase: 'clean', seen: 2 })
 })
 

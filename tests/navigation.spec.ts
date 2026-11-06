@@ -9,7 +9,7 @@ function fixture(ready = false) {
   const pending = Promise.withResolvers<void>()
   const state = { phase: ready ? 'ready' : 'pending', byId: ready ? { [id]: {} } : {} as Record<string, object> }
   const refresh = vi.fn(async () => { await pending.promise })
-  // Navigation reads only catalog readiness and membership, not summary fields.
+  // 导航只读取目录的就绪状态与成员关系，不读取摘要字段。
   const sessions = { list: { getSnapshot: () => state }, refresh } as unknown as Pick<ISessions, 'list' | 'refresh'>
   return { sessions, pending, state, refresh }
 }
@@ -42,7 +42,7 @@ it('does not navigate after the panel unmounts or a newer request supersedes it'
 it('reopens the page this tab showed last, and the overview for a route that no longer exists', () => {
   remember({ route: { page: 'eval', query: { filter: 'stop' } }, stack: [{ page: 'overview' }] })
   expect(initialLocation()).toEqual({ route: { page: 'eval', query: { filter: 'stop' } }, stack: [{ page: 'overview' }] })
-  // The Eval tab was previously named Policy; a route saved under the old name falls back to overview.
+  // Eval 标签页此前名为 Policy；以旧名保存的路由会回退到 overview。
   sessionStorage.setItem('dsh-superagent/route', JSON.stringify({ route: { page: 'policy' }, stack: [] }))
   expect(initialLocation()).toEqual({ route: { page: 'overview' }, stack: [] })
   sessionStorage.setItem('dsh-superagent/route', JSON.stringify({ route: { page: 'trigger', id: 'github:1' }, stack: [{ page: 'policy' }, { page: 'trigger' }] }))

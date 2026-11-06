@@ -1,4 +1,4 @@
-/** Trigger status view listing Threads filtered by subscription and evaluation activity. */
+/** 触发状态视图，按订阅状态与评估活动筛选列出 Thread。 */
 import { useState } from 'react'
 import { THREAD_FILTERS, type ThreadFilter } from '../app/api.ts'
 import { usePoll } from './api.ts'

@@ -1,4 +1,4 @@
-/** Thread detail page: Trigger timeline with gap-free pagination, Decisions, subscribed Tickets, and correlated Threads. */
+/** Thread 详情页：无缺口分页的 Trigger 时间线、Decision、已订阅的 Ticket，以及相关联的 Thread。 */
 import { useEffect, useState, type ReactNode } from 'react'
 import { ApiError, usePoll, type ThreadPageView, type TriggerRow } from './api.ts'
 import { Button, DisclosureRow, Icon, Tag } from './controls.tsx'
@@ -8,7 +8,7 @@ import { DecisionLine, Earlier, TicketLine, automatedRuns } from './rows.tsx'
 import { actorName, errorText, readableMarkers, reasonLabel, valueLabel, when, type T } from './text.ts'
 import { ActionLink, ClampText, ConfirmButton, Hint, LoadState, PageHead, Section, When } from './widgets.tsx'
 
-/** Disposition tags for a Trigger; omits `ignore` (the common case) and suppresses fanout tags when every target Ticket is already listed in `subscribed`. */
+/** Trigger 的处置标签；省略 `ignore`（常见情况），并在所有目标 Ticket 都已列在 `subscribed` 中时抑制转发标签。 */
 function triggerTags(t: T, trigger: TriggerRow, subscribed?: Set<string>): ReactNode {
   const d = trigger.disposition
   const tags: ReactNode[] = []
@@ -66,8 +66,8 @@ function mergeTimeline(newest: ThreadPageView, older: Older | undefined): Thread
 }
 const PAGE = 50
 /**
- * Manage a Thread's timeline across live polling, deep-linked `target` Triggers, and manual pagination.
- * Fills any gap between the latest polled page and older loaded pages before merging so the timeline remains contiguous.
+ * 在实时轮询、深链 `target` Trigger 与手动分页之间管理 Thread 的时间线。
+ * 在合并之前补齐最新轮询页与已加载的较早页之间的缺口，使时间线保持连续。
  */
 function useThreadTimeline(key: string, target: string | undefined) {
   const { call, notify } = usePanel()
@@ -117,7 +117,7 @@ export function ThreadPage({ id, target }: { id: string; target?: string }) {
     title={t('term.thread')} />{error instanceof ApiError && error.missing ? <Hint>{t('threadNotFound')}</Hint> : <LoadState
       error={error} loading />}</>
   const subscribed = new Set(data.tickets.map(ticket => ticket.id))
-  // Never fold a deep-linked `target` Trigger into an automated run.
+  // 绝不把深链 `target` Trigger 折叠进自动消息的连续分组中。
   const sender = (trigger: TriggerRow) => !trigger.human && trigger.id !== target ? `${trigger.actor.source}:${trigger.actor.id}`
     : undefined
   const unsubscribe = async () => {

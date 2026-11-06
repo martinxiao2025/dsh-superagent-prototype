@@ -1,4 +1,4 @@
-/** Serves paginated context resources to orchestrator_read so large bodies stay out of model prompts until requested. */
+/** 为 orchestrator_read 提供分页上下文资源，使大段正文在请求之前不进入模型提示词。 */
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import { UserError, key, latestReport, reached, runningAssignment, threadKey, type Ticket, type Trigger } from '../core/index.ts'
 import { batchOf, inputMessage, triggerMessage, workerSessionId } from '../executor/dsh.ts'
@@ -20,7 +20,7 @@ import { KV } from '../kv.ts'
 import type { Store } from './store.ts'
 import type { TextCache } from './cache.ts'
 
-/** Resource descriptors exposed via orchestrator_read, marking which resources worker sessions may also read for their own ticket. */
+/** 通过 orchestrator_read 暴露的资源描述符，并标明哪些资源 worker session 也可为自身工单读取。 */
 export const RESOURCES: readonly { name: string; holds: string; executor?: true }[] = [
   { name: 'tickets', holds: 'ticket cards, newest first; a card\'s state is person/review after a ready report, person/blocked or person/failed after those reports, person/answer with a question, person/delivery when an input could not reach the worker, working or working/queued while it works, idle once the worker ended its turn without a report, else how the ticket ended' },
   { name: 'triggers', holds: 'trigger cards with where each went, newest first' },
@@ -64,7 +64,7 @@ export interface ResourceHost {
   readonly masterId: string
   readonly context: Context
   promptVersion(sessionId: string): PromptVersion
-  /** Whether a Session may read `revision` (the revision it currently runs under or any revision it ran under previously). */
+  /** Session 是否可读取 `revision`（它当前运行的修订，或此前运行过的任一修订）。 */
   mayRead(sessionId: string, revision: number): boolean
   feishuPageSize(): number
   sourceLink(trigger: Trigger, signal?: AbortSignal): Promise<{ source_url?: string; source_url_read?: string }>
@@ -79,7 +79,7 @@ interface Read {
 }
 type Route = readonly [name: string, read: (read: Read) => unknown]
 
-/** Enforces that main-Session-only resources cannot be read by worker Sessions. */
+/** 保证仅限主 Session 的资源不能被 worker Session 读取。 */
 const main = ({ host, ticketId }: Read): MainResourceHost => {
   if (ticketId || !('settings' in host)) throw new Error('This resource belongs to the main Session')
   return host as MainResourceHost
@@ -90,7 +90,7 @@ function list<T>({ offset, limit }: Read, fetch: (offset: number, count: number)
   const items = fetch(offset, size + 1)
   return { items: items.slice(0, size), next_offset: items.length > size ? offset + size : null }
 }
-/** Check whether a worker session's ticket is authorized to read a trigger (via delivery, ticket origin, or followed thread). */
+/** 检查 worker session 的工单是否有权读取某个 trigger（经由投递、工单来源或关注的 thread）。 */
 const readable = (host: ResourceHost, ticket: Ticket, trigger: Trigger): boolean => reached(ticket, trigger, key => host.store.threads.get(key))
   || ticket.origin.triggerIds.includes(trigger.id) || trigger.threads.some(ref => ticket.follows?.some(follow => follow.thread === threadKey(ref)))
 const trigger = (host: ResourceHost, id: string, ticketId?: string): Trigger => {
@@ -100,7 +100,7 @@ const trigger = (host: ResourceHost, id: string, ticketId?: string): Trigger => 
   if (ticketId && (!ticket || !readable(host, ticket, found))) throw new UserError('notReached')
   return found
 }
-/** Fetch and cache a source resource on offset 0, serving subsequent offsets from the session cache. */
+/** 在 offset 0 时获取并缓存 Source 资源，后续 offset 直接由 session 缓存提供。 */
 async function sourcePage(read: Read, source: string, fetch: () => Promise<unknown>) {
   const { host, resource, offset, sessionId } = read
   const body = offset === 0 ? JSON.stringify(await fetch()) : host.pages.get(`${sessionId}:${resource}`)
@@ -134,14 +134,14 @@ const ROUTES: readonly Route[] = [
     const { host, rest, ticketId } = read
     const thread = host.store.threads.get(rest)
     const ticket = ticketId ? host.store.tickets.get(ticketId) : undefined
-    // Worker Sessions may only read threads their own ticket subscribes to or follows.
+    // Worker Session 只能读取自身工单订阅或关注的 thread。
     if (!thread || (ticketId && !(thread.subscriptions.includes(ticketId) || ticket?.follows?.some(follow => follow.thread === rest)))) {
       throw new Error('Unknown or inaccessible thread')
     }
     const { store } = host
     const { read: _read, tickets: ids, ...card } = threadCard(thread, threadTitle(store, thread))
     const page = list(read, (offset, count) => store.read.threadPage(thread.key, offset, count).map(triggerLine))
-    // Worker sessions cannot inspect other tickets or decisions on a shared thread.
+    // Worker session 无法查看共享 thread 上的其他工单或决策。
     if (ticketId) return { ...card, ...page }
     const tickets = ids.flatMap(id => { const found = store.tickets.get(id); return found ? [ticketCard(found)] : [] })
     const decisions = store.decisions.byThread(thread.key).slice(-THREAD_DECISIONS).reverse().map(decisionCard)
@@ -158,8 +158,8 @@ const ROUTES: readonly Route[] = [
   ['prompts', read => {
     const host = main(read), current = host.prompts.current(), status = host.sessions.status()
     const history = host.prompts.history(read.offset, Math.min(read.limit ?? 20, 50)), skills = host.prompts.skills(current.config).map(([name]) => name)
-    // The built-in parts whose text changed since the team overrode them, and those this version no longer has, which the
-    // panel shows and the next save drops.
+    // 自团队覆盖以来文本已发生变化的内置片段，以及本版本已不再拥有的片段，
+    // 前者由面板展示，后者在下次保存时丢弃。
     const changes = host.prompts.defaultChanged(current.config)
     const changed = changes.filter(item => !item.removed).map(item => item.part)
     const removed = changes.filter(item => item.removed).map(item => item.part)
@@ -172,7 +172,7 @@ const ROUTES: readonly Route[] = [
         ({ ...version, previous_revision: previousRevision, saved_at: savedAt })),
       next_offset: history.next_offset }
   }],
-  // A worker Session may read only its current prompt revision and revisions it previously ran under.
+  // Worker Session 只能读取其当前提示词修订，以及它此前运行过的修订。
   ['prompts/', read => {
     const { host, resource, rest, sessionId, ticketId } = read
     const prompts = host.prompts
@@ -212,13 +212,13 @@ const ROUTES: readonly Route[] = [
     if (!rest || rest.includes('/')) throw new Error('Unknown context resource')
     const found = trigger(host, rest, ticketId)
     const ref = feishuRef(found)
-    // Redact decision IDs, other tickets, and unreachable neighbour triggers when a worker session reads a trigger.
+    // worker session 读取 trigger 时，隐去决策 ID、其他工单与不可达的相邻 trigger。
     const ticket = ticketId ? host.store.tickets.get(ticketId) : undefined
     const shown = (item: Trigger | undefined) => item && (!ticket || readable(host, ticket, item)) ? item : undefined
     const disposition = host.store.triggers.disposition(found.id)
     const visible = disposition && ticket ? { ...disposition, decisionId: undefined, fanout: disposition.fanout.filter(id => id === ticket.id) }
       : disposition
-    // Omit card preview and self-reference because this resource returns the full text.
+    // 省略卡片预览与自引用，因为该资源返回的就是完整文本。
     const { preview: _preview, chars: _chars, read: _read, ...card } = triggerCard(found, visible)
     const parent = found.source === 'feishu' && typeof found.meta.parentId === 'string' ? found.meta.parentId : undefined
     const repliedTo = shown(parent ? host.store.triggers.get(feishuTriggerId(parent)) : undefined)
@@ -242,7 +242,7 @@ const ROUTES: readonly Route[] = [
     if (section === undefined) {
       const running = runningAssignment(ticket) && workerSessionId(ticket.id)
       const retry = 'sessions' in host ? (host as MainResourceHost).sessions.modelRetry(running) : {}
-      // Merge subscribed threads (including context-only subscriptions) and source-bound threads without duplicates.
+      // 合并已订阅的 thread（含仅作上下文的订阅）与 Source 绑定的 thread，去重。
       const bound = new Set((ticket.follows ?? []).map(follow => follow.thread))
       const subscribed = host.store.read.subscribedThreads().filter(thread => thread.subscriptions.includes(id))
       const marked = (key: string, context: boolean): TicketThread =>
@@ -261,7 +261,7 @@ const ROUTES: readonly Route[] = [
     }
     let body: string
     if (section === 'input' && part) {
-      // Render the input on demand with its resolved source link, matching either its short key or full input ID.
+      // 按需渲染该 input 及其解析出的来源链接，可匹配其短 key 或完整 input ID。
       const input = ticket.inputs.find(item => key(item.id) === part || item.id === part)
       const trigger = input?.kind === 'trigger' ? host.store.triggers.get(input.triggerId) : undefined
       const card = trigger && input?.kind === 'trigger' ? triggerMessage(trigger, await host.sourceLink(trigger, signal), input.note) : undefined
@@ -293,8 +293,8 @@ const ROUTES: readonly Route[] = [
 ]
 
 /**
- * Read a paginated resource for the main Session or a ticket's worker Session.
- * Legacy prefixes (`event/`, `task/`, `observation/`) remain accepted so references in older Session history stay readable.
+ * 为主 Session 或工单的 worker Session 读取分页资源。
+ * 仍接受旧前缀（`event/`、`task/`、`observation/`），以便旧 Session 历史中的引用仍可读取。
  */
 export async function readResource(host: ResourceHost, resource: string, offset: number, limit: number | undefined, ticketId?: string,
   signal?: AbortSignal) {

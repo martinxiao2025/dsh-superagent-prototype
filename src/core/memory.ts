@@ -1,11 +1,11 @@
-/** In-memory repository implementation for testing and ephemeral engine instances. */
+/** 用于测试与临时引擎实例的内存仓储实现。 */
 import { latestAssignment, type Decision, type Thread, type Ticket, type Trigger, type TriggerDisposition } from './model.ts'
 import type { Repositories } from './ports.ts'
 
 const clone = <T>(value: T): T => structuredClone(value)
 /**
- * In-memory implementation of the Repositories port backed by cloned Map entries so caller mutations do not affect stored state.
- * Provides snapshot-based atomic rollback and matches the ordering semantics of the SQLite store for Engine tests.
+ * Repositories 端口的内存实现，底层存储克隆后的 Map 条目，因此调用方的改动不会影响已存储状态。
+ * 提供基于快照的原子回滚，并与 Engine 测试所用的 SQLite 存储在排序语义上保持一致。
  */
 export class MemoryRepositories implements Repositories {
   private readonly triggerRows = new Map<string, Trigger>()
@@ -37,7 +37,7 @@ export class MemoryRepositories implements Repositories {
   readonly tickets = {
     get: (id: string) => clone(this.ticketRows.get(id)),
     save: (ticket: Ticket) => { this.ticketRows.set(ticket.id, clone(ticket)) },
-    /** Newest first, matching the SQLite Store's order. */
+    /** 最新的在前，与 SQLite Store 的顺序一致。 */
     list: () => [...this.ticketRows.values()].reverse().map(clone),
     open: () => this.tickets.list().filter(ticket => !ticket.ended),
     active: () => this.tickets.list().filter(ticket => ticket.undelivered.length > 0 || ['pending', 'running'].includes(latestAssignment(ticket)?.state ?? '')),

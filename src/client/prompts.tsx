@@ -1,4 +1,4 @@
-/** Prompts settings group: section/skill editor, full composed prompt preview with diffing, and revision history. */
+/** 提示词设置分组：分区/技能编辑器、带差异对比的完整合成提示词预览，以及版本历史。 */
 import { Fragment, useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import type { ApiResponse } from '../app/api.ts'
 import type { PromptConfig, PromptsView } from './api.ts'
@@ -39,7 +39,7 @@ function PromptsEditor({ view, reload }: { view: PromptsView; reload: () => Prom
   const config = draft.value
   const [tab, setTab] = useState<Tab>('edit')
   const [selection, select] = useState(draft.meta?.selection ?? 'communication')
-  // Fall back to the first section when the selected section (e.g., a skill removed by discard) is no longer in the draft.
+  // 当所选分区（例如被放弃操作移除的技能）已不在草稿中时，回退到第一个分区。
   const exists = isPart(selection) ? view.parts.some(part => part.key === partKey(selection)) : sectionText(config, selection) !== undefined
   const selected = exists ? selection : 'communication'
   const changed = changedSections(config, saved)
@@ -111,7 +111,7 @@ function PromptSections({ config, view, changed, selected, onSelect, onEdit }: {
       : <TeamEditor config={config} view={view} selected={selected} onSelect={onSelect} onEdit={onEdit} />}
   </div>
 }
-/** Whether an override was edited from a built-in text that has changed since. */
+/** 覆盖项所依据的内置文本此后是否已变更。 */
 const updated = (config: PromptConfig, part: BuiltInPart): boolean => {
   const override = config.overrides?.[part.key]
   return !!override?.base && override.base !== part.base
@@ -138,8 +138,8 @@ function TeamEditor({ config, view, selected, onSelect, onEdit }: {
   </div>
 }
 /**
- * A built-in part: its text, the team's override or the built-in one, with a reset; a template says which placeholders it
- * keeps; an override whose built-in text changed since shows the change and offers to keep the team's text or take the new one.
+ * 内置片段：其文本（团队的覆盖文本或内置文本），带重置操作；模板会说明它保留哪些占位符；
+ * 若覆盖项所依据的内置文本此后已变更，则显示该变更，并提供保留团队文本或采纳新文本的选项。
  */
 function BuiltInEditor({ config, view, part, onEdit }: {
   config: PromptConfig; view: PromptsView; part: BuiltInPart; onEdit: (next: PromptConfig, note?: PromptNote) => void
@@ -147,7 +147,7 @@ function BuiltInEditor({ config, view, part, onEdit }: {
   const { t } = usePanel()
   const name = `part/${part.key}`
   const reset = () => onEdit(withOverride(config, part, undefined), { from: { reset: name } })
-  // The built-in text the override was edited from, when this installation kept that one.
+  // 覆盖项编辑时所依据的内置文本（当本次安装保留了那一份时）。
   const base = config.overrides?.[part.key]?.base
   const previous = view.defaultChanged.find(item => item.part === part.key && item.base === base)?.previous
   const readBy = part.key.startsWith('skill/') ? 'promptReadBy.skill' : part.roles.length > 1 ? 'promptReadBy.both'
@@ -183,7 +183,7 @@ function FullPrompt({ config, view, dirty, revision, onEdit }: {
   const { t, call, notify } = usePanel()
   const [target, setTarget] = useState<Target>('orchestrator')
   const [compare, setCompare] = useState<'saved' | 'default'>(dirty ? 'saved' : 'default')
-  // Keep the preview paired with the config it was composed from so diffs stay consistent until the next preview arrives.
+  // 保持预览与其合成自的配置配对，使差异在下一次预览到来前保持一致。
   const [preview, setPreview] = useState<{ config: PromptConfig; value: Preview }>()
   const [error, setError] = useState<Error>()
   useEffect(() => {
@@ -194,7 +194,7 @@ function FullPrompt({ config, view, dirty, revision, onEdit }: {
   }, [call, config])
   if (!preview || error) return <LoadState loading error={error} />
   const shown = dirty ? compare : 'default'
-  // A built-in skill is a built-in part, by its key.
+  // 内置技能也是内置片段，按 key 识别。
   const team = isSkill(target) && Object.hasOwn(preview.config.skills, target.slice(6))
   const parts: { name: string; kind: 'team' | 'fixed' | 'generated'; key?: string; heading?: string; text: string }[] = isSkill(target)
     ? [{ name: target, kind: team ? 'team' : 'fixed', ...team ? {} : { key: target }, text: preview.value.skills[target.slice(6)] ?? '' }]
@@ -222,14 +222,14 @@ function FullPrompt({ config, view, dirty, revision, onEdit }: {
       const { kind } = part
       const text = sectionText(preview.config, part.name) ?? ''
       const entry = part.key === undefined ? undefined : builtIn(part.key)
-      // The text a part is compared with: a team section's, or a built-in part's, override or built-in text, in the saved
-      // version or the defaults; a generated part holds data and is not compared.
+      // 片段用于对比的文本：团队分区的文本，或内置片段的覆盖文本或内置文本，取自已保存版本
+      // 或默认值；生成型片段保存数据，不参与对比。
       const from = (config: PromptConfig) => kind === 'team' ? partWith(part, sectionText(config, part.name) ?? '')
         : kind === 'fixed' && entry ? partText(config, entry) : undefined
       const base = from(shown === 'saved' ? view.current.config : view.defaults)
       const edited = kind === 'team' ? !isSkill(part.name) && text !== sectionText(view.defaults, part.name)
         : !!entry && !!preview.config.overrides?.[entry.key]
-      // A generated part's template the draft changed shows filled, as it is not compared.
+      // 草稿改动过的生成型片段的模板会填充显示，因为它不参与对比。
       const template = kind === 'generated' && !!entry
         && preview.config.overrides?.[entry.key]?.text !== view.current.config.overrides?.[entry.key]?.text
       return <section key={part.name} className="dt-preview-part" data-editable={kind === 'team' || entry !== undefined || undefined}>
@@ -238,7 +238,7 @@ function FullPrompt({ config, view, dirty, revision, onEdit }: {
           {(kind === 'team' || entry) && <button type="button" className="dt-textlink"
             onClick={() => onEdit(entry ? `part/${entry.key}` : part.name)}>{t('promptEditSource')}</button>}
         </div>
-        {/* When comparing against saved, show only changes from this draft and fold the parts it leaves as they were. */}
+        {/* 与已保存版本对比时，只显示本草稿的改动，并把保持原样的片段折叠起来。 */}
         {base !== undefined && base !== part.text ? <Diff lines={lineDiff(base, part.text)} />
           : shown === 'saved' && !template ? <Hint>{t(kind === 'generated' ? 'promptBuiltInFolded' : 'promptSameAsSaved')}</Hint>
           : <pre className="dt-pre">{part.text}</pre>}

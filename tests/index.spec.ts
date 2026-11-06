@@ -2,7 +2,7 @@ import { expect, it, vi } from 'vitest'
 import { Config, type Machine } from '../src/deployment.ts'
 import { apply } from '../src/index.ts'
 
-// Stub Runtime to capture the resolved Machine settings and restart callback.
+// 用替身 Runtime 捕获解析后的 Machine 设置与重启回调。
 const runtimes = vi.hoisted(() => [] as { machine: Machine; restart: () => void }[])
 vi.mock('../src/app/runtime.ts', () => ({ Runtime: class {
   ready = Promise.resolve()
@@ -10,7 +10,7 @@ vi.mock('../src/app/runtime.ts', () => ({ Runtime: class {
   configured() { return true }
   async stop() {}
 } }))
-/** Simulate the Cordis loader updating a volatile configuration reference in place. */
+/** 模拟 Cordis loader 就地更新易变配置引用。 */
 const commit = (reference: unknown, value: unknown) => { (reference as Record<symbol, (value: unknown) => void>)[Symbol.for('cosmokit.volatile.write')]!(value) }
 
 function context() {
@@ -46,7 +46,7 @@ it('asks DSH to read its settings entry again once a restart it started finished
   let finish = () => {}
   ctx.fiber.restart.mockImplementation(() => new Promise<void>(resolve => { finish = resolve }))
   await apply(ctx as never, Config({ stateDir: '/srv/state' }))
-  // Saving a Source account change restarts dsh-superagent, which re-runs setup and refreshes the settings descriptor.
+  // 保存 Source 账号变更会重启 dsh-superagent，后者重新执行 setup 并刷新设置描述符。
   runtimes.at(-1)!.restart()
   await Promise.resolve()
   expect(describe).not.toHaveBeenCalled()

@@ -1,6 +1,6 @@
-/** Text sanitization and formatting helpers for plain-text previews and HTML-free Markdown in views. */
+/** 视图中纯文本预览与无 HTML 的 Markdown 所用的文本清洗与格式化辅助函数。 */
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", nbsp: ' ' }
-/** Strips HTML comments and tags, decodes basic entities, and strips again to catch entity-encoded tags. */
+/** 去掉 HTML 注释与标签，解码常见实体，再清洗一次以捕获实体编码的标签。 */
 const withoutHtml = (text: string) => text.replace(/<!--[\s\S]*?-->/g, '').replace(/<\/?[a-zA-Z][^>]*>/g, '')
   .replace(/&(amp|lt|gt|quot|#39|nbsp);/g, (_match, name: string) => ENTITIES[name]!)
   .replace(/<!--[\s\S]*?-->/g, '').replace(/<\/?[a-zA-Z][^>]*>/g, '')
@@ -25,12 +25,12 @@ function jsonLines(value: unknown): string[] {
   }
   return [inline(value)]
 }
-/** Formats JSON payloads (or `label: <JSON>` notices) as key-value lines; returns non-JSON text unchanged. */
+/** 把 JSON 载荷（或 `label: <JSON>` 形式的通知）格式化为键值行；非 JSON 文本原样返回。 */
 export function readable(text: string): string {
   const match = /^(?:([^\n{[]{1,200}): )?(\{[\s\S]*\}|\[[\s\S]*\])$/.exec(text.trim())
   if (!match) return text
   try { return [...match[1] ? [match[1]] : [], ...jsonLines(JSON.parse(match[2]!))].join('\n') }
-  catch (error) { void error /* Text that only looks like JSON is shown as written. */; return text }
+  catch (error) { void error /* 只是看起来像 JSON 的文本按原样展示。 */; return text }
 }
 export function preview(text: string, length = 160): string { return plain(readable(text)).slice(0, length) }
 export const attribute = (value: unknown): string | undefined => typeof value === 'string' && value ? value : undefined

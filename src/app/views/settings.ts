@@ -1,4 +1,4 @@
-/** Settings view combining versioned configuration blocks, per-source forms and policy metadata, and execution environment details. */
+/** 设置视图：汇总版本化配置块、按 Source 划分的表单与策略元数据，以及执行环境详情。 */
 import { SETUP_FIELDS } from '../../deployment.ts'
 import { KV } from '../../kv.ts'
 import { policyVersion } from '../../policy.ts'
@@ -17,8 +17,8 @@ function policyOf(sources: SourceRegistry, id: string, health: HealthMap) {
     ? { sync } : {} } }
 }
 /**
- * Builds the settings view by block (`{ value, revision }`), per-Source configuration and restart-sensitive fields,
- * and execution environment details (`stateDir` provides the default ticket working directory root).
+ * 按配置块（`{ value, revision }`）、按 Source 的配置与需重启才生效的字段、执行环境详情来构建设置视图
+ * （`stateDir` 提供默认工单工作目录的根路径）。
  */
 export function settingsView(store: Store, sources: SourceRegistry, health: HealthMap, setup: SetupState, stateDir: string) {
   const settings = store.settings()

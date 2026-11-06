@@ -1,4 +1,4 @@
-/** Localization, reason formatting, message marker cleanup, and relative timestamp helpers. */
+/** 本地化、原因格式化、消息标记清理与相对时间戳辅助函数。 */
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
 import type { DshSuperagentKey } from './locales.ts'
 import type { Localized } from '../sources/kind.ts'
@@ -18,7 +18,7 @@ export function valueLabel(t: T, group: string, key: string | undefined): string
   const text = t(name)
   return text === name ? key : text
 }
-/** Format one or more structured or raw reasons in the active UI language, truncating multi-line host errors to their first line. */
+/** 用当前 UI 语言格式化一个或多个结构化或原始原因，并把多行主机错误截断到首行。 */
 export function reasonLabel(t: T, reason: string | Reason | readonly Reason[] | undefined): string {
   if (typeof reason === 'string') return reason ? label(t, { code: reason }) : ''
   return [reason ?? []].flat().map(item => label(t, item)).filter(Boolean).join('；')
@@ -34,7 +34,7 @@ function label(t: T, reason: Reason): string {
 export const setupText = (t: T, problem: Pick<SetupProblem, 'code' | 'values'>): string => t(`setup.${problem.code}`, problem.values)
 export const healthText = (t: T, health: Pick<Health, 'detail' | 'code' | 'values'>): string =>
   health.code ? t(`healthCode.${health.code}` as const, health.values) : health.detail
-/** Replaces Feishu and GitHub content placeholders (images, cards, media, forwards, unresolved mentions) with localized labels. */
+/** 把飞书与 GitHub 的内容占位符（图片、卡片、媒体、合并转发、未解析的提及）替换为本地化标签。 */
 export function readableMarkers(t: T, text: string): string {
   return text.replace(/!\[[^\]]*\]\([^)]*\)|\[Image: [^\]]*\]|\[image\]/g, t('imageMarker'))
     .replace(/\[Chat card: [^\]]*\]/g, t('cardMarker'))

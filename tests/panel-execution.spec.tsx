@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// The Execution status, a Ticket, and the Execution settings.
+// Execution 状态、一个 Ticket，以及 Execution 设置。
 import { act } from 'react'
 import { expect, it } from 'vitest'
 import { en, zh } from '../src/client/locales.ts'
@@ -24,7 +24,7 @@ it('lists Tickets under Execution by who they wait on, with the Executor state a
   expect(text()).toContain('旧工单')
   expect(text()).toContain(zh['outcome.stopped'])
   expect(all('.dt-status-line .dt-lv').map(item => item.textContent)).toEqual(['执行中 2 / 3', '排队 0'])
-  // The pause is its own action: an Execution settings draft started before it still saves.
+  // 暂停是独立的操作：在暂停前开始的 Execution 设置草稿仍会保存。
   await click(find(zh['tab.settings'], '.dt-status-head button'))
   expect(tab(zh['tab.settings']).getAttribute('aria-selected')).toBe('true')
   expect(document.querySelector('.dt-settings-link[aria-current="page"]')?.textContent).toBe(zh['promptPart.runtime/work'])
@@ -54,11 +54,11 @@ it('shows a Ticket with its stage, its Mandate details with the Trigger and Deci
   await mount()
   await click(all('.dt-open').find(button => button.textContent === '修复回归')!)
   expect(document.querySelector('.dt-page-title h2')?.textContent).toBe('修复回归')
-  // Progress is in the Channels and the Session, so the page has no report section.
+  // 进度显示在 Channels 与 Session 中，因此该页面没有报告区。
   expect(all('.dt-section-title').map(title => title.querySelector('.dt-section-name')?.textContent)).toEqual(['授权详情', '未送达的输入', '订阅的线程'])
   expect(document.querySelector('.dt-status-line .dt-stage')?.textContent).toBe(zh.executingLabel)
   expect(document.querySelector('.dt-status-line .dt-stage .dt-spinner')).not.toBeNull()
-  // A Thread this Ticket follows reads as subscribed on its page, though no other Ticket follows it.
+  // 此 Ticket 关注的 Thread 在其页面上显示为已订阅，尽管没有其他 Ticket 关注它。
   expect(all('.dt-list .dt-ticket .dt-stage').map(stage => stage.textContent)).toContain(zh.threadSubscribed)
   expect(all('.dt-list .dt-ticket .dt-stage').map(stage => stage.textContent)).not.toContain(zh.threadUnsubscribed)
   expect(all('.dt-status-line .dt-lv').map(item => item.textContent)).toEqual(['授权 明确', '发起 飞书 · Alice', expect.stringMatching(/^更新 /)])
@@ -125,7 +125,7 @@ it('keeps what a person types in the Execution settings, converting it once on s
   await click(find(zh['tab.settings'], '.dt-status-head button'))
   const blocked = () => field<HTMLInputElement>(zh.blockedCommands), root = () => field<HTMLInputElement>(zh.executionDirectory),
     workers = () => field<HTMLInputElement>(zh.maxWorkers)
-  // A separator typed before the next command, a space inside a path and a cleared number stay as typed.
+  // 下一条命令前输入的分隔符、路径中的空格以及清空的数字都保持输入时的样子。
   await type(blocked(), 'gh-personal ')
   expect(blocked().value).toBe('gh-personal ')
   await type(blocked(), 'gh-personal, gh-other')
@@ -160,7 +160,7 @@ it('tells a Ticket or Thread that does not exist from a dsh-superagent that is n
   at({ page: 'execution', id: 't9' })
   await mount()
   expect(text()).toContain(zh.ticketNotFound)
-  // While dsh-superagent restarts, DSH's web server answers every route with an empty 404.
+  // dsh-superagent 重启期间，DSH 的 web 服务器对每个路由都返回空的 404。
   at({ page: 'execution', id: 't1' })
   server.down = true
   await remount()

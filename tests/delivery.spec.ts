@@ -11,7 +11,7 @@ function fixture(history: UserMessage[] = []) {
   const steer = vi.fn((message: UserMessage) => { inbox.nextStep.push(message) })
   const followup = vi.fn((message: UserMessage) => { inbox.nextTurn.push(message) })
   const injected = vi.fn((_message: UserMessage) => {})
-  // Only the delivery-facing Agent methods participate in this fixture.
+  // 此夹具只用到 Agent 中面向投递的方法。
   const agent = { id: SessionId('delivery-test'), session: {}, inbox, steer, followup, inject: injected } as unknown as Agent
   const event = (message: UserMessage): SessionEvent => ({ type: 'user/message', seq: SessionSeq(0), time: 0, surfaceOp: 'append', data: message })
   const read = vi.fn(async (offset: number, length: number) => ({ events: history.slice(offset, offset + length).map(event) }))
@@ -55,7 +55,7 @@ it.each(['queue', 'steer'] as const)('delivers %s as an orchestrator relay, dedu
 })
 
 it.each(['pending', 'consumed', 'live'] as const)('recognizes legacy plugin identity in %s input without rewriting it', async location => {
-  // Bypass TypeScript's current source union to construct the retired serialized shape.
+  // 绕过 TypeScript 当前的 source 联合类型，构造已退役的序列化结构。
   const old: UserMessage = JSON.parse(JSON.stringify({ id: 'dsh-superagent:request', role: 'user', content: [], source: { kind: 'plugin', plugin: 'dsh-superagent', form: 'relay' } }))
   const before = JSON.stringify(old)
   const f = fixture(location === 'consumed' ? [old] : [])

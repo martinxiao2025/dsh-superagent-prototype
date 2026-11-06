@@ -1,4 +1,4 @@
-/** Source status view (health, filtered Triggers, dropped replies) and Source settings cards. */
+/** 来源状态视图（健康、被过滤的 Trigger、被丢弃的回复）与来源设置卡片。 */
 import { useEffect, useState } from 'react'
 import type { FieldSpec } from '../sources/kind.ts'
 import { usePoll, type DroppedReply, type SourceStatusRow, type SourceView } from './api.ts'
@@ -22,10 +22,10 @@ function SourceCard({ source }: { source: SourceView }) {
   const value = draft.value
   const { problem, value: saved } = source
   const changed = (key: string) => String(value.config[key] ?? '') !== String(saved.config[key] ?? '')
-  // Saving a modified setup-sensitive field restarts dsh-superagent, interrupting running Assignments.
+  // 保存改动的部署敏感字段会重启 dsh-superagent，中断进行中的派工。
   const restarts = draft.dirty && source.restarts.some(changed)
   const description = localized(t, source.description)
-  // Hide derived facts for unsaved field edits until the new value is saved.
+  // 在未保存的字段编辑保存前，隐藏其派生事实。
   const field = (spec: FieldSpec) => <SourceField key={spec.key} field={spec} value={value.config[spec.key]} saved={saved.config[spec.key]}
     labels={source.labels}
     refreshLabels={refreshLabels} fact={spec.type === 'fact' || !changed(spec.key) ? source.facts[spec.key] : undefined}
@@ -70,7 +70,7 @@ export function SourceSettings({ focus }: { focus?: string }) {
 function DroppedReplies({ items }: { items: DroppedReply[] }) {
   const { t, navigate } = usePanel()
   const [open, setOpen] = useState(false)
-  // Link to the message's Ticket, or fall back to its Thread for messages queued before receipts recorded `ticketId`.
+  // 链接到消息所属的 Ticket；对于在回执记录 `ticketId` 之前排队的消息，回退到其 Thread。
   const target = (item: DroppedReply): { route: Route; name: string } | undefined => item.ticket
     ? { route: { page: 'execution', id: item.ticket.id }, name: item.ticket.title }
     : item.thread ? { route: { page: 'trigger', id: item.thread }, name: t('term.thread') } : undefined
@@ -99,7 +99,7 @@ function SourceRow({ source }: { source: SourceStatusRow }) {
   const { problem, dropped } = source
   const { dot, label: state } = sourceMark(t, source.state)
   const { received, filtered, lastAt } = source.stats
-  // Omit healthy parts and suppress per-part notes when a setup problem already explains why the Source is stopped.
+  // 省略健康的条目；当部署问题已说明来源为何停止时，抑制各条目的说明。
   const notes = source.enabled && !problem && !setup?.problem ? source.health.filter(item => item.state === 'error'
     || item.state === 'paused') : []
   return <li className="dt-row">
@@ -142,7 +142,7 @@ export function SourceStatus() {
   const { t, call, navigate } = usePanel()
   const { setup } = usePanelData()
   const { data, error } = usePoll(() => call('GET sources'), [])
-  // Global deployment setup problems halt all Sources and show at the top; Source-specific setup problems show on that Source's row.
+  // 全局部署问题会停掉所有来源并显示在顶部；来源自身的部署问题则显示在该来源的行上。
   const elsewhere = setup?.problem?.place === 'deployment' ? setup.problem : undefined
   return <div className="dt-form">
     <StatusHead hint={t('sourceStatusIntro')} settings="source" />

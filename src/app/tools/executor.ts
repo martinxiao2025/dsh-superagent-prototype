@@ -1,4 +1,4 @@
-/** Executor Session tools for reading ticket context, acknowledging requests, managing threads, handing back out-of-scope triggers, and reporting status. */
+/** Executor Session 的工具：读取工单上下文、确认请求、管理 thread、交回超出范围的 trigger，以及上报状态。 */
 import { z } from 'zod'
 import { liveTicket, type EngineForExecutor, type Ticket } from '../../core/index.ts'
 import { IM_WORDS } from '../../infra/text.ts'
@@ -15,7 +15,7 @@ export interface ExecutorToolsHost {
   readonly store: Pick<Store, 'tickets' | 'replyStatus' | 'atomic'>
   readonly sessions: Pick<Sessions, 'relay' | 'notify'>
   readonly resources: ResourceHost
-  /** GitHub Source context whose pull-request rules govern claiming a reported PR. */
+  /** GitHub Source 上下文，其拉取请求规则用于约束对已上报 PR 的认领。 */
   readonly github: SourceContext
   sendReplies(): Promise<void>
 }
@@ -86,7 +86,7 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
         const current = host.store.tickets.get(ticketId)
         if (!current || !liveTicket(current)) throw new Error('Ticket ended (PR was closed or work finished); do not resume it')
         const pull = args.pr_number != null ? await readPull(host.github, args.pr_number, signal) : undefined
-        // Claim the PR, record the report, and queue the relay atomically so a rejected PR claim or invalid report leaves no partial state, and a recorded report always reaches the main Session.
+        // 原子地认领 PR、记录报告并入队中继，这样 PR 认领被拒或报告无效都不会留下部分状态，而已记录的报告一定能送达主 Session。
         return host.store.atomic(() => {
           const refused = pull && claimPull(host.github, ticketId, pull)
           if (refused) throw new Error(refused)

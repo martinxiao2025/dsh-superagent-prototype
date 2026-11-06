@@ -1,4 +1,4 @@
-/** Subprocess wrapper for running gh, lark-cli, and git commands under the deployment's configured accounts. */
+/** 在部署配置的账号下运行 gh、lark-cli 与 git 命令的子进程封装。 */
 import { execFile } from 'node:child_process'
 import { basename } from 'node:path'
 import { promisify } from 'node:util'
@@ -8,13 +8,13 @@ import type { Deployment } from '../deployment.ts'
 const exec = promisify(execFile)
 const TIMEOUT_MS = 90_000
 /**
- * Error thrown by Commands when a CLI invocation fails, capturing stderr diagnostics, API error codes, and exit status without echoing command arguments.
- * Source channels and pollers inspect its code to distinguish deleted conversations from retryable failures.
+ * Commands 在 CLI 调用失败时抛出的错误，捕获 stderr 诊断、API 错误码与退出状态，且不回显命令参数。
+ * Source 的 channel 与轮询器会检查其 code，以区分已删除的会话与可重试的失败。
  */
 export class CliError extends Error {
   constructor(message: string, readonly code?: number, readonly exitCode?: number) { super(message) }
 }
-/** Extracts a sanitized error from a failed subprocess without echoing argv, which may contain message text. */
+/** 从失败的子进程中提取经过净化的错误，不回显可能包含消息文本的 argv。 */
 export function commandError(error: unknown, program = 'command'): Error {
   if (error instanceof Error && error.name === 'AbortError') return error
   const exitCode = error && typeof error === 'object' && 'code' in error && typeof error.code === 'number' ? error.code : undefined
@@ -22,10 +22,10 @@ export function commandError(error: unknown, program = 'command'): Error {
     const stderr = error.stderr.trim()
     let parsed: { error?: { code?: number; message?: string } } | undefined
     try { parsed = JSON.parse(stderr.slice(stderr.indexOf('{'))) as typeof parsed }
-    catch { /* Non-JSON CLI diagnostics are retained below. */ }
+    catch { /* 非 JSON 的 CLI 诊断信息会在下方保留。 */ }
     const code = parsed?.error?.code
     if (parsed?.error?.message) return new CliError(`${parsed.error.message}${code ? ` (${code})` : ''}`, code, exitCode)
-    // `gh` exits non-zero on HTTP errors (such as `gh: Not Found (HTTP 404)`) and on `gh: HTTP 304`, which ETag polling relies on.
+    // `gh` 在 HTTP 错误（例如 `gh: Not Found (HTTP 404)`）以及 `gh: HTTP 304` 时以非零状态退出，而 ETag 轮询依赖后者。
     if (stderr) return new CliError(stderr.slice(0, 2000), Number(/\bHTTP (\d{3})\b/.exec(stderr)?.[1]) || undefined, exitCode)
   }
   return new CliError(`${basename(program)} ${ended(error)}`, undefined, exitCode)
@@ -33,33 +33,33 @@ export function commandError(error: unknown, program = 'command'): Error {
 function ended(error: unknown): string {
   const { killed, signal, code } = (error ?? {}) as { killed?: boolean; signal?: string | null; code?: unknown }
   if (code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') return 'printed more output than it may'
-  // `execFile` timeout terminates the process with SIGTERM and sets `killed: true`.
+  // `execFile` 超时会以 SIGTERM 终止进程并设置 `killed: true`。
   if (killed && signal === 'SIGTERM') return `timed out after ${TIMEOUT_MS / 1000} s`
   if (signal) return `was stopped by ${signal}`
   if (typeof code === 'number') return `exited with code ${code}`
   return typeof code === 'string' ? `could not run: ${code}` : 'failed'
 }
 export interface Tally { skipped: number }
-/** Parses array elements against a schema, skipping invalid items and incrementing `tally.skipped`. */
+/** 按 schema 解析数组元素，跳过无效项并递增 `tally.skipped`。 */
 export function validItems<T>(item: z.ZodType<T>, list: readonly unknown[], tally?: Tally): T[] {
   const items = list.flatMap(value => { const parsed = item.safeParse(value); return parsed.success ? [parsed.data] : [] })
   if (tally) tally.skipped += list.length - items.length
   return items
 }
-/** Rewrites Feishu error 232011 (bot not in chat) with remediation instructions. */
+/** 重写飞书错误 232011（机器人不在群中），并附带修复指引。 */
 function membership(error: unknown): unknown {
   if (!(error instanceof CliError) || error.code !== 232011) return error
   const hint = 'The Feishu bot is not a member of the chat. Add the bot in the chat settings, then retry.'
   return new CliError(hint, error.code, error.exitCode)
 }
 /**
- * Executes gh, lark-cli, and git subprocesses with deployment account credentials, timeouts, and abort signals.
- * Restricts GitHub API calls to the configured repository and translates CLI failures into CliError instances for Sources, MasterAssessor, Outbox, and Settings.
+ * 以部署账号凭据、超时与中止信号执行 gh、lark-cli 与 git 子进程。
+ * 把 GitHub API 调用限制在已配置的仓库，并把 CLI 失败转换为 CliError 供 Source、MasterAssessor、Outbox 与 Settings 使用。
  */
 export class Commands {
   /**
-   * @param resolved - returns the resolved deployment setup, or throws while setup is still pending.
-   * @param environment - variables overriding `process.env` for every command (such as isolated git settings).
+   * @param resolved - 返回已解析的部署设置；setup 仍在进行时抛出。
+   * @param environment - 覆盖每个命令的 `process.env` 变量（例如隔离的 git 设置）。
    */
   constructor(private readonly resolved: () => Deployment, private readonly environment: Record<string, string | undefined>, private readonly signal: AbortSignal) {}
   get deployment(): Deployment { return this.resolved() }
@@ -72,12 +72,12 @@ export class Commands {
       return stdout
     } catch (error) { throw commandError(error, program) }
   }
-  /** Runs the agent's GitHub CLI and parses its JSON output; callers should prefer `api`, which is restricted to the configured repository and validates output. */
+  /** 运行 agent 的 GitHub CLI 并解析其 JSON 输出；调用方应优先使用 `api`，它被限制在已配置仓库并会校验输出。 */
   async gh<T>(args: string[]): Promise<T> { return JSON.parse(await this.run(this.deployment.github.cli, args)) as T }
   /**
-   * Calls the GitHub API on a path within the configured repository, validating JSON output when a schema is provided
-   * or returning raw CLI output (such as raw files or `--include` headers) when omitted.
-   * @throws CliError with GitHub's HTTP status as `code` on failure.
+   * 调用已配置仓库内某个路径的 GitHub API；提供 schema 时校验 JSON 输出，
+   * 省略时返回 CLI 的原始输出（例如原始文件或 `--include` 头）。
+   * @throws CliError 失败时抛出，GitHub 的 HTTP 状态放在 `code` 中。
    */
   async api<T>(schema: z.ZodType<T>, path: string, ...flags: string[]): Promise<T>
   async api(path: string, ...flags: string[]): Promise<string>
@@ -86,7 +86,7 @@ export class Commands {
     const [path = '', ...flags] = rest
     return schema.parse(await this.gh(['api', this.path(path), ...flags]))
   }
-  /** Fetches all pages of a GitHub API list within the configured repository, skipping items that fail schema validation. */
+  /** 抓取已配置仓库内 GitHub API 列表的全部分页，跳过未通过 schema 校验的条目。 */
   async pages<T>(item: z.ZodType<T>, path: string, tally?: Tally): Promise<T[]> {
     const pages = z.array(z.array(z.unknown())).parse(await this.gh(['api', this.path(path), '--paginate', '--slurp']))
     return validItems(item, pages.flat(), tally)
@@ -97,8 +97,8 @@ export class Commands {
     return path ? `repos/${this.repository}/${path}` : `repos/${this.repository}`
   }
   /**
-   * Runs the Feishu bot's `lark-cli` and returns the JSON `data` payload.
-   * @throws CliError with Feishu's error code on failure (rewriting 232011 when the bot is not in the chat).
+   * 运行飞书机器人的 `lark-cli` 并返回 JSON 中的 `data` 负载。
+   * @throws CliError 失败时抛出，携带飞书的错误码（机器人不在群中时重写 232011）。
    */
   async lark<T>(args: string[], cwd?: string): Promise<T> {
     const bot = this.deployment.feishu
@@ -110,6 +110,6 @@ export class Commands {
     if (!result.ok) throw membership(new CliError(`${result.error?.message ?? 'Feishu command failed'}${code ? ` (${code})` : ''}`, code))
     return result.data
   }
-  /** Runs `git` on PATH using the agent's isolated git environment and credential helper. */
+  /** 使用 agent 隔离的 git 环境与凭据助手，运行 PATH 上的 `git`。 */
   async git(args: string[], cwd: string): Promise<string> { return this.run('git', args, cwd) }
 }

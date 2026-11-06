@@ -55,7 +55,7 @@ describe('Source registry', () => {
       text: 'hi', kind: 'reply' })
     expect(await sources.send(message('probe'), commands)).toBe('sent')
     expect(sent).toEqual([message('probe')])
-    // A kind that is not installed keeps its replies waiting; links to it have no page.
+    // 未安装的 kind 会让其回复保持等待；指向它的链接没有页面。
     expect(await sources.send(message('retired'), commands)).toBe('waiting')
     expect(sources.link(message('probe').channel, {})).toEqual({ url: 'https://probe/r', label: { zh: '探针', en: 'Probe' } })
     expect(sources.link(message('retired').channel, {})).toEqual({ url: '', label: { zh: 'retired', en: 'retired' } })
@@ -68,14 +68,14 @@ describe('Source registry', () => {
     expect(context.images('img_x')).toEqual([])
     await expect(context.image({} as Agent, commands, { id: 'm1', text: '' }, 'img_x', '',
       new AbortController().signal)).rejects.toThrow('no images')
-    // A kind without a channel or a context has neither.
+    // 没有 channel 或没有 context 的 kind 两者都没有。
     sources.register({ ...probe, kind: 'quiet' })
     expect(await sources.send(message('quiet'), commands)).toBe('gone')
     expect(sources.threadContext({ ...trigger, source: 'quiet' })).toBeUndefined()
   })
   it('refuses a kind that declares a health entry another kind or dsh-superagent itself reports, and gives up its entries at unregister', () => {
     const board = new HealthBoard()
-    // Pre-claim built-in health entries; sync:* entries are reserved for settings sync.
+    // 预先占用内置 health 条目；sync:* 条目保留给设置同步。
     for (const name of ['runtime', 'reply']) board.claim(name)
     const sources = new SourceRegistry(() => SettingsSchema.parse({}), board)
     const unregister = sources.register(githubKind)
@@ -88,7 +88,7 @@ describe('Source registry', () => {
     first.report('github', { state: 'ready', detail: 'ok' })
     expect(board.all.github).toEqual({ state: 'ready', detail: 'ok' })
     expect(() => first.report('probe', { state: 'ready', detail: '' })).toThrow('has no health entry probe')
-    // A report sent after its kind unregisters (such as from an exiting CLI listener) is ignored and does not affect a later registration.
+    // 在其 kind 注销之后发送的报告（例如来自正在退出的 CLI 监听器）会被忽略，且不影响之后的注册。
     unregister()
     expect(() => first.report('github', { state: 'error', detail: 'WARN exiting' })).not.toThrow()
     expect(board.all.github).toBeUndefined()
@@ -141,7 +141,7 @@ describe('Source registry', () => {
     sources.register(feishuKind); sources.register(githubKind)
     expect(sources.channelAllowed({ source: 'feishu', address: { chatId: 'oc_team' } })).toBe(true)
     expect(sources.channelAllowed({ source: 'feishu', address: { chatId: 'oc_other' } })).toBe(false)
-    // A direct chat's id starts with oc_ too; the address says it is direct, and with direct messages off it gets no reply.
+    // 单聊的 id 也以 oc_ 开头；address 会指明它是单聊，而单聊消息关闭时它得不到回复。
     expect(sources.channelAllowed(feishuChannel('oc_dm', 'om_1', true))).toBe(false)
     expect(sources.channelAllowed({ source: 'github', address: { number: '7' } })).toBe(true)
   })

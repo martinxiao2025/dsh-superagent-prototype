@@ -1,4 +1,4 @@
-/** Shared panel React contexts, state polling, restart detection, and action runner hook. */
+/** 共享的面板 React context、状态轮询、重启检测与操作执行 hook。 */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { caller, usePoll, type ApiMessages, type Call, type SetupView, type StateView } from './api.ts'
@@ -21,9 +21,9 @@ export interface PanelData {
   error: Error | undefined
   reload: () => Promise<void>
   setup: SetupView | undefined
-  /** Executor Sessions in an active turn, which a restart of `dsh-superagent` interrupts. */
+  /** 处于活动回合中的执行器 Session，`dsh-superagent` 重启会中断它们。 */
   running: number
-  /** Incremented each time dsh-superagent recovers from a restart so dependent views refetch. */
+  /** 每次 dsh-superagent 从重启中恢复时自增，使相关视图重新拉取数据。 */
   restarts: number
 }
 const Panel = createContext<PanelContext | undefined>(undefined)
@@ -38,7 +38,7 @@ export function usePanelData(): PanelData {
   if (!value) throw new Error('dsh-superagent page rendered outside its panel')
   return value
 }
-/** Wrap an async action with re-entrancy protection, busy state, optional reload, and error toast reporting. */
+/** 用重入保护、忙碌状态、可选重新加载和错误提示来包装一个异步操作。 */
 export function useAction<A extends unknown[]>(action: (...args: A) => Promise<unknown>,
   { reload }: { reload?: () => Promise<unknown> } = {}) {
   const { notify } = usePanel()
@@ -59,7 +59,7 @@ const messages = (t: T): ApiMessages => ({
   offline: t('offline'), notRunning: t('hostNotRunning'), serverError: status => t('serverError', { status }),
     requestFailed: status => t('requestFailed', { status }),
   setup: problem => problem.values.output ? `${setupText(t, problem)}\n${problem.values.output}` : setupText(t, problem),
-  // A refusal names a prompt part by its label.
+  // 拒绝信息用标签来指代提示词片段。
   user: ({ code, values }) => t(`userError.${code}`, values.part ? { ...values, part: valueLabel(t, 'promptPart', values.part) } : values),
 })
 function Toast({ text, onDone, holdMs = 3000 }: { text: string; onDone: () => void; holdMs?: number }) {
@@ -76,13 +76,13 @@ export function PanelProvider({ t, interval = 5000, openSession = noSession, nav
   backLabel?: string
   children: ReactNode
 }) {
-  // Read the current translator via ref so locale changes do not recreate `call` and restart polling.
+  // 通过 ref 读取当前翻译器，使语言变化不会重建 `call` 并重启轮询。
   const copy = useRef(t)
   copy.current = t
   const call = useMemo(() => caller(() => messages(copy.current)), [])
   const [toast, setToast] = useState<{ text: string; id: number }>()
   const notify = useCallback((text: string) => setToast({ text, id: Date.now() }), [])
-  // Poll at 1s during a restart until the server goes down and answers again, or time out after 30s if the restart completed between polls.
+  // 重启期间以 1 秒间隔轮询，直到服务下线并再次响应；若重启在两次轮询之间已完成，则 30 秒后超时。
   const [restarting, setRestarting] = useState<{ down: boolean }>()
   const [restarts, setRestarts] = useState(0)
   const restart = useCallback(() => setRestarting({ down: false }), [])

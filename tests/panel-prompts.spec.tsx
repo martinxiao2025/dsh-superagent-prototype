@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// The Prompts settings.
+// Prompts 设置。
 import { act } from 'react'
 import { builtInBase, builtInParts, defaultPrompts } from '../src/app/prompts.ts'
 import { expect, it } from 'vitest'
@@ -17,7 +17,7 @@ it('lists the team sections, then the built-in parts, edits and saves them separ
   await type(field<HTMLTextAreaElement>(zh.promptBody), 'Custom communication rule')
   expect(text()).toContain('1 处修改')
   await click(tab(zh.promptViewFull))
-  // The full prompt shows every part, team or built in, as editable, in the order the Session reads them.
+  // 完整 prompt 会按 Session 读取的顺序，把每个部分（团队的或内置的）都显示为可编辑。
   const parts = all('.dt-preview-part').map(part => [part.querySelector('b')?.textContent, part.hasAttribute('data-editable')])
   expect(parts.slice(0, 5)).toEqual([['共享约定', true], ['主 Session 角色', true], ['沟通方式', true], ['工单范围', true], ['交付要求', true]])
   expect(text()).toContain('Custom communication rule')
@@ -38,7 +38,7 @@ it('keeps a conflicting prompt draft, rebases it onto the newer version and save
   await click(zh.save)
   expect(document.querySelector('.dt-savebar')?.textContent).toContain('提示词已被修改到版本 1。已保留你的草稿')
   await click(zh.save)
-  // The other save's section stays: the draft moved onto version 1 section by section, not as a whole.
+  // 另一次保存所做的部分保留：草稿是逐部分而非整体地迁移到版本 1。
   expect(server.prompts.current.config).toMatchObject({ communication: 'Mine', scope: 'Theirs' })
 })
 
@@ -92,7 +92,7 @@ it('marks team sections that differ from the defaults, and shows a draft as a di
   expect(all('.dt-prompt-nav .dt-nav-item').filter(item => item.querySelector('.dt-changed-tag')).map(item => item.querySelector('span')!.firstChild?.textContent)).toEqual(['交付要求'])
   await type(field<HTMLTextAreaElement>(zh.promptBody), `${defaultPrompts().communication}\nSign as the agent.`)
   await click(tab(zh.promptViewFull))
-  // A draft opens against the saved version: only its change shows, and the parts it leaves as they were fold.
+  // 草稿以已保存版本为基准打开：只显示其改动，保持原样的部分会折叠。
   expect(all('.dt-preview-part ins').map(line => line.textContent)).toEqual(['Sign as the agent.\n'])
   expect(all('.dt-preview-part del')).toHaveLength(0)
   expect(text()).toContain(zh.promptSameAsSaved)
@@ -121,9 +121,9 @@ it('edits a built-in part as an override of its built-in text, marks it changed,
   await type(field<HTMLTextAreaElement>(zh.promptBody), 'Shared, the team way.')
   expect(builtInItem(zh['promptPart.runtime/shared']).querySelector('.dt-changed-tag')?.textContent).toBe(zh.promptChanged)
   await click(zh.save)
-  // The override records the built-in text it was edited from.
+  // 覆盖项会记录它所依据的内置文本。
   expect(server.prompts.current.config.overrides).toEqual({ 'runtime/shared': { text: 'Shared, the team way.', base: builtInBase(shared.text) } })
-  // The full prompt reads the override in place of the built-in text, compared with the defaults.
+  // 完整 prompt 以覆盖项代替内置文本读取，并与默认值比较。
   await click(tab(zh.promptViewFull))
   expect(all('.dt-preview-part ins').map(line => line.textContent)).toContain('Shared, the team way.\n')
   await click(all('.dt-preview-part[data-editable] button')[0]!)
@@ -151,19 +151,19 @@ it('marks an override whose built-in text an upgrade changed, shows how it chang
   expect(all('.dt-prompt-nav .dt-updated-tag').map(tag => tag.closest('.dt-nav-item')!.querySelector('span')!.firstChild?.textContent))
     .toEqual([zh['promptPart.runtime/dispatch']])
   await click(builtInItem(zh['promptPart.runtime/dispatch']))
-  // The change of the built-in text, beside the team's text, which stays, in a region named by the mark.
+  // 内置文本的变更与保留的团队文本并列，位于以该标记命名的区域内。
   const box = () => document.querySelector(`section[aria-label="${zh.promptDefaultUpdated}"]`)
   expect(box()!.textContent).toContain('下面是默认内容的变化。')
   expect([...box()!.querySelectorAll('del')].map(line => line.textContent)).toEqual(['The old routing.\n'])
   expect(box()!.querySelectorAll('ins').length).toBeGreaterThan(0)
   expect(field<HTMLTextAreaElement>(zh.promptBody).value).toBe('## dispatch\nOur routing.')
-  // Taking the new built-in text drops the override.
+  // 采用新的内置文本会丢弃覆盖项。
   await click(zh.promptTakeDefault)
   expect(field<HTMLTextAreaElement>(zh.promptBody).value).toBe(dispatch.text)
   expect(all('.dt-default-updated')).toHaveLength(0)
   await click(zh.discard)
   await click(builtInItem(zh['promptPart.runtime/dispatch']))
-  // Keeping the team's text records the new built-in text as the one it was edited from.
+  // 保留团队文本会记录新的内置文本作为其编辑依据。
   await click(zh.promptKeepMine)
   expect(all('.dt-default-updated')).toHaveLength(0)
   await click(zh.save)
@@ -172,7 +172,7 @@ it('marks an override whose built-in text an upgrade changed, shows how it chang
 
 it('shows the team\'s text against the new default when the default it was edited from is not known, or is another one', async () => {
   const dispatch = builtInParts()['runtime/dispatch']!
-  // The override was restored from an older version: its base is not the one the changed default was found for.
+  // 该覆盖项是从更旧版本恢复的：其 base 并不是发现默认值变更所依据的那个。
   const overrides = { 'runtime/dispatch': { text: '## dispatch\nOur routing.', base: 'restored' } }
   server.prompts.revision = 1; server.prompts.current = promptVersion(1, { ...defaultPrompts(), overrides })
   server.prompts.defaultChanged = [{ part: 'runtime/dispatch', base: 'another', previous: '## dispatch\nThe old routing.' }]
@@ -180,7 +180,7 @@ it('shows the team\'s text against the new default when the default it was edite
   await mount()
   await click(builtInItem(zh['promptPart.runtime/dispatch']))
   const box = document.querySelector(`section[aria-label="${zh.promptDefaultUpdated}"]`)!
-  // It says the lines are the team's text against the new default, not how the default changed.
+  // 它说明这些行是团队文本相对新默认值的内容，而不是默认值如何变化。
   expect(box.textContent).toContain('系统没有记录你编辑时的默认内容；下面是你的文本与新默认内容的对比。')
   expect(box.textContent).not.toContain('下面是默认内容的变化。')
   expect([...box.querySelectorAll('del')].map(line => line.textContent)).toEqual(['Our routing.\n'])
@@ -228,7 +228,7 @@ it('loads a version from the history without its overrides of parts this version
   at({ page: 'settings', query: { group: 'prompts' } })
   await mount()
   await click(tab(zh.promptViewHistory))
-  // The version restored overrides a part a later version removed.
+  // 恢复的版本覆盖了后续版本已移除的部分。
   const saved = server.prompts.current
   server.prompts.current = promptVersion(0, { ...defaultPrompts(), overrides: { 'runtime/dispatch': dispatch, 'runtime/retired': { text: 'Old.', base: 'b' } } })
   await click(zh.promptRestore)
