@@ -2,6 +2,8 @@
 
 本指南用于安装、配置与运维 dsh-superagent，涵盖账号、启动检查、升级与排障，并承接 [001 领域模型](001-domain.md) 到 [005 面板](005-panel.md)。
 
+> **支持环境（2026-11-06 用户确认）**：Windows + VS Code Stable 的官方 Copilot / Copilot Chat。本文中的 POSIX 命令、`#!/bin/sh` 包装器、tmux 与 `scripts/dsh-superagent` 仅描述既有产品行为，属**范围外**；Windows 上的启停请用 `scripts/dsh-superagent-windows.ps1`。
+
 ## 运行内容
 
 - **一个专用的 DeepSeek Harness 配置档案**，本指南中称为 `superagent`。请从 Web 档案模板创建它。它加载本 bundle，并在 `127.0.0.1` 上提供其面板。请把它与你日常工作的档案分开：本插件会修改进程级的 `PATH` 与 git 设置，而且它的进程需要独立重启与升级。
