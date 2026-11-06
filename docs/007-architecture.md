@@ -437,7 +437,7 @@ flowchart TB
 | `tests/prompts.spec.ts` | 提示词校验、组装与版本 |
 | `tests/cards.spec.ts` | 内置文本必须陈述的规则，逐文件 |
 | `tests/model-surface.spec.ts` | 模型读取的一切：工具、提示词、技能与输入，对照工具 schema、执行环境与术语表检查，并受每角色大小预算约束 |
-| `tests/mcp.spec.ts` | MCP 表面：与 `main.ts` 逐工具相等、握手、列表、读取与回环路由、参数拒绝，以及保持为健康错误的端口占用 |
+| `tests/mcp.spec.ts` | MCP 表面：与 `main.ts` 逐工具相等、握手、列表、读取与回环路由、参数拒绝后可继续服务、过期 revision 被拒，以及保持为健康错误的端口占用 |
 | `tests/deployment.spec.ts`、`tests/environment.spec.ts`、`tests/index.spec.ts` | 插件配置与 setup、智能体的进程环境、插件入口 |
 | `tests/service-script.spec.ts` | `scripts/dsh-superagent` 对假 `ps`、`tmux` 与 `dsh` 的测试 |
 | `tests/client.spec.tsx`、`tests/navigation.spec.ts`、`tests/controls.spec.tsx` | 客户端插件的注册与轮询、会话导航与路由记忆、本地控件，以及面板的导入（无循环） |

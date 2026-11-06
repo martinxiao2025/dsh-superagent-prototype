@@ -134,6 +134,39 @@ describe('MCP endpoint', () => {
     } finally { await client.close() }
   }, 30_000)
 
+  it('refuses an unknown resource and an empty note with structured errors, then keeps serving', async () => {
+    host = await startRuntime(undefined, { mcpPort: 0 })
+    const client = await connect(host)
+    try {
+      const unknown = await client.callTool({ name: 'orchestrator_read', arguments: { resource: 'tickets/missing' } })
+      expect(unknown.isError).toBe(true)
+      const note = await client.callTool({ name: 'orchestrator_ticket_note', arguments: { ticket_id: 'missing', text: '   ' } })
+      expect(note.isError).toBe(true)
+      expect(payload(note).issues[0].path).toBe('text')
+      // 拒绝不毁掉会话：紧随其后的正常读取仍成功。
+      const after = await client.callTool({ name: 'orchestrator_read', arguments: { resource: 'tickets' } })
+      expect(after.isError).toBeFalsy()
+    } finally { await client.close() }
+  }, 30_000)
+
+  it('rejects a stale settings revision so MCP and the panel cannot overwrite each other', async () => {
+    host = await startRuntime(undefined, { mcpPort: 0 })
+    const client = await connect(host)
+    try {
+      const policy = host.runtime.store.settings().policy
+      // 必须产生真实变化：无变化的保存不记录新修订，也就无法制造过期 revision。
+      const value = { ...policy, rules: policy.rules.map((rule, index) => index === 0 ? { ...rule, enabled: !rule.enabled } : rule) }
+      const revision = host.runtime.store.blockRevision('policy')
+      const first = await client.callTool({ name: 'orchestrator_settings_save', arguments: { block: 'policy', value, revision } })
+      expect(first.isError).toBeFalsy()
+      expect(payload(first).saved).toBe(true)
+      // 同一个 revision 已被第一次保存消费；面板或其他客户端此时必须重新读取。
+      const stale = await client.callTool({ name: 'orchestrator_settings_save', arguments: { block: 'policy', value, revision } })
+      expect(stale.isError).toBe(true)
+      expect(payload(stale).error).toContain('设置已变更')
+    } finally { await client.close() }
+  }, 30_000)
+
   it('reports a busy port in health and keeps the orchestrator running', async () => {
     const blocker = createServer()
     const port = await listening(blocker)
