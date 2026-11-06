@@ -502,7 +502,7 @@ npx -y @modelcontextprotocol/inspector --cli http://127.0.0.1:3083/mcp --method 
 | A5 | 回归 | `pnpm test` + 一轮真实触发 + 面板核对 | 面板、主会话评估、监听行为不变 | 实施 |
 | A6 | 保活演练 | kill 进程 → 调度器拉起 → 客户端重连 | 自动恢复，工具可用 | 用户 + 实施 |
 
-状态（2026-11-06）：A1/A2 通过；A3 以官方 SDK 客户端走真实 HTTP 链路作**等价验证**，inspector CLI/UI 未执行（本地没有可独立启动的 MCP 宿主进程）；A4/A6 未执行；A5 仅完成测试回归，真实 GitHub/飞书触发未执行。A3/A4/A6 均不标为“通过”。
+状态（2026-11-06）：A1/A2 通过；A3 以官方 SDK 客户端走真实 HTTP 链路作**等价验证**，inspector CLI/UI 未执行（本地没有可独立启动的 MCP 宿主进程）；A6 已用 Windows 守护脚本对真实 `Runtime` 完成强制终止演练并通过（首次就绪 2416ms，`taskkill /F` 后 30152ms 恢复，恢复前后 14 个工具、`runtime`/`mcp` 均 `ready`，详见 `docs/009-copilot-plugin.md` §10）；A4 未通过：本机 VS Code Stable/Insiders 均无官方 Copilot/Copilot Chat 扩展，Copilot CLI 只能证明插件包可加载（见 §11）；A5 仅完成测试回归，真实 GitHub/飞书触发未执行。A3 的 inspector 与 A4 不标为“通过”。
 
 ## 8. 风险登记
 
@@ -553,7 +553,9 @@ npx -y @modelcontextprotocol/inspector --cli http://127.0.0.1:3083/mcp --method 
 | 3 | 2026-11-06 | `vitest run tests/mcp.spec.ts`、全量 `vitest run` | mcp 4 项全过（握手、14 工具、read、route 建票、非法参数、端口占用）；全量 1159 通过 / 42 失败 / 8 文件，与基线完全一致 | `3a4b5bd` |
 | 4 | 2026-11-06 | `pnpm build`、`pnpm plugin:check` | `plugin/` 1 技能、`lib/plugin/` 3 技能均 valid；009、006、README、AGENTS 同步 | `781ab5d` |
 | A1/A2 | 2026-11-06 | 正例 + 4 负例 + 构建 | 全部符合预期；`lib/plugin/` 结构与方案 §3.4 一致；全仓跟踪文件 BOM 数为 0 | 本批 |
-| A3–A6 | 2026-11-06 | 见 `docs/009-copilot-plugin.md` §8 | A3 自动等价通过；A4/A6 待用户环境；A5 仅测试回归，真实触发未执行 | 本批 |
+| A3–A6 | 2026-11-06 | 见 `docs/009-copilot-plugin.md` §8 | A3 自动等价通过，inspector 未执行；A4 因官方客户端缺失未通过；A5 仅测试回归，真实触发未执行 | 本批 |
+| A6 保活演练 | 2026-11-06 | `pwsh -NoProfile -File scripts/dsh-superagent-windows.ps1 -Action drill -Profile host -Command 'node --experimental-transform-types scripts/keepalive-host.mjs'` | 退出 0；首次就绪 2416ms；`taskkill /F /T` 后 30152ms 恢复，13 次重启尝试；恢复前后 `tools/list` 均 14 个、`runtime`/`mcp` 均 `ready`；发现并记录 `proper-lockfile` 的 30 秒锁窗口；证据 `.artifacts/keepalive/drill-20261106-203750.json` | 本批 |
+| A4 环境盘点 | 2026-11-06 | `pwsh -NoProfile -File scripts/copilot-smoke.ps1`、`code(-insiders) --list-extensions` | Stable `1.119.0`、Insiders `1.144.0-insider` 均无官方 Copilot 扩展；Copilot CLI `1.0.103` 能加载 `lib/plugin`；A4 仍未通过，剩余步骤见 `docs/009` §11 | 本批 |
 | 中文化·文档与技能 | 2026-11-06 | 逐文件翻译后跑 `pnpm check` | `docs/000`–`009`、README、`plugin/skills/**` 与 `skills/**` 转简体中文；标识符、工具名、路径、协议值保持英文 | `c89721f`、`b084c0f` |
 | 中文化·代码注释 | 2026-11-06 | `pnpm check` | `src/**`、`scripts/**`、`tests/**` 的 174 个文件的 `//`、`/* */`、JSDoc 全部中文；逻辑与断言未改 | `92f3007` |
 | 中文化·面向人文案 | 2026-11-06 | `pnpm check` | `USER_ERRORS`、健康条目、CLI/脚本输出、`plugin.json`/`package.json` 描述等 81 个文件；`locale/en.json` 与英文语言包按设计保留 | `dcaff6e` |

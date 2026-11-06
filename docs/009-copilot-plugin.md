@@ -63,7 +63,7 @@ pnpm check          # typecheck + test + build + plugin:check
 保活由外部调度负责,Copilot 进程不必常驻:
 
 - Linux:systemd 单元 `Restart=always`,启动命令沿用 `scripts/dsh-superagent` 的 start;
-- Windows:计划任务“开机启动”,失败时按计划任务的重启策略重跑同一脚本;
+- Windows:用本仓库的 `scripts/dsh-superagent-windows.ps1 -Action start`(无第三方依赖,start/stop/status/supervise);需要开机自启时,由计划任务在登录时调用同一条命令。演练与实测见 §10;
 - 守护进程重启后,MCP 端点重新监听同一端口;streamable-http 的断线重试由 Copilot 客户端负责,规范未定义重连语义。
 
 ## 7. 排障
@@ -77,6 +77,7 @@ pnpm check          # typecheck + test + build + plugin:check
 | 工具返回 `isError` 且带 `code` | 领域拒绝,原样展示 `error` 与 `code`;不要用改参或换工具绕过 |
 | 读图片被拒 | MCP 侧没有 DSH 主会话的附件通道;改用线程文本,或提示用户到 DSH 会话读图 |
 | `plugin:check` 报版本不一致 | `plugin.json` 的 `version` 必须等于 `package.json`;构建会注入,源文件需同步 |
+| 强杀后自动拉起要等约 30 秒 | `proper-lockfile` 的 `stateDir` 锁在硬杀后残留,需等满 `stale=30s` 才能接管;计划内重启请用 `-Action stop`,不要强杀(见 §10.4) |
 
 ## 8. 验收记录(2026-11-06)
 
@@ -85,9 +86,9 @@ pnpm check          # typecheck + test + build + plugin:check
 | A1 | 规范合规 | 作者侧校验通过 | `node scripts/validate-plugin.mjs` 与 `--dir lib/plugin` 均退出 0;4 类负例(大写名称、schema 版本不一致、嵌套技能目录、未知字段)均退出 1。注意:该脚本是作者侧门禁,比规范对客户端的最低要求更严格(未知顶层字段直接失败、`mcpServers` 不得为空、MCP 仅允许回环 HTTP),不能据此宣称客户端一致性 |
 | A2 | 构建打包 | 通过 | `pnpm build` 退出 0;`lib/plugin/` 含 `plugin.json`、`mcp.json`、3 个技能目录,无 BOM |
 | A3 | MCP 连通 | 自动等价验证通过 | `tests/mcp.spec.ts`:真实 Streamable HTTP 握手、14 个工具、`orchestrator_read`、`orchestrator_route` 建票。inspector CLI/GUI 未执行:本地没有可独立启动的 MCP 守护进程(需要 DSH 宿主),以官方 SDK 客户端的真实 HTTP 链路作等价验证,不宣称已跑 inspector |
-| A4 | Copilot 冒烟 | 未执行 | 需要 VS Code Copilot 与用户账号,待用户配合 |
+| A4 | Copilot 冒烟 | 未通过(客户端缺失) | 本机 VS Code stable `1.119.0` 与 Insiders `1.144.0-insider` 均未安装官方 `GitHub.copilot` / `GitHub.copilot-chat`;只有第三方聊天扩展。Copilot CLI `1.0.103` 存在且能加载本插件,但 CLI 不等价于 VS Code Copilot,故不标为通过。盘点与可执行清单见 §11 |
 | A5 | 回归 | 通过(Windows) | 全量 1179 通过、26 跳过、0 失败。跳过的 3 类在测试文件内写明原因:worker shim 执行、`scripts/dsh-superagent` 服务脚本、飞书消费者假 CLI 都以 `#!/bin/sh` 脚本为被测对象,Windows 无法执行;另 1 项 POSIX 权限位断言。此前 42 项失败中的 16 项已改为跨平台实现并真实通过。真实 GitHub/飞书触发仍未执行 |
-| A6 | 保活演练 | 未执行 | 需要 systemd/计划任务与真实部署,待用户环境 |
+| A6 | 保活演练 | 通过(Windows 机制演练) | 用 `scripts/dsh-superagent-windows.ps1 -Action drill` 对真实 `Runtime` 宿主做启动→`taskkill /F /T`→自动拉起→管理 API 与 MCP 探针复核:首次就绪 2416ms,强杀后 30152ms 恢复,13 次重启尝试,恢复前后 `tools/list` 均为 14 个、`runtime`/`mcp` 均 `ready`。详见 §10。真实 `dsh --profile` 宿主与计划任务长期部署仍未验证 |
 
 未闭合项如实保留,不以自动化结果替代人工验收。
 
@@ -117,4 +118,97 @@ pnpm check          # typecheck + test + build + plugin:check
 | Agent Skills §Frontmatter | `name`/`description` 必填;`name` 1–64、小写字母数字连字符、无 `--`、与目录同名;`description` 1–1024;可选字段类型固定 | 3 个 `SKILL.md` 均只有合规的 `name`/`description`,目录同名 | 符合 | `plugin/skills/dsh-superagent/SKILL.md`、`lib/plugin/skills/*/SKILL.md` |
 | 扩展命名空间 | `extensions` 与同名顶层目录均可选;未实现该命名空间的客户端应忽略 | 未使用 | 符合(未使用) | `plugin/` 顶层目录清单 |
 
-**结论**:插件的包结构、清单、MCP 配置、技能发现与 frontmatter 均符合 Agent Plugins 1.0.0 与 Agent Skills 规范;未发现需要改代码或改包结构的不符项。校验脚本比规范对客户端的最低行为更严格,已在 A1 与本表中注明,不据此宣称客户端一致性。A4/A6 与真实触发仍为环境阻塞,未标为通过。
+**结论**:插件的包结构、清单、MCP 配置、技能发现与 frontmatter 均符合 Agent Plugins 1.0.0 与 Agent Skills 规范;未发现需要改代码或改包结构的不符项。校验脚本比规范对客户端的最低行为更严格,已在 A1 与本表中注明,不据此宣称客户端一致性。A6 已按 §10 完成 Windows 机制演练并通过;A4 仍因官方 Copilot 客户端缺失而未通过(§11);真实 GitHub/飞书触发未执行。
+
+## 10. A6 Windows 保活演练(2026-11-06)
+
+### 10.1 既有机制与方案取舍
+
+- 产品自带的 `scripts/dsh-superagent` 依赖 tmux、`ps` 与 `fcntl`,只能在 POSIX 上运行;`tests/service-script.spec.ts` 在 Windows 上按其被测对象(`#!/bin/sh`)跳过。文档原先的保活建议是 systemd 或 Windows 计划任务,但本机没有部署过任何守护。
+- 备选方案与取舍:
+  - **计划任务**:能开机自启,但需要注册任务与 XML,演练时难以在单次命令内完成启停与清理;
+  - **nssm**:本机未安装,且任务要求不擅自联网安装第三方工具,排除;
+  - **仓库自带 supervisor**:无额外依赖、无需管理员权限、可直接演练,选此方案。代价是它随用户会话存在,注销后停止;若要开机自启,仍需由计划任务在登录时调用 `-Action start`,本次未注册。
+- 新增 `scripts/dsh-superagent-windows.ps1`(start / supervise / stop / status / drill),用隐藏的 `pwsh` 守护循环启动子进程、留存 stdout/stderr、按 1 秒延迟重启,并用停止标记区分“手动停止”与“崩溃”。子进程 PID 在强杀前会核对命令行,避免 PID 复用误杀。
+- 本机没有 `dsh` 宿主,因此演练用 `scripts/keepalive-host.mjs` 启动**真实 `Runtime`**:真实 SQLite、真实管理 HTTP(`127.0.0.1:3082`)与真实 MCP(`127.0.0.1:3083/mcp`)、14 个真实工具;假 DSH 服务只替换宿主注入部分。`scripts/keepalive-probe.mjs` 用官方 SDK 客户端做 `initialize` + `tools/list`。
+
+### 10.2 复跑命令
+
+```powershell
+pwsh -NoProfile -File scripts/dsh-superagent-windows.ps1 -Action drill `
+  -Profile host -Command 'node --experimental-transform-types scripts/keepalive-host.mjs' -TimeoutSeconds 90
+```
+
+`-Action start` / `stop` / `status` 用于日常启停;`status` 输出 JSON,退出码 0 表示守护与健康均正常。证据写入 `.artifacts/keepalive/drill-<时间戳>.json`(已 gitignore)。
+
+### 10.3 实测结果(退出码 0)
+
+| 观测项 | 实测值 |
+| --- | --- |
+| 首次就绪耗时 | 2416 ms |
+| 强杀方式 | `taskkill /F /T /PID 30988`,确认进程已退出 |
+| 恢复耗时(强杀→健康且探针通过) | 30152 ms |
+| 自动重启尝试次数 | 13 次(每次失败后 1 秒重试) |
+| 恢复前后 `tools/list` | 均为 14 个,名称一致 |
+| 恢复后健康 | `runtime=ready`、`mcp=ready`;`relay`/`notice`/`launch`/`delivery`/`assessment`/`reply`/`evals`/`models`/`sync:feishu` 均 `ready` |
+| 证据文件 | `.artifacts/keepalive/drill-20261106-203750.json` |
+| 守护日志 | `.artifacts/logs/dsh-superagent-host-supervisor.log` |
+
+日志逐条记录了每次子进程的 `start` / `exit code=1` / `restart scheduled`,以及最终成功拉起;失败子进程 stderr 为 `Lock file is already being held`。
+
+### 10.4 关键发现:硬杀后的 30 秒锁窗口
+
+`Runtime` 用 `proper-lockfile` 锁定 `stateDir`,参数为 `stale: 30_000`,存活期间每 15 秒刷新一次锁时间。进程被 `taskkill /F` 后锁目录残留,新进程立即启动会以 `Lock file is already being held` 退出;必须等到“锁 mtime + 30 秒”才可接管。因此:
+
+- 恢复耗时下限约 15 秒、上限约 30 秒,本次为 30.1 秒,13 次重试均属预期;
+- 计划内重启应先 `stop`(优雅结束,释放锁),不要用强杀;
+- 不要为了缩短恢复时间擅自调小 `stale`,那属于产品行为变更,需另行决策;
+- 守护脚本必须接受“启动失败后重试”,不能把一次失败当作永久故障。
+
+### 10.5 未覆盖范围
+
+- 真实 `dsh --profile superagent --no-open` 进程:本机未安装 DSH 宿主,未执行;
+- Windows 计划任务注册与开机自启、systemd 路径:未执行;
+- Copilot 客户端在重启后的重连:依赖 A4,当前未验证;
+- 宿主脚本只启动 `Runtime`,未启动 Source 轮询器,故 `feishu`/`history`/`github` 在演练中为 `starting`,与本项要验证的“进程自愈 + MCP 工具面恢复”无关。
+
+## 11. A4 冒烟前置盘点(2026-11-06)
+
+### 11.1 环境实测
+
+| 项 | 实测 | 结论 |
+| --- | --- | --- |
+| VS Code stable | `1.119.0` | 已安装;未安装官方 `GitHub.copilot` 与 `GitHub.copilot-chat` |
+| VS Code Insiders | `1.144.0-insider` | 已安装;同样没有官方 Copilot 扩展,只有第三方 `ltmoerdani.zai-copilot-chat@0.7.0`、`vizards.deepseek-v4-for-copilot@0.9.5` |
+| Copilot CLI | `GitHub Copilot CLI 1.0.103` | 已安装;`~/.copilot/config.json` 存在,`copilot plugin list --json` 与 `copilot mcp list --json` 均退出 0。未读取任何 token/密钥内容 |
+| 插件包加载 | `copilot --plugin-dir lib/plugin plugin list --json` | 能列出 `dsh-superagent`,说明包结构与清单可被真实客户端读取 |
+| MCP 端点 | 盘点时未启动 | 需要先运行守护脚本 |
+
+与 `docs/010-runtime-verification.md` 记录的 `1.145.1` 不同,本次实测 stable 为 `1.119.0`、Insiders 为 `1.144.0-insider`;差异如实记录,不改写旧记录。
+
+### 11.2 结论
+
+**A4 未通过,原因是客户端缺失,不是代码或清单问题。** VS Code 侧没有官方 Copilot Chat,无法验证“插件出现在 Copilot 中、工具可被模型调用”;Copilot CLI 能加载插件只是等价前置证据,不能替代 VS Code 冒烟。
+
+### 11.3 可执行清单与自动化
+
+```powershell
+pwsh -NoProfile -File scripts/copilot-smoke.ps1
+# 只读盘点;当前因官方扩展缺失以 1 退出
+
+pwsh -NoProfile -File scripts/copilot-smoke.ps1 -Editor insiders -Install
+# 显式安装 GitHub.copilot 与 GitHub.copilot-chat,需要联网与有效订阅
+
+pwsh -NoProfile -File scripts/copilot-smoke.ps1 -RunModel
+# 额外做一次真实模型非交互冒烟,会消耗配额
+```
+
+需要用户动手的最小步骤:
+
+1. 在目标 VS Code(Stable 或 Insiders)安装官方 `GitHub.copilot` 与 `GitHub.copilot-chat`,并登录有 Copilot 权限的账号;
+2. 按客户端文档启用 `lib/plugin` 作为 agent plugin,确认插件与三个技能可见;
+3. 先运行 `scripts/dsh-superagent-windows.ps1 -Action start`,再在 Copilot 中确认 14 个工具出现;
+4. 依次调用 `orchestrator_read`(tickets)、`orchestrator_route`、`orchestrator_reply`,记录返回;
+5. 把插件页与工具调用截图放到 `.artifacts/screenshots/`(不提交),作为 A4 的人工证据。
+
+除第 1、2、5 步必须由用户在客户端完成外,其余步骤已可由脚本或 MCP 探针自动复核;在官方扩展安装并登录前,A4 保持“未通过(客户端缺失)”。

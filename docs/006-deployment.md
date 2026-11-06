@@ -131,6 +131,22 @@ scripts/dsh-superagent status
 
 打开日志中打印的 URL，然后在侧边栏中选择 **Superagent**。
 
+### Windows 守护
+
+`scripts/dsh-superagent` 用 tmux、`ps` 与 `fcntl`，只能在 POSIX 上运行。Windows 使用 `scripts/dsh-superagent-windows.ps1`，它不依赖第三方服务包装器，也不需要管理员权限：
+
+```powershell
+pwsh -NoProfile -File scripts/dsh-superagent-windows.ps1 -Action start
+pwsh -NoProfile -File scripts/dsh-superagent-windows.ps1 -Action status
+pwsh -NoProfile -File scripts/dsh-superagent-windows.ps1 -Action stop
+```
+
+- `start` 以隐藏的 `pwsh` 守护循环启动 `dsh --profile superagent --no-open`，等待健康就绪；`-Command` 可替换被测命令，`-Profile`、`-Url` 与 `DSH_SUPERAGENT_PROFILE`、`DSH_SUPERAGENT_URL` 的含义与 POSIX 脚本一致。
+- 子进程的 stdout/stderr 写到 `.artifacts/logs/dsh-superagent-<profile>-<date>-<time>-<pid>.{out,err}.log`，守护事件写到 `...-supervisor.log`；控制文件在 `.artifacts/control/windows/<profile>/`。
+- 崩溃后按 1 秒延迟自动拉起，重启次数写入 `restarts.count`；`stop` 写停止标记并结束整棵进程树，`start` 清除标记。强杀会在 `stateDir` 留下锁，需等 `stale=30s` 才可接管，因此恢复约需 15–30 秒；计划内重启请用 `stop`。
+- 该守护随用户会话存在，注销后停止；需要开机自启时，用计划任务在登录时调用 `-Action start`。本仓库未注册计划任务。
+- A6 的强制终止演练：`pwsh -NoProfile -File scripts/dsh-superagent-windows.ps1 -Action drill -Profile host -Command 'node --experimental-transform-types scripts/keepalive-host.mjs'`，实测数据见 `docs/009-copilot-plugin.md` §10。
+
 ### 每小时检查
 
 请在你日常使用的 DeepSeek Harness 档案中创建这个每小时检查，而不要创建在 `superagent` 里。它必须在代理服务停止时仍持续运行。在该档案中让一个代理用下面这段提示词创建每小时计划，并把检出路径填进去：
