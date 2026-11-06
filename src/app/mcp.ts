@@ -75,6 +75,8 @@ export class McpEndpoint {
   async start(): Promise<void> {
     const http = createServer((req, res) => { void this.handle(req, res) })
     this.http = http
+    // An error after startup has no startup promise to reject; without a listener it would end the process.
+    http.on('error', error => { this.options.log('MCP server error', error) })
     // Bound slow clients: headers must arrive quickly, and the whole request within a loopback-sized window.
     http.headersTimeout = HEADERS_TIMEOUT_MS
     http.requestTimeout = REQUEST_TIMEOUT_MS
@@ -82,15 +84,20 @@ export class McpEndpoint {
       this.options.log('MCP client error', error)
       socket.destroy()
     })
-    await new Promise<void>((resolve, reject) => {
-      const failed = (error: Error) => { http.off('listening', listening); reject(error) }
-      const listening = () => { http.off('error', failed); resolve() }
-      http.once('error', failed)
-      http.once('listening', listening)
-      http.listen(this.options.port, '127.0.0.1')
-    })
-    // An error after startup has no startup promise to reject; without a listener it would end the process.
-    http.on('error', error => { this.options.log('MCP server error', error) })
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const failed = (error: Error) => { http.off('listening', listening); reject(error) }
+        const listening = () => { http.off('error', failed); resolve() }
+        http.once('error', failed)
+        http.once('listening', listening)
+        http.listen(this.options.port, '127.0.0.1')
+      })
+    } catch (error) {
+      // A failed listen leaves no listener to stop; forget the server so `stop()` does not report a stale endpoint.
+      this.http = undefined
+      http.close(() => { /* A server that never listened has nothing to close. */ })
+      throw error
+    }
     const address = http.address()
     this.bound = typeof address === 'object' && address ? address.port : this.options.port
     this.sweepTimer = setInterval(() => { void this.sweep() }, SWEEP_MS)
