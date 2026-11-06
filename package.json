@@ -49,9 +49,10 @@
     "build": "tsdown && node scripts/build-plugin.mjs",
     "plugin:build": "node scripts/build-plugin.mjs",
     "plugin:check": "node scripts/validate-plugin.mjs && node scripts/validate-plugin.mjs --dir lib/plugin",
+    "extension:check": "node --check extension/dsh-lm-bridge/extension.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "check": "pnpm typecheck && pnpm test && pnpm build && pnpm plugin:check"
+    "check": "pnpm typecheck && pnpm extension:check && pnpm test && pnpm build && pnpm plugin:check"
   },
   "engines": {
     "node": "^22.19.0 || >=24.0.0",

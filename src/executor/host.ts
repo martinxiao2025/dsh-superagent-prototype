@@ -47,6 +47,10 @@ export interface TurnResult {
   readonly endedAt: string
   /** 失败原因；成功回合没有这个字段。 */
   readonly error?: string
+  /** 本回合实际使用的模型 id，宿主未报告时缺省。 */
+  readonly model?: string
+  /** 模型侧的 token 用量；`estimated` 为真时是本地计量而非服务端回报。 */
+  readonly usage?: { readonly inputTokens?: number; readonly outputTokens?: number; readonly estimated?: boolean }
 }
 /** `collect` 的选项。中止信号会终止该回合的进程。 */
 export interface CollectOptions {

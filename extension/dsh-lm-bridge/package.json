@@ -1,0 +1,42 @@
+{
+  "name": "dsh-lm-bridge",
+  "displayName": "DSH Superagent 语言模型桥",
+  "description": "在 VS Code 扩展宿主内通过 vscode.lm 驱动 Copilot 模型，并向本机 Runtime 暴露回环 HTTP 桥。",
+  "version": "0.1.0",
+  "publisher": "dsh-superagent",
+  "engines": {
+    "vscode": "^1.104.0"
+  },
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "dshLmBridge.status",
+        "title": "DSH: 显示语言模型桥状态"
+      }
+    ],
+    "configuration": {
+      "title": "DSH Superagent 语言模型桥",
+      "properties": {
+        "dsh.lmBridge.model": {
+          "type": "string",
+          "default": "deepseek-flash",
+          "description": "优先使用的模型 id（也可写 family 或 name）；找不到时退回第一个可用模型。"
+        },
+        "dsh.lmBridge.discoveryFile": {
+          "type": "string",
+          "default": "",
+          "description": "发现文件路径；留空时使用 ~/.dsh-superagent/lm-bridge.json，环境变量 DSH_LM_BRIDGE_FILE 优先。"
+        },
+        "dsh.lmBridge.timeoutMs": {
+          "type": "number",
+          "default": 1800000,
+          "description": "单个回合的默认超时（毫秒）。"
+        }
+      }
+    }
+  }
+}
