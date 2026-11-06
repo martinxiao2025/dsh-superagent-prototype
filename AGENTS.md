@@ -24,6 +24,7 @@
 | 面板文案必须中英双语，键与占位符一致 | `src/client/locales.ts`、`tests/locales.spec.ts` |
 | 模型可见表面（工具、提示词、技能、输入）受防漂移测试约束 | `tests/model-surface.spec.ts` |
 | Node `v24.19.0`、pnpm `11.7.0` 满足 `engines` | `node -v`、`pnpm -v`、`package.json` |
+| 运行时依赖新增 `@modelcontextprotocol/sdk`（精确 `1.32.2`），`ajv`（精确 `8.20.0`）仅为离线校验的开发依赖 | `package.json`；理由：MCP 服务端与官方 schema 校验，均已锁定版本 |
 | 原型仓库远端为 `origin git@github.com:martinxiao2025/dsh-superagent-prototype.git`；新项目根不自动继承该远端 | 原型 `git remote -v`；本仓库 `git remote -v` 为空 |
 
 ### 1.2 已过时或与代码冲突的条目（不得照抄执行）

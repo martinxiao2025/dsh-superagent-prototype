@@ -29,10 +29,11 @@ Read the numbered documents in order; each builds only on the ones before it.
 - [006 Deployment](docs/006-deployment.md): manual setup, configuration, upgrades and troubleshooting
 - [007 Architecture](docs/007-architecture.md)
 - [008 Cookbook](docs/008-cookbook.md): adding a Source
+- [009 Copilot plugin](docs/009-copilot-plugin.md): the agent-plugins package and the loopback MCP endpoint
 
 ## Development
 
-`pnpm check` runs the typecheck, the tests and the build.
+`pnpm check` runs the typecheck, the tests, the build and the offline plugin validation. `pnpm plugin:check` validates the plugin package alone.
 
 ## License
 
