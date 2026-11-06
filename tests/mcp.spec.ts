@@ -6,9 +6,11 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
+import { readFileSync } from 'node:fs'
 import { createServer, type AddressInfo, type Server as NetServer } from 'node:net'
 import { afterEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
+import { MAX_BODY, SERVER_VERSION } from '../src/app/mcp.ts'
 import { mountTools } from '../src/app/mcp-tools.ts'
 import { mainTools, type MainToolsHost } from '../src/app/tools/main.ts'
 import { feishu, startRuntime, type Host } from './fixtures/host.ts'
@@ -63,6 +65,11 @@ describe('MCP tool surface', () => {
     expect(agents).toEqual([undefined])
     expect(result).toEqual({ ok: true })
   })
+
+  it('reports the package version in initialize', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }
+    expect(SERVER_VERSION).toBe(pkg.version)
+  })
 })
 
 describe('MCP endpoint', () => {
@@ -101,6 +108,30 @@ describe('MCP endpoint', () => {
     host = undefined
     const reuse = createServer()
     try { await listening(reuse, port) } finally { await closeNet(reuse) }
+  }, 30_000)
+
+  it('bounds every request body and answers with a JSON-RPC error rather than resetting the socket', async () => {
+    host = await startRuntime(undefined, { mcpPort: 0 })
+    const url = `http://127.0.0.1:${host.mcpPort()}/mcp`
+    const headers = { 'content-type': 'application/json', accept: 'application/json, text/event-stream' }
+    const init = await fetch(url, { method: 'POST', headers, body: 'x'.repeat(MAX_BODY + 1) })
+    expect(init.status).toBe(413)
+    expect(((await init.json()) as { error: { message: string } }).error.message).toBe('The MCP request body is too large')
+    const malformed = await fetch(url, { method: 'POST', headers, body: '{' })
+    expect(malformed.status).toBe(400)
+    expect(((await malformed.json()) as { error: { message: string } }).error.message).toBe('The MCP request body is not JSON')
+
+    // An established session must be bounded too, not only initialize.
+    const transport = new StreamableHTTPClientTransport(new URL(url))
+    const client = new Client({ name: 'dsh-superagent-test', version: '0.0.0' })
+    await client.connect(transport)
+    try {
+      expect(transport.sessionId).toBeTypeOf('string')
+      const established = await fetch(url, { method: 'POST', headers: { ...headers, 'mcp-session-id': transport.sessionId! },
+        body: 'x'.repeat(MAX_BODY + 1) })
+      expect(established.status).toBe(413)
+      expect((await client.listTools()).tools).toHaveLength(14)
+    } finally { await client.close() }
   }, 30_000)
 
   it('reports a busy port in health and keeps the orchestrator running', async () => {

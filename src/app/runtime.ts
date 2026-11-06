@@ -229,10 +229,12 @@ export class Runtime extends Service implements SourceHost {
       this.mcpHealth.set({ state: 'paused', detail: 'The MCP endpoint is off (mcpEnabled is false)', at: now() })
       return
     }
-    const endpoint = new McpEndpoint({ id: this.masterId, port: this.machine.mcpPort, health: this.mcpHealth,
+    const endpoint = new McpEndpoint({ port: this.machine.mcpPort, health: this.mcpHealth,
       tools: mcpTools(this.toolHost, this.masterId), log: (message, error) => { this.ctx.logger.warn('%s: %s', message, String(error)) } })
     try {
       await endpoint.start()
+      // stop() may have run while start() was awaiting listen; never leave a listener behind.
+      if (this.closing()) { await endpoint.stop(); return }
       this.mcp = endpoint
     } catch (error) {
       this.mcpHealth.set({ state: 'error', at: now(),

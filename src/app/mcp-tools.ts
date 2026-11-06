@@ -18,7 +18,8 @@ interface InputSchema {
 export function mcpTools(host: MainToolsHost, id: string): Tool[] {
   return mainTools(host, { id })
 }
-const text = (value: unknown) => ({ type: 'text' as const, text: typeof value === 'string' ? value : JSON.stringify(value) })
+const text = (value: unknown) => ({ type: 'text' as const,
+  text: typeof value === 'string' ? value : value === undefined ? '' : JSON.stringify(value) })
 /** Turns a rejection into an MCP tool error while keeping the fixed `code` callers already match on. */
 const failure = (error: unknown) => {
   const body = error instanceof UserError ? { error: error.message, code: error.code } : { error: error instanceof Error ? error.message : String(error) }

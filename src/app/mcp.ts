@@ -9,14 +9,16 @@ import { mountTools } from './mcp-tools.ts'
 import type { Tool } from './tools/tool.ts'
 
 const PATH = '/mcp'
-const MAX_BODY = 4 * 1024 * 1024
+/** Largest request body the endpoint reads; the test asserts the 413 by sending one byte more. */
+export const MAX_BODY = 4 * 1024 * 1024
 const IDLE_MS = 10 * 60 * 1000
 const SWEEP_MS = 60 * 1000
-/** Reported in `initialize`; keep in step with `package.json` (the plugin validator checks the manifest, not this). */
-const SERVER_VERSION = '0.1.0'
+const HEADERS_TIMEOUT_MS = 10 * 1000
+const REQUEST_TIMEOUT_MS = 30 * 1000
+/** Reported in `initialize`; `tests/mcp.spec.ts` asserts it equals `package.json`'s version. */
+export const SERVER_VERSION = '0.1.0'
 
 export interface McpEndpointOptions {
-  readonly id: string
   readonly port: number
   readonly tools: readonly Tool[]
   readonly health: HealthEntry
@@ -32,16 +34,23 @@ const rpcError = (res: ServerResponse, status: number, code: number, message: st
   res.writeHead(status, { 'content-type': 'application/json' })
   res.end(JSON.stringify({ jsonrpc: '2.0', error: { code, message }, id: null }))
 }
-/** Reads and parses a request body, bounded so a client cannot exhaust memory. */
+/** Marks a body the endpoint rejected and already answered. */
+const Rejected: unique symbol = Symbol('rejected')
+/** The body exceeded `MAX_BODY`; the caller answers 413 instead of resetting the connection. */
+class BodyTooLarge extends Error {}
+/** Reads and parses a request body, bounded so a client cannot exhaust memory; it stops buffering once over the limit. */
 const readBody = (req: IncomingMessage): Promise<unknown> => new Promise((resolve, reject) => {
   const chunks: Buffer[] = []
   let size = 0
+  let tooLarge = false
   req.on('data', chunk => {
+    if (tooLarge) return
     size += chunk.length
-    if (size > MAX_BODY) { reject(new Error('The MCP request body is too large')); req.destroy(); return }
+    if (size > MAX_BODY) { tooLarge = true; chunks.length = 0; return }
     chunks.push(chunk)
   })
   req.on('end', () => {
+    if (tooLarge) { reject(new BodyTooLarge('The MCP request body is too large')); return }
     if (size === 0) { resolve(undefined); return }
     try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))) }
     catch { reject(new Error('The MCP request body is not JSON')) }
@@ -66,6 +75,9 @@ export class McpEndpoint {
   async start(): Promise<void> {
     const http = createServer((req, res) => { void this.handle(req, res) })
     this.http = http
+    // Bound slow clients: headers must arrive quickly, and the whole request within a loopback-sized window.
+    http.headersTimeout = HEADERS_TIMEOUT_MS
+    http.requestTimeout = REQUEST_TIMEOUT_MS
     http.on('clientError', (error, socket) => {
       this.options.log('MCP client error', error)
       socket.destroy()
@@ -77,6 +89,8 @@ export class McpEndpoint {
       http.once('listening', listening)
       http.listen(this.options.port, '127.0.0.1')
     })
+    // An error after startup has no startup promise to reject; without a listener it would end the process.
+    http.on('error', error => { this.options.log('MCP server error', error) })
     const address = http.address()
     this.bound = typeof address === 'object' && address ? address.port : this.options.port
     this.sweepTimer = setInterval(() => { void this.sweep() }, SWEEP_MS)
@@ -106,17 +120,38 @@ export class McpEndpoint {
     const header = req.headers['mcp-session-id']
     const id = typeof header === 'string' ? header : undefined
     const session = id ? this.sessions.get(id) : undefined
-    if (session) { session.last = Date.now(); await this.forward(session.transport, req, res) ; return }
+    if (session) {
+      session.last = Date.now()
+      // Read POST bodies here too, so the 4 MB cap covers every request, not only initialize.
+      if (req.method !== 'POST') { await this.forward(session.transport, req, res); return }
+      const body = await this.receive(req, res)
+      if (body !== Rejected) await this.forward(session.transport, req, res, body)
+      return
+    }
     if (id) { rpcError(res, 404, -32001, 'Session not found; initialize a new session'); return }
     if (req.method !== 'POST') { rpcError(res, 400, -32000, 'Only POST can start an MCP session; use the mcp-session-id header after initialize'); return }
+    const body = await this.receive(req, res)
+    if (body === Rejected) return
+    if (!isInitializeRequest(body)) { rpcError(res, 400, -32000, 'The first request must be initialize'); return }
     try {
-      const body = await readBody(req)
-      if (!isInitializeRequest(body)) { rpcError(res, 400, -32000, 'The first request must be initialize'); return }
       await this.open(req, res, body)
     } catch (error) {
+      // The client sees a fixed message; the detail stays in the log so a path or stack cannot leak over the port.
       this.options.log('MCP initialize failed', error)
-      if (!res.headersSent) rpcError(res, 400, -32700, error instanceof Error ? error.message : String(error))
+      if (!res.headersSent) rpcError(res, 500, -32603, 'The MCP session could not be initialized')
       else res.end()
+    }
+  }
+  /** Reads one body, answering the client itself when it is too large or not JSON. */
+  private async receive(req: IncomingMessage, res: ServerResponse): Promise<unknown> {
+    try { return await readBody(req) }
+    catch (error) {
+      const tooLarge = error instanceof BodyTooLarge
+      this.options.log('MCP request body rejected', error)
+      if (!res.headersSent) {
+        rpcError(res, tooLarge ? 413 : 400, -32600, tooLarge ? 'The MCP request body is too large' : 'The MCP request body is not JSON')
+      }
+      return Rejected
     }
   }
   /** Creates the session's server and transport, then hands it the initialize request. */
