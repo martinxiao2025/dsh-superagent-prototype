@@ -110,10 +110,36 @@ export function workspaceTools(options: WorkspaceToolsOptions): WorkerTool[] {
         timeout_ms: z.number().int().min(1000).max(600_000).optional().describe('超时毫秒数，默认 120000。'),
       }),
       async (args, signal) => {
-        const result = await run(args.command, root, Math.min(args.timeout_ms ?? commandTimeoutMs, 600_000), signal, maxChars)
+        const result = await run(args.command, root, Math.min(args.timeout_ms ?? commandTimeoutMs, 600_000), signal, maxChars, {})
         return result
       }),
   ]
+}
+
+/**
+ * 在工作目录里执行一条 shell 命令，供 prepare 之类不经过模型的场景复用。
+ * @param command 命令行。
+ * @param cwd 工作目录。
+ * @param options 超时、环境变量、中止信号与输出上限。
+ * @returns 退出码与输出。
+ */
+export async function runShell(command: string, cwd: string, options: {
+  readonly timeoutMs: number
+  readonly env?: Record<string, string>
+  readonly signal?: AbortSignal
+  readonly maxChars?: number
+}) {
+  const signal = options.signal ?? AbortSignal.timeout(options.timeoutMs)
+  return run(command, cwd, options.timeoutMs, signal, options.maxChars ?? DEFAULT_MAX_CHARS, options.env ?? {})
+}
+
+/**
+ * 把 zod schema 转成交给模型的 JSON Schema，并去掉 `$schema` 声明。
+ * @param schema 参数 schema。
+ * @returns JSON Schema 对象。
+ */
+export function toolJsonSchema(schema: z.ZodType): Record<string, unknown> {
+  return jsonSchema(schema)
 }
 
 /**
@@ -224,9 +250,9 @@ async function search(root: string, start: string, pattern: string, maxResults: 
  * @param maxChars 每个输出流的上限。
  * @returns 退出码与输出。
  */
-async function run(command: string, cwd: string, timeoutMs: number, signal: AbortSignal, maxChars: number) {
+async function run(command: string, cwd: string, timeoutMs: number, signal: AbortSignal, maxChars: number, env: Record<string, string>) {
   return new Promise<{ exit_code: number; stdout: string; stderr: string }>((resolvePromise, reject) => {
-    const child = spawn(command, { cwd, shell: true, windowsHide: true })
+    const child = spawn(command, { cwd, shell: true, windowsHide: true, env: { ...process.env, ...env } })
     let stdout = ''
     let stderr = ''
     let finished = false

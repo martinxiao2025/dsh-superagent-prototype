@@ -353,7 +353,8 @@ flowchart TB
 | `src/app/views/sources.ts` | 来源状态：每个来源实例的状态、其最后一天的计数，以及它在那一天过滤和丢弃的内容 |
 | `src/app/views/settings.ts` | 设置页视图：每个块及其修订、每个来源的设置及其 kind 的表单，以及执行环境 |
 | `src/app/views/overview.ts` | 概览：需要人的工单、问题、最后一天的流转与执行器负载 |
-| `src/executor/dsh.ts` | DshExecutor、`WorkerSlots`、`ticketExecution`、`inputMessage` 与 `mandateInstructions` |
+| `src/executor/dsh.ts` | DshExecutor（保留的 DSH worker 路径）、`WorkerSlots`、`ticketExecution`、`inputMessage` 与 `mandateInstructions` |
+| `src/executor/agent.ts` | `HostExecutor`：去 DSH 的 worker 执行器，经 `AgentHost`（`VsCodeLmHost`）执行回合；工具面由 `workspaceTools` 与编排工具组成，经回合工具回调执行，启动与投递走持久 effect 队列，同一工单串行，失败按临时/永久分流并指数退避。已实现，尚未接线到 `Runtime`（见 `docs/010` 的迁移状态） |
 | `src/executor/background.ts` | worker 在 DeepSeek Harness 中的后台工作，其会话拥有的 shell 作业（`ctx.jobs`）与其子智能体（`ctx.subagents`）：`runningJobs`、`untilQuiet`、`killJobs`、`collectJobs`、`stopSubagents`、`stopBackground`、`until`，以及 `cancelled`（其子智能体的停止取消了回合的 worker） |
 | `src/executor/host.ts` | 宿主与 agent 执行的抽象：`AgentHost` 的启动、健康检查、派发回合、结果回收与停止，以及回合请求、回执、结果与 MCP 服务器的类型。Runtime 只依赖它，换宿主不影响领域规则 |
 | `src/executor/copilot.ts` | `CopilotCliHost`：用 `copilot` CLI 的非交互模式运行真实回合，提示词经 stdin 送达，`parseTurnOutput` 解析文本与 JSONL 输出；Windows 上 `.cmd` 垫片无法以 `shell: false` 启动时记为健康错误，而不是抛出 |
