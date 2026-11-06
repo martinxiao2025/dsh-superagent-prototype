@@ -498,11 +498,11 @@ npx -y @modelcontextprotocol/inspector --cli http://127.0.0.1:3083/mcp --method 
 | A1 | 规范合规 | `node scripts/validate-plugin.mjs`、`--dir lib/plugin` | 两份清单通过官方 1.0.0 schema；`$schema` 一致；版本一致 | 实施 |
 | A2 | 构建打包 | `pnpm check`、目录树检查 | 全绿；`lib/plugin` 结构与 §3.4 一致 | 实施 |
 | A3 | MCP 连通 | MCP inspector CLI/UI 连 `http://127.0.0.1:3083/mcp` | 握手、14 工具、调用返回 | 实施 |
-| A4 | Copilot 冒烟 | VS Code Copilot 加载插件 | 三技能可见；accept 全链路可查 | 用户 + 实施 |
+| A4 | Copilot 冒烟 | Windows + VS Code Stable 1.119.0 的官方 Copilot Chat 加载插件（CLI、Insiders、其他宿主不计入） | 插件与三技能可见；accept 全链路可查 | 用户 + 实施 |
 | A5 | 回归 | `pnpm test` + 一轮真实触发 + 面板核对 | 面板、主会话评估、监听行为不变 | 实施 |
 | A6 | 保活演练 | kill 进程 → 调度器拉起 → 客户端重连 | 自动恢复，工具可用 | 用户 + 实施 |
 
-状态（2026-11-06）：A1/A2 通过；A3 以官方 SDK 客户端走真实 HTTP 链路作**等价验证**，inspector CLI/UI 未执行（本地没有可独立启动的 MCP 宿主进程）；A6 已用 Windows 守护脚本对真实 `Runtime` 完成强制终止演练并通过（首次就绪 2416ms，`taskkill /F` 后 30152ms 恢复，恢复前后 14 个工具、`runtime`/`mcp` 均 `ready`，详见 `docs/009-copilot-plugin.md` §10）；A4 未通过：本机 VS Code Stable/Insiders 均无官方 Copilot/Copilot Chat 扩展，Copilot CLI 只能证明插件包可加载（见 §11）；A5 仅完成测试回归，真实 GitHub/飞书触发未执行。A3 的 inspector 与 A4 不标为“通过”。
+状态（2026-11-06）：A1/A2 通过；A3 以官方 SDK 客户端走真实 HTTP 链路作**等价验证**，inspector CLI/UI 未执行（本地没有可独立启动的 MCP 宿主进程）；A6 已用 Windows 守护脚本对真实 `Runtime` 完成强制终止演练并通过（首次就绪 2416ms，`taskkill /F` 后 30152ms 恢复，恢复前后 14 个工具、`runtime`/`mcp` 均 `ready`，详见 `docs/009-copilot-plugin.md` §10）；A4 的验证环境收敛为 **Windows + VS Code Stable 1.119.0 的官方 Copilot Chat**（内置 `0.47.0`），状态为“客户端就位、待人工验证”，Copilot CLI 与已卸载的 Insiders 均不计入（见 §11）；A5 仅完成测试回归，真实 GitHub/飞书触发未执行。A3 的 inspector 与 A4 不标为“通过”。
 
 ## 8. 风险登记
 
@@ -555,7 +555,7 @@ npx -y @modelcontextprotocol/inspector --cli http://127.0.0.1:3083/mcp --method 
 | A1/A2 | 2026-11-06 | 正例 + 4 负例 + 构建 | 全部符合预期；`lib/plugin/` 结构与方案 §3.4 一致；全仓跟踪文件 BOM 数为 0 | 本批 |
 | A3–A6 | 2026-11-06 | 见 `docs/009-copilot-plugin.md` §8 | A3 自动等价通过，inspector 未执行；A4 因官方客户端缺失未通过；A5 仅测试回归，真实触发未执行 | 本批 |
 | A6 保活演练 | 2026-11-06 | `pwsh -NoProfile -File scripts/dsh-superagent-windows.ps1 -Action drill -Profile host -Command 'node --experimental-transform-types scripts/keepalive-host.mjs'` | 退出 0；首次就绪 2416ms；`taskkill /F /T` 后 30152ms 恢复，13 次重启尝试；恢复前后 `tools/list` 均 14 个、`runtime`/`mcp` 均 `ready`；发现并记录 `proper-lockfile` 的 30 秒锁窗口；证据 `.artifacts/keepalive/drill-20261106-203750.json` | 本批 |
-| A4 环境盘点 | 2026-11-06 | `pwsh -NoProfile -File scripts/copilot-smoke.ps1`、`code(-insiders) --list-extensions` | Stable `1.119.0`、Insiders `1.144.0-insider` 均无官方 Copilot 扩展；Copilot CLI `1.0.103` 能加载 `lib/plugin`；A4 仍未通过，剩余步骤见 `docs/009` §11 | 本批 |
+| A4 范围收敛与客户端就位 | 2026-11-06 | `pwsh -NoProfile -File scripts/copilot-smoke.ps1`、`code --install-extension GitHub.copilot-chat --force`、`node scripts/keepalive-probe.mjs` | 用户卸载 Insiders 后，A4 范围收敛为 Windows + VS Code Stable 1.119.0 的官方 Copilot Chat；Stable 内置 `GitHub.copilot-chat@0.47.0` 就位，市场安装因“内置版本不可降级”退出 1；`scripts/copilot-smoke.ps1` 改为 Stable-only（去掉 `-Editor`/`-RunModel`，CLI 仅作前置证据），5 个必需项全部 ok、`a4Status=client-ready-manual-pending`；宿主探针 14 工具；`-Action stop` 不再残留手动停止标记。A4 保持“客户端就位、待人工验证”，不标通过 | 本批 |
 | 中文化·文档与技能 | 2026-11-06 | 逐文件翻译后跑 `pnpm check` | `docs/000`–`009`、README、`plugin/skills/**` 与 `skills/**` 转简体中文；标识符、工具名、路径、协议值保持英文 | `c89721f`、`b084c0f` |
 | 中文化·代码注释 | 2026-11-06 | `pnpm check` | `src/**`、`scripts/**`、`tests/**` 的 174 个文件的 `//`、`/* */`、JSDoc 全部中文；逻辑与断言未改 | `92f3007` |
 | 中文化·面向人文案 | 2026-11-06 | `pnpm check` | `USER_ERRORS`、健康条目、CLI/脚本输出、`plugin.json`/`package.json` 描述等 81 个文件；`locale/en.json` 与英文语言包按设计保留 | `dcaff6e` |
@@ -565,6 +565,6 @@ npx -y @modelcontextprotocol/inspector --cli http://127.0.0.1:3083/mcp --method 
 | 全量核对与修复 | 2026-11-06 | `pnpm install --frozen-lockfile`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`pnpm plugin:check` | 安装 314 个包退出 0；typecheck 退出 0；全量 1179 通过 / 26 跳过 / 0 失败；`lib/plugin` 3 个技能；两处插件校验通过。核对发现并修复 1 个 Windows 跨盘符缺陷：`promptFile` 收到绝对路径时被 `join` 拼坏（包根在 D:、临时目录在 C:）；`tests/mcp.spec.ts` 增补「参数拒绝后继续服务」与「过期 revision 被拒」两例；T2.2/T2.3/T2.4/T3.1 与 `docs/007` 测试表按代码事实更正。本机 node v24.2.0 仅作环境记录，门槛以 `engines` 为准 | 本批 |
 | Agent Plugins 1.0.0 合规核对 | 2026-11-06 | 实抓 `agent-plugins.org/specification` 与作者指南；下载官方两份 schema 比对 SHA256；`node scripts/validate-plugin.mjs`（正例 2 处 + 4 类负例） | 站点发布版 1.0.0；仓库 `main` 的 1.1.0 为 Working Draft 不作依据。官方 schema 与本地两份 SHA256 完全一致（`plugin` `0A4AAD95…`、`mcp` `6539175B…`；工作区 CRLF 由 `core.autocrlf` 产生，归一后与仓库内容一致）。逐条核对 §4–§11 与 Agent Skills frontmatter，包结构/清单/MCP/技能均符合，无不符项；校验脚本属作者侧门禁、严于客户端下限，已在 `docs/009` §9 注明。A3 仍为 SDK 真实 HTTP 等价验证，inspector 未执行；A4/A6/真实触发仍阻塞 | 本批 |
 
-未闭合项（截至本批）：VS Code Copilot Chat 冒烟（A4，本机未安装官方 Copilot 扩展）、真实 worker 执行（无 `dsh` 宿主与真实模型 worker）、双人 SoD（验证宿主只有一个允许发送者）、保活演练（A6，需 systemd/计划任务）、真实 GitHub/飞书事件（无凭据）。Windows 上跳过的测试仍为 26 项，均为 POSIX 专属被测对象（`#!/bin/sh` worker shim、服务管理脚本、飞书假 CLI 与权限位），已在测试文件内写明原因，不视为通过。
+未闭合项（截至本批）：VS Code Copilot Chat 冒烟（A4，客户端已就位、待 IDE 内人工验证）、真实 worker 执行（无 `dsh` 宿主与真实模型 worker）、双人 SoD（验证宿主只有一个允许发送者）、保活演练（A6 的 Windows 机制演练已通过，真实 `dsh --profile` 宿主与 systemd/计划任务长期部署仍未验证）、真实 GitHub/飞书事件（无凭据）。Windows 上跳过的测试仍为 26 项，均为 POSIX 专属被测对象（`#!/bin/sh` worker shim、服务管理脚本、飞书假 CLI 与权限位），已在测试文件内写明原因，不视为通过。
 
 路径与版本口径（2026-11-06，用户决策）：实施根就是当前仓库 `d:\WorkSpace\dsh-superagent-prototype`，阶段一在原仓库内实施并保留 `main@8c32a9d` 历史与 `origin` 远端；`d:\superagent-plugin` 从未存在，相关表述已全部改为本根。Node 只要求不低于 `package.json` 的 `engines` 下限（当前 `^22.19.0 || >=24.0.0`），不锁定具体版本；本机 `node v24.2.0` 仅作环境记录，不作为要求或验收条件。

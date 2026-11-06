@@ -1,113 +1,254 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-    A4 冒烟前置盘点与可执行清单：确认 VS Code / Copilot 扩展 / Copilot CLI / 插件加载能力。
+    A4 只读盘点：Windows + VS Code Stable 的官方 Copilot 客户端是否就位。
 
 .DESCRIPTION
-    本脚本只做环境盘点与只读验证，默认不联网、不安装扩展、不调用模型、不读取任何凭据内容。
-    它回答三个问题：官方 Copilot Chat 是否就绪、`lib/plugin` 能否被真实客户端加载、
-    还缺哪一步需要用户动手。
+    验收范围（2026-11-06 用户收敛）：A4 只认 Windows 上 VS Code Stable 里官方 Copilot /
+    Copilot Chat 中真实发生的验证行为。Copilot CLI、VS Code Insiders（用户已卸载）以及
+    其他编辑器与宿主一律不计入 A4，最多作为前置证据单列。
+
+    脚本默认只读：不联网、不安装扩展、不调用模型、不读取也不输出任何凭据内容；
+    只有显式传 -Install 时才尝试安装官方扩展，并把真实输出与退出码原样记录。
+
+    退出码 0 表示自动前置条件齐备、A4 仍待人工验证（client-ready-manual-pending）；
+    退出码 1 表示自动前置条件缺失（blocked）。两者都不表示 A4 通过。
 
 .PARAMETER Install
-    显式要求安装官方扩展（GitHub.copilot 与 GitHub.copilot-chat）。需要联网与有效订阅；
-    不加该开关时脚本只报告缺失，不会安装任何东西。
-
-.PARAMETER Editor
-    stable / insiders，默认 stable。指定检查与安装到哪个 VS Code。
-
-.PARAMETER RunModel
-    额外执行一次真实模型的非交互冒烟（会消耗 Copilot 配额），需要先启动 MCP 端点。
+    显式要求尝试安装官方扩展 GitHub.copilot 与 GitHub.copilot-chat。需要联网与有效订阅；
+    其中 Copilot Chat 在 VS Code 1.119 是内置扩展（0.47.0），市场安装通常会被拒绝降级，
+    脚本如实记录失败原因，不把失败改写成成功。
 
 .EXAMPLE
     pwsh -NoProfile -File scripts/copilot-smoke.ps1
-    pwsh -NoProfile -File scripts/copilot-smoke.ps1 -Editor insiders -Install
+    pwsh -NoProfile -File scripts/copilot-smoke.ps1 -Install
 #>
 [CmdletBinding()]
 param(
-    [switch]$Install,
-    [ValidateSet('stable', 'insiders')]
-    [string]$Editor = 'stable',
-    [switch]$RunModel
+    [switch]$Install
 )
 
 $ErrorActionPreference = 'SilentlyContinue'
 $Root = Split-Path -Parent $PSScriptRoot
-$Plugin = Join-Path $Root 'lib\plugin'
-$Cli = if ($Editor -eq 'insiders') { 'code-insiders' } else { 'code' }
+$PluginDir = Join-Path $Root 'lib\plugin'
+$ExpectedSkills = @('dsh-superagent', 'dsh-superagent-feishu', 'dsh-superagent-github')
 $Official = @('GitHub.copilot', 'GitHub.copilot-chat')
 
-# 运行一个命令并返回是否有输出；用于只读探测。
-function Test-Command([string]$Name) {
-    return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
+# 定位 Stable 安装根、应用目录、版本与 code CLI；找不到时返回 $null。
+function Find-StableCode {
+    $candidates = [System.Collections.Generic.List[string]]::new()
+    if ($env:ProgramFiles) { $candidates.Add((Join-Path $env:ProgramFiles 'Microsoft VS Code')) }
+    if (${env:ProgramFiles(x86)}) { $candidates.Add((Join-Path ${env:ProgramFiles(x86)} 'Microsoft VS Code')) }
+    if ($env:LOCALAPPDATA) { $candidates.Add((Join-Path $env:LOCALAPPDATA 'Programs\Microsoft VS Code')) }
+
+    foreach ($root in $candidates) {
+        if (-not (Test-Path -LiteralPath $root)) { continue }
+        $appDir = Get-ChildItem -LiteralPath $root -Directory |
+            ForEach-Object { Join-Path $_.FullName 'resources\app' } |
+            Where-Object { Test-Path -LiteralPath (Join-Path $_ 'product.json') } |
+            Select-Object -First 1
+        if (-not $appDir) { continue }
+        $product = Get-Content -LiteralPath (Join-Path $appDir 'product.json') -Raw | ConvertFrom-Json
+        return [pscustomobject]@{
+            Root    = $root
+            AppDir  = $appDir
+            Version = $product.version
+            Commit  = $product.commit
+            Cli     = (Join-Path $root 'bin\code.cmd')
+        }
+    }
+    return $null
 }
 
-# 读取指定编辑器的扩展列表与版本。
-function Get-Extensions([string]$CliName) {
-    if (-not (Test-Command $CliName)) { return @() }
-    return @(& $CliName --list-extensions --show-versions 2>$null)
+# 读取内置 Copilot Chat 扩展清单；VS Code 1.116 起 Chat 以内置扩展形式随 IDE 分发。
+function Get-BuiltinChat([string]$AppDir) {
+    $manifest = Join-Path $AppDir 'extensions\copilot\package.json'
+    if (-not (Test-Path -LiteralPath $manifest)) { return $null }
+    $json = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
+    return [pscustomobject]@{
+        Path      = $manifest
+        Name      = $json.name
+        Publisher = $json.publisher
+        Version   = $json.version
+        Display   = $json.displayName
+        Engines   = $json.engines.vscode
+        BuiltIn   = $true
+    }
 }
 
-# 汇总一条检查结果，供最终 JSON 使用。
-function Add-Check([System.Collections.ArrayList]$List, [string]$Name, [bool]$Ok, [string]$Detail) {
-    $List.Add([ordered]@{ check = $Name; ok = $Ok; detail = $Detail }) | Out-Null
+# 从 workbench 主脚本确认 Agent Plugins 设置键与命令是否存在（能力检测，不改任何配置）。
+function Get-PluginCapability([string]$AppDir) {
+    $main = Join-Path $AppDir 'out\vs\workbench\workbench.desktop.main.js'
+    if (-not (Test-Path -LiteralPath $main)) { return $null }
+    $text = [System.IO.File]::ReadAllText($main)
+    return [pscustomobject]@{
+        ChatPluginsEnabled  = $text.Contains('chat.plugins.enabled')
+        ChatPluginLocations = $text.Contains('chat.pluginLocations')
+        LegacyPluginPaths   = $text.Contains('chat.plugins.paths')
+        Commands            = @([regex]::Matches($text, 'workbench\.action\.chat\.[A-Za-z]*[Pp]lugin[A-Za-z]*') |
+            ForEach-Object Value | Sort-Object -Unique)
+    }
+}
+
+# 只报告登录状态的存在性：globalStorage 目录与系统凭据条目的有无，绝不读取内容。
+function Get-LoginExistence {
+    $storage = Join-Path $env:APPDATA 'Code\User\globalStorage'
+    $list = & cmdkey /list 2>$null | Out-String
+    $entries = if ($list) { @([regex]::Matches($list, '(?im)^\s*Target:.*copilot.*$')).Count } else { 0 }
+    return [pscustomobject]@{
+        Determinable      = $false
+        Reason            = '登录态只存在于 VS Code 密钥存储与 Copilot Chat 会话内，IDE 外无法可靠判定；此处仅报告存在性'
+        GlobalStorage     = [ordered]@{
+            'github.copilot'      = Test-Path -LiteralPath (Join-Path $storage 'github.copilot')
+            'github.copilot-chat' = Test-Path -LiteralPath (Join-Path $storage 'github.copilot-chat')
+        }
+        CredentialEntries = $entries
+    }
+}
+
+# 读取用户设置中是否已声明插件位置；只做文本匹配，不解析 JSONC，也不判定启用状态。
+function Get-UserPluginSettings {
+    $settings = Join-Path $env:APPDATA 'Code\User\settings.json'
+    if (-not (Test-Path -LiteralPath $settings)) {
+        return [pscustomobject]@{ File = $settings; Exists = $false; HasPluginLocations = $false; PointsToLibPlugin = $false }
+    }
+    $raw = Get-Content -LiteralPath $settings -Raw
+    return [pscustomobject]@{
+        File               = $settings
+        Exists             = $true
+        HasPluginLocations = [bool]($raw -match '"chat\.pluginLocations"')
+        PointsToLibPlugin  = [bool]($raw -match 'lib[/\\]+plugin')
+    }
+}
+
+# 汇总一条检查结果；required 为假时只作信息项，不影响退出码。
+function Add-Check([System.Collections.ArrayList]$List, [string]$Name, [bool]$Required, [bool]$Ok, [string]$Detail) {
+    $List.Add([ordered]@{ check = $Name; required = $Required; ok = $Ok; detail = $Detail }) | Out-Null
 }
 
 $checks = [System.Collections.ArrayList]::new()
+$editor = Find-StableCode
 
-# 1. 编辑器与官方扩展。
-$editorVersion = if (Test-Command $Cli) { (& $Cli --version 2>$null | Select-Object -First 1) } else { '' }
-Add-Check $checks 'editor' ([bool]$editorVersion) "$Cli=$editorVersion"
-$extensions = Get-Extensions $Cli
-$installed = @($Official | Where-Object { $extensions -match "^$([regex]::Escape($_))@" })
-Add-Check $checks 'official-copilot' ($installed.Count -eq $Official.Count) ("已安装: " + ($(if ($installed.Count) { $installed -join ', ' } else { '无' })))
+# 1. Stable 编辑器。
+$editorDetail = '未找到 VS Code Stable 安装'
+if ($editor) { $editorDetail = "版本 $($editor.Version)，安装根 $($editor.Root)" }
+Add-Check $checks 'vs-code-stable' $true ([bool]$editor) $editorDetail
 
-# 2. Copilot CLI 与插件加载能力。
-$cliVersion = if (Test-Command 'copilot') { (& copilot --version 2>$null | Select-Object -First 1) } else { '' }
-Add-Check $checks 'copilot-cli' ([bool]$cliVersion) "copilot=$cliVersion"
-if ($cliVersion) {
-    $plugins = & copilot plugin list --json 2>$null | Out-String
-    Add-Check $checks 'copilot-cli-plugin-command' ($LASTEXITCODE -eq 0) 'copilot plugin list --json'
+$chat = if ($editor) { Get-BuiltinChat $editor.AppDir } else { $null }
+$chatDetail = '未找到内置 Copilot Chat 扩展'
+if ($chat) { $chatDetail = "$($chat.Publisher).$($chat.Name) $($chat.Version)（内置，engines $($chat.Engines)）" }
+Add-Check $checks 'builtin-copilot-chat' $true ([bool]$chat) $chatDetail
+
+# 2. 官方扩展列表：Chat 为内置；GitHub.copilot 是补全扩展，缺失不影响插件平台。
+$extensions = @()
+if ($editor -and (Test-Path -LiteralPath $editor.Cli)) { $extensions = @(& $editor.Cli --list-extensions --show-versions 2>$null) }
+foreach ($id in $Official) {
+    $hit = @($extensions | Where-Object { $_ -match "^$([regex]::Escape($id))@" }) | Select-Object -First 1
+    $builtIn = $chat -and ($id -eq 'GitHub.copilot-chat')
+    $detail = '未安装（补全扩展；插件平台由内置 Chat 提供）'
+    if ($hit) { $detail = $hit } elseif ($builtIn) { $detail = "内置 $($chat.Version)，不经市场安装" }
+    Add-Check $checks "extension-$id" $false ([bool]$hit -or [bool]$builtIn) $detail
 }
 
-# 3. 本仓库插件产物。
-Add-Check $checks 'lib-plugin' (Test-Path (Join-Path $Plugin 'plugin.json')) "路径 $Plugin"
-if (Test-Path (Join-Path $Plugin 'plugin.json')) {
-    $listed = & copilot --plugin-dir $Plugin plugin list --json 2>$null | Out-String
-    $loaded = $listed -match '"name"\s*:\s*"dsh-superagent"'
-    Add-Check $checks 'plugin-loaded-by-cli' $loaded 'copilot --plugin-dir lib/plugin plugin list --json'
+# 3. Agent Plugins 能力。
+$capability = if ($editor) { Get-PluginCapability $editor.AppDir } else { $null }
+$capabilityOk = [bool]($capability -and $capability.ChatPluginsEnabled -and $capability.ChatPluginLocations)
+$capabilityDetail = '无法读取 workbench 主脚本'
+if ($capability) {
+    $capabilityDetail = "chat.plugins.enabled=$($capability.ChatPluginsEnabled)，chat.pluginLocations=$($capability.ChatPluginLocations)，命令 $($capability.Commands.Count) 个"
 }
+Add-Check $checks 'agent-plugins-capability' $true $capabilityOk $capabilityDetail
 
-# 4. 可选安装：只有显式 -Install 才联网。
-if ($Install) {
+# 4. 插件产物与三个技能。
+$manifest = Join-Path $PluginDir 'plugin.json'
+$pluginOk = Test-Path -LiteralPath $manifest
+$pluginName = ''
+$pluginVersion = ''
+if ($pluginOk) {
+    $json = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
+    $pluginName = $json.name
+    $pluginVersion = $json.version
+}
+$packageDetail = "缺少 $manifest，先执行 pnpm build"
+if ($pluginOk) { $packageDetail = "$pluginName@$pluginVersion，路径 $PluginDir（需先 pnpm build）" }
+Add-Check $checks 'lib-plugin-package' $true $pluginOk $packageDetail
+
+$skills = @()
+if (Test-Path -LiteralPath (Join-Path $PluginDir 'skills')) {
+    $skills = @(Get-ChildItem -LiteralPath (Join-Path $PluginDir 'skills') -Directory | Select-Object -ExpandProperty Name | Sort-Object)
+}
+$skillsOk = ($skills.Count -eq $ExpectedSkills.Count) -and -not @($ExpectedSkills | Where-Object { $skills -notcontains $_ })
+$skillsText = '无'
+if ($skills.Count) { $skillsText = $skills -join ', ' }
+Add-Check $checks 'plugin-skills' $true $skillsOk "技能: $skillsText；期望 3 个"
+
+# 5. 可选安装：只有显式 -Install 才联网，失败原因原样记录。
+$installLog = [System.Collections.ArrayList]::new()
+if ($Install -and $editor) {
     foreach ($id in $Official) {
-        if ($extensions -match "^$([regex]::Escape($id))@") { continue }
-        & $Cli --install-extension $id --force 2>&1 | ForEach-Object { Write-Host $_ }
+        $before = @($extensions | Where-Object { $_ -match "^$([regex]::Escape($id))@" })
+        $beforeText = '未安装'
+        if ($before.Count) { $beforeText = $before[0] }
+        $output = & $editor.Cli --install-extension $id --force 2>&1 | Out-String
+        $exit = $LASTEXITCODE
+        $lastLine = ($output.Trim() -split "`r?`n" | Select-Object -Last 1)
+        $installLog.Add([ordered]@{ id = $id; before = $beforeText; exitCode = $exit; output = $lastLine }) | Out-Null
     }
-    $extensions = Get-Extensions $Cli
-    $installed = @($Official | Where-Object { $extensions -match "^$([regex]::Escape($_))@" })
-    Add-Check $checks 'official-copilot-after-install' ($installed.Count -eq $Official.Count) ("已安装: " + ($(if ($installed.Count) { $installed -join ', ' } else { '无' })))
+    $extensions = @(& $editor.Cli --list-extensions --show-versions 2>$null)
+    foreach ($id in $Official) {
+        $hit = @($extensions | Where-Object { $_ -match "^$([regex]::Escape($id))@" }) | Select-Object -First 1
+        $afterText = '未安装'
+        if ($hit) { $afterText = $hit }
+        $installLog.Add([ordered]@{ id = $id; after = $afterText }) | Out-Null
+    }
 }
 
-# 5. 可选真实模型冒烟：只在显式 -RunModel 时执行。
-if ($RunModel) {
-    $prompt = '只用 dsh-superagent 插件工具：调用 orchestrator_read 读取 tickets，并原样返回结果。'
-    $output = & copilot -p $prompt --plugin-dir $Plugin --allow-all-tools -s 2>&1 | Out-String
-    Add-Check $checks 'model-smoke' ($LASTEXITCODE -eq 0) ($output.Trim() | Select-Object -First 1)
-}
+# 6. 登录状态存在性与用户设置（只读）。
+$login = Get-LoginExistence
+$settings = Get-UserPluginSettings
+
+# 7. Copilot CLI 只作前置证据，明确不计入 A4 验收。
+$cliVersion = if (Get-Command 'copilot' -ErrorAction SilentlyContinue) { (& copilot --version 2>$null | Select-Object -First 1) } else { '' }
+
+$blocked = @($checks | Where-Object { $_.required -and -not $_.ok })
+$status = if ($blocked.Count) { 'blocked' } else { 'client-ready-manual-pending' }
+
+# 只列出官方扩展；其余第三方扩展与本项验收无关，不写入报告。
+$officialInstalled = @($extensions | Where-Object { $Official -contains ($_ -split '@')[0] })
 
 $report = [ordered]@{
-    editor = $Editor
+    scope = 'Windows + VS Code Stable 官方 Copilot / Copilot Chat；Insiders（用户已卸载）、Copilot CLI、其他编辑器与宿主均不计入 A4'
     generatedAt = (Get-Date).ToString('o')
+    a4Status = $status
+    editor = $editor
+    copilotChat = $chat
+    installedExtensions = [ordered]@{ total = $extensions.Count; official = $officialInstalled }
+    pluginCapability = $capability
+    plugin = [ordered]@{ path = $PluginDir; name = $pluginName; version = $pluginVersion; skills = $skills }
+    login = $login
+    userSettings = $settings
+    install = $installLog
+    preEvidence = [ordered]@{
+        copilotCli = $cliVersion
+        note = 'Copilot CLI 只能证明插件包可被读取，不计入 A4 验收'
+    }
     checks = $checks
-    manual = @(
-        '在 VS Code 安装官方 GitHub.copilot 与 GitHub.copilot-chat，并登录有 Copilot 权限的账号。',
-        '按客户端文档把 lib/plugin 放入 agent plugins 目录，或在命令面板执行插件安装。',
-        '确认 dsh-superagent 插件处于启用状态，且三个技能可见。',
-        '先启动守护与 MCP 端点（scripts/dsh-superagent-windows.ps1 -Action start），再在 Copilot 中验证工具出现。',
-        '依次调用 orchestrator_read(tickets)、orchestrator_route、orchestrator_reply，记录调用与返回。',
-        '保存 Copilot 的插件页与工具调用截图到 .artifacts/screenshots/（不提交）。'
+    manualSteps = @(
+        'Stable 打开后按 Ctrl+Shift+P，运行 “Chat: Install Plugin from Source”（workbench.action.chat.installPluginFromSource），输入 file:///d:/WorkSpace/dsh-superagent-prototype/lib/plugin；或在工作区设置把 chat.pluginLocations 指向该目录。',
+        '在 Copilot Chat 里登录有 Copilot 权限的 GitHub 账号；本脚本只报登录状态存在性，不读取任何凭据。',
+        '确认 Copilot 的插件列表中 dsh-superagent 处于启用状态，且技能 dsh-superagent、dsh-superagent-github、dsh-superagent-feishu 均可见。',
+        '先在仓库根启动宿主与 MCP 端点（scripts/dsh-superagent-windows.ps1 -Action start -Profile a4 -Command "node --experimental-transform-types scripts/keepalive-host.mjs"），再在 Copilot Chat 中确认工具可列并可调用：orchestrator_read(tickets) → orchestrator_route → orchestrator_reply。',
+        '把插件页、技能列表与工具调用截图保存到 .artifacts/screenshots/（不提交），然后把结果回填 docs/009-copilot-plugin.md 的 §11。'
     )
 }
-$report | ConvertTo-Json -Depth 5
-if ($checks | Where-Object { -not $_.ok }) { exit 1 }
+
+$report | ConvertTo-Json -Depth 8
+
+if ($blocked.Count) {
+    Write-Host ''
+    Write-Host "A4 自动前置条件缺失 $($blocked.Count) 项：$(($blocked | ForEach-Object { $_.check }) -join ', ')" -ForegroundColor Yellow
+    exit 1
+}
+Write-Host ''
+Write-Host '自动前置条件齐备；A4 仍为“客户端就位、待人工验证”，不得据此标通过。' -ForegroundColor Yellow
 exit 0

@@ -58,7 +58,7 @@ pnpm check          # typecheck + test + build + plugin:check
 
 ## 6. 安装与保活
 
-安装:把 `lib/plugin/`(或仓库 `plugin/` 加构建产物)整体放入 Copilot 客户端的 agent plugins 目录;目录由客户端约定,VS Code 与 M365 各不相同,以客户端文档为准。放入后在客户端启用该插件,`mcp.json` 指向本机守护进程。
+安装:把 `lib/plugin/`(或仓库 `plugin/` 加构建产物)整体放入 Copilot 客户端的 agent plugins 目录;目录由客户端约定,VS Code 与 M365 各不相同,以客户端文档为准。放入后在客户端启用该插件,`mcp.json` 指向本机守护进程。VS Code Stable 1.119 可在命令面板执行 `Chat: Install Plugin from Source` 并指向本机的 `lib/plugin`,具体人工步骤见 §11.4。
 
 保活由外部调度负责,Copilot 进程不必常驻:
 
@@ -86,7 +86,7 @@ pnpm check          # typecheck + test + build + plugin:check
 | A1 | 规范合规 | 作者侧校验通过 | `node scripts/validate-plugin.mjs` 与 `--dir lib/plugin` 均退出 0;4 类负例(大写名称、schema 版本不一致、嵌套技能目录、未知字段)均退出 1。注意:该脚本是作者侧门禁,比规范对客户端的最低要求更严格(未知顶层字段直接失败、`mcpServers` 不得为空、MCP 仅允许回环 HTTP),不能据此宣称客户端一致性 |
 | A2 | 构建打包 | 通过 | `pnpm build` 退出 0;`lib/plugin/` 含 `plugin.json`、`mcp.json`、3 个技能目录,无 BOM |
 | A3 | MCP 连通 | 自动等价验证通过 | `tests/mcp.spec.ts`:真实 Streamable HTTP 握手、14 个工具、`orchestrator_read`、`orchestrator_route` 建票。inspector CLI/GUI 未执行:本地没有可独立启动的 MCP 守护进程(需要 DSH 宿主),以官方 SDK 客户端的真实 HTTP 链路作等价验证,不宣称已跑 inspector |
-| A4 | Copilot 冒烟 | 未通过(客户端缺失) | 本机 VS Code stable `1.119.0` 与 Insiders `1.144.0-insider` 均未安装官方 `GitHub.copilot` / `GitHub.copilot-chat`;只有第三方聊天扩展。Copilot CLI `1.0.103` 存在且能加载本插件,但 CLI 不等价于 VS Code Copilot,故不标为通过。盘点与可执行清单见 §11 |
+| A4 | Copilot 冒烟 | 客户端就位,待人工验证 | 验证环境限定 Windows + VS Code Stable `1.119.0` 的官方 Copilot Chat(内置 `@0.47.0`);市场安装被内置版本拒绝,不影响使用。已自动确认 Agent Plugins 能力、`lib/plugin` 与三个技能、宿主 14 个工具;IDE 内登录、插件可见、技能可见与真实工具调用仍需人工完成。Insiders(用户已卸载)与 Copilot CLI 均不计入。清单见 §11 |
 | A5 | 回归 | 通过(Windows) | 全量 1179 通过、26 跳过、0 失败。跳过的 3 类在测试文件内写明原因:worker shim 执行、`scripts/dsh-superagent` 服务脚本、飞书消费者假 CLI 都以 `#!/bin/sh` 脚本为被测对象,Windows 无法执行;另 1 项 POSIX 权限位断言。此前 42 项失败中的 16 项已改为跨平台实现并真实通过。真实 GitHub/飞书触发仍未执行 |
 | A6 | 保活演练 | 通过(Windows 机制演练) | 用 `scripts/dsh-superagent-windows.ps1 -Action drill` 对真实 `Runtime` 宿主做启动→`taskkill /F /T`→自动拉起→管理 API 与 MCP 探针复核:首次就绪 2416ms,强杀后 30152ms 恢复,13 次重启尝试,恢复前后 `tools/list` 均为 14 个、`runtime`/`mcp` 均 `ready`。详见 §10。真实 `dsh --profile` 宿主与计划任务长期部署仍未验证 |
 
@@ -118,7 +118,7 @@ pnpm check          # typecheck + test + build + plugin:check
 | Agent Skills §Frontmatter | `name`/`description` 必填;`name` 1–64、小写字母数字连字符、无 `--`、与目录同名;`description` 1–1024;可选字段类型固定 | 3 个 `SKILL.md` 均只有合规的 `name`/`description`,目录同名 | 符合 | `plugin/skills/dsh-superagent/SKILL.md`、`lib/plugin/skills/*/SKILL.md` |
 | 扩展命名空间 | `extensions` 与同名顶层目录均可选;未实现该命名空间的客户端应忽略 | 未使用 | 符合(未使用) | `plugin/` 顶层目录清单 |
 
-**结论**:插件的包结构、清单、MCP 配置、技能发现与 frontmatter 均符合 Agent Plugins 1.0.0 与 Agent Skills 规范;未发现需要改代码或改包结构的不符项。校验脚本比规范对客户端的最低行为更严格,已在 A1 与本表中注明,不据此宣称客户端一致性。A6 已按 §10 完成 Windows 机制演练并通过;A4 仍因官方 Copilot 客户端缺失而未通过(§11);真实 GitHub/飞书触发未执行。
+**结论**:插件的包结构、清单、MCP 配置、技能发现与 frontmatter 均符合 Agent Plugins 1.0.0 与 Agent Skills 规范;未发现需要改代码或改包结构的不符项。校验脚本比规范对客户端的最低行为更严格,已在 A1 与本表中注明,不据此宣称客户端一致性。A6 已按 §10 完成 Windows 机制演练并通过;A4 的客户端(Stable 内置 Copilot Chat 0.47.0)已就位,IDE 内验证未完成,状态为待人工验证(§11);真实 GitHub/飞书触发未执行。
 
 ## 10. A6 Windows 保活演练(2026-11-06)
 
@@ -140,6 +140,8 @@ pwsh -NoProfile -File scripts/dsh-superagent-windows.ps1 -Action drill `
 ```
 
 `-Action start` / `stop` / `status` 用于日常启停;`status` 输出 JSON,退出码 0 表示守护与健康均正常。证据写入 `.artifacts/keepalive/drill-<时间戳>.json`(已 gitignore)。
+
+2026-11-06 修复:`-Action stop` 原先只写 `manually-stopped` 标记而不清理,导致停止后再 `start` 被“存在手动停止标记”拒绝。现在子进程与守护进程全部退出后自动清标记;已实测“启动 → 探针 14 工具 → 停止 → 再次启动”可用。
 
 ### 10.3 实测结果(退出码 0)
 
@@ -172,43 +174,79 @@ pwsh -NoProfile -File scripts/dsh-superagent-windows.ps1 -Action drill `
 - Copilot 客户端在重启后的重连:依赖 A4,当前未验证;
 - 宿主脚本只启动 `Runtime`,未启动 Source 轮询器,故 `feishu`/`history`/`github` 在演练中为 `starting`,与本项要验证的“进程自愈 + MCP 工具面恢复”无关。
 
-## 11. A4 冒烟前置盘点(2026-11-06)
+## 11. A4 冒烟盘点(2026-11-06)
 
-### 11.1 环境实测
+### 11.1 验收口径
+
+A4 的验证环境写死为 **Windows + VS Code Stable 1.119.0 的官方 Copilot / Copilot Chat**,只认其中真实发生的验证行为(插件可见、技能可见、工具可列并可调用)。
+
+- VS Code Insiders:用户已手工卸载,**不纳入本次验证范围**;脚本与文档均不再探测 Insiders,不存在时也不计失败。
+- Copilot CLI(`copilot --plugin-dir …`):只作前置证据单列,**不计入 A4 验收**。
+- 其他编辑器与宿主:不计入。
+
+当前状态:**客户端就位、待人工验证**(`scripts/copilot-smoke.ps1` 输出 `a4Status=client-ready-manual-pending`)。未标记通过。
+
+### 11.2 客户端就位情况与安装结果
 
 | 项 | 实测 | 结论 |
 | --- | --- | --- |
-| VS Code stable | `1.119.0` | 已安装;未安装官方 `GitHub.copilot` 与 `GitHub.copilot-chat` |
-| VS Code Insiders | `1.144.0-insider` | 已安装;同样没有官方 Copilot 扩展,只有第三方 `ltmoerdani.zai-copilot-chat@0.7.0`、`vizards.deepseek-v4-for-copilot@0.9.5` |
-| Copilot CLI | `GitHub Copilot CLI 1.0.103` | 已安装;`~/.copilot/config.json` 存在,`copilot plugin list --json` 与 `copilot mcp list --json` 均退出 0。未读取任何 token/密钥内容 |
-| 插件包加载 | `copilot --plugin-dir lib/plugin plugin list --json` | 能列出 `dsh-superagent`,说明包结构与清单可被真实客户端读取 |
-| MCP 端点 | 盘点时未启动 | 需要先运行守护脚本 |
+| VS Code Stable | `1.119.0`,commit `8b640eef5a6c…`,安装根 `C:\Program Files\Microsoft VS Code` | 就位 |
+| Copilot Chat | 内置扩展 `GitHub.copilot-chat@0.47.0`,清单在 `resources\app\extensions\copilot\package.json`,`engines ^1.119.0` | 就位,无需市场安装 |
+| `GitHub.copilot` 补全扩展 | 未安装 | 非 A4 必需;插件平台由内置 Chat 提供 |
+| Agent Plugins 能力 | workbench 主脚本含 `chat.plugins.enabled`、`chat.pluginLocations`(旧键 `chat.plugins.paths` 仍在),命令 `workbench.action.chat.installPluginFromSource`、`managePlugins`、`managePluginMarketplaces`、`createPlugin` | 能力存在 |
+| 登录状态 | `globalStorage\github.copilot` 不存在、`github.copilot-chat` 存在;系统凭据中 copilot 条目 0 | **无法在 IDE 外判定**,需在 Chat 内确认 |
 
-与 `docs/010-runtime-verification.md` 记录的 `1.145.1` 不同,本次实测 stable 为 `1.119.0`、Insiders 为 `1.144.0-insider`;差异如实记录,不改写旧记录。
+用户授权后执行的安装命令与真实输出:
 
-### 11.2 结论
-
-**A4 未通过,原因是客户端缺失,不是代码或清单问题。** VS Code 侧没有官方 Copilot Chat,无法验证“插件出现在 Copilot 中、工具可被模型调用”;Copilot CLI 能加载插件只是等价前置证据,不能替代 VS Code 冒烟。
-
-### 11.3 可执行清单与自动化
-
-```powershell
-pwsh -NoProfile -File scripts/copilot-smoke.ps1
-# 只读盘点;当前因官方扩展缺失以 1 退出
-
-pwsh -NoProfile -File scripts/copilot-smoke.ps1 -Editor insiders -Install
-# 显式安装 GitHub.copilot 与 GitHub.copilot-chat,需要联网与有效订阅
-
-pwsh -NoProfile -File scripts/copilot-smoke.ps1 -RunModel
-# 额外做一次真实模型非交互冒烟,会消耗配额
+```
+code --install-extension GitHub.copilot-chat --force
+Installing extensions...
+Updating the extension 'github.copilot-chat' to the version 0.48.1
+Installing extension 'github.copilot-chat'...
+Error while installing extension github.copilot-chat: Extension 'github.copilot-chat' is a built-in extension with version '0.47.0' and cannot be downgraded to version '0.45.1'.
+Failed Installing Extensions: github.copilot-chat
+exit=1
 ```
 
-需要用户动手的最小步骤:
+`GitHub.copilot` 同样以 1 退出(它依赖的内置 Chat 版本冲突)。结论:**不通过市场安装**,直接使用内置 Chat `0.47.0`;不需要重启 IDE。安装前后 `code --list-extensions`(共 58 项)都没有 `github.copilot` 与 `github.copilot-chat`,后者的能力由内置扩展提供。
 
-1. 在目标 VS Code(Stable 或 Insiders)安装官方 `GitHub.copilot` 与 `GitHub.copilot-chat`,并登录有 Copilot 权限的账号;
-2. 按客户端文档启用 `lib/plugin` 作为 agent plugin,确认插件与三个技能可见;
-3. 先运行 `scripts/dsh-superagent-windows.ps1 -Action start`,再在 Copilot 中确认 14 个工具出现;
-4. 依次调用 `orchestrator_read`(tickets)、`orchestrator_route`、`orchestrator_reply`,记录返回;
-5. 把插件页与工具调用截图放到 `.artifacts/screenshots/`(不提交),作为 A4 的人工证据。
+### 11.3 自动化已完成的项(前置证据,不计入 A4)
 
-除第 1、2、5 步必须由用户在客户端完成外,其余步骤已可由脚本或 MCP 探针自动复核;在官方扩展安装并登录前,A4 保持“未通过(客户端缺失)”。
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 只读盘点 | `pwsh -NoProfile -File scripts/copilot-smoke.ps1` | 退出 0;5 个必需项全部 ok;`a4Status=client-ready-manual-pending` |
+| 插件产物 | 同上 | `lib/plugin` 为 `dsh-superagent@0.1.0` |
+| 三个技能 | 同上 | `dsh-superagent`、`dsh-superagent-github`、`dsh-superagent-feishu` |
+| 宿主工具面 | 启动 `scripts/keepalive-host.mjs` 后运行 `node scripts/keepalive-probe.mjs` | `{"ok":true,"tools":14,...}`;`runtime=ready`、`mcp=ready` |
+| 插件包可被真实客户端读取 | `copilot --plugin-dir lib/plugin plugin list --json` | 列出 `dsh-superagent`;**CLI,不计入 A4 验收** |
+
+以上都不等于 A4 通过:它们证明包、端点与工具面可用,没有证明 VS Code Copilot 内能看到插件、技能并调用工具。
+
+同时修复 `scripts/dsh-superagent-windows.ps1` 的一个缺陷:`-Action stop` 写入的 `manually-stopped` 标记原先不会被清理,导致停止后再 `start` 一律被拒。现在进程全部退出后自动清标记;已实测"启动 → 探针 14 工具 → 停止 → 再次启动"可用。
+
+### 11.4 需要用户在 VS Code Stable 内完成的最小步骤
+
+以下步骤必须在 Stable 内人工完成,脚本无法替代;完成前 A4 保持"客户端就位、待人工验证"。
+
+1. **装入插件**:`Ctrl+Shift+P` → `Chat: Install Plugin from Source`(命令 id `workbench.action.chat.installPluginFromSource`)→ 输入 `file:///d:/WorkSpace/dsh-superagent-prototype/lib/plugin`。
+   备选:在工作区 `.vscode/settings.json` 增加 `"chat.pluginLocations": { "d:/WorkSpace/dsh-superagent-prototype/lib/plugin": true }`(`chat.plugins.enabled` 默认已为 `true`)。
+   预期:Copilot Chat 的插件列表出现 `dsh-superagent`,状态为启用。
+2. **登录**:在 Copilot Chat 面板用有 Copilot 权限的 GitHub 账号登录。只确认登录状态存在,不导出、不落盘任何 token/cookie。
+   预期:Chat 输入框可用,不再提示登录。
+3. **确认技能可见**:插件详情或 Agent/技能列表中可见 `dsh-superagent`、`dsh-superagent-github`、`dsh-superagent-feishu` 三项。
+4. **启动服务端**:
+
+   ```powershell
+   pwsh -NoProfile -File scripts/dsh-superagent-windows.ps1 -Action start -Profile a4 -Command 'node --experimental-transform-types scripts/keepalive-host.mjs'
+   node scripts/keepalive-probe.mjs
+   ```
+
+   预期:探针输出 `tools=14`。本步是自动的,但必须与第 5 步同机同时运行。
+5. **在 Copilot Chat 中真实调用**(Agent 模式、允许工具):
+   - `orchestrator_read` 读取 `tickets`;
+   - `orchestrator_route` 对一条候选执行 `accept`;
+   - `orchestrator_reply` 回复一条线程。
+   预期:工具返回 JSON;Web 面板 `http://127.0.0.1:3082` 能看到对应 Ticket/线程变化。
+6. **留证与收尾**:把插件页、技能列表、三次工具调用的截图保存到 `.artifacts/screenshots/a4-*.png`(不提交);随后执行 `-Action stop -Profile a4` 停止服务端。
+7. **回填**:把结果与截图文件名写入本节,把 §8 的 A4 行改为"通过",最后跑 `pnpm check`。
+

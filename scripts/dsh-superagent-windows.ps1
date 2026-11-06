@@ -205,7 +205,7 @@ function Invoke-Start {
     return 0
 }
 
-# stop：写手动停止标记，结束子进程树与守护进程，并清理 PID 文件。
+# stop：写手动停止标记，结束子进程树与守护进程，并清理 PID 文件与标记。
 function Invoke-Stop {
     Set-Content -LiteralPath $StopMarker -Value (Get-Date).ToString('o') -Encoding utf8
     $service = Read-LivePid $ServicePidFile
@@ -213,6 +213,9 @@ function Invoke-Stop {
     if ($service) { Stop-Tree $service 10 }
     if ($supervisor) { Stop-Tree $supervisor 5 }
     Clear-State
+    # 进程已全部退出后清掉标记；否则下次 start 会被“存在手动停止标记”拒绝。
+    $alive = @($service, $supervisor) | Where-Object { $_ -and (Get-Process -Id $_ -ErrorAction SilentlyContinue) }
+    if (-not $alive.Count) { Remove-Item -LiteralPath $StopMarker -ErrorAction SilentlyContinue }
     Write-Host 'dsh-superagent 已停止；自动恢复保持暂停，直到再次 start。'
     return 0
 }

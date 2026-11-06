@@ -45,7 +45,7 @@
 
 ### 1.3 无法在当前环境确认、需标记而非假设
 
-- **A4（VS Code Copilot 冒烟）**：本机 VS Code Stable `1.119.0` 与 Insiders `1.144.0-insider` 均未安装官方 `GitHub.copilot`/`GitHub.copilot-chat`；Copilot CLI `1.0.103` 存在且能加载插件，但不等价于 VS Code 冒烟。记录为「未通过（客户端缺失）」，不得写成通过；盘点与剩余步骤见 `docs/009-copilot-plugin.md` §11。
+- **A4（VS Code Copilot 冒烟）**：范围限定 **Windows + VS Code Stable 1.119.0 的官方 Copilot Chat**（内置 `GitHub.copilot-chat@0.47.0`）；Copilot CLI 只作前置证据，**不计入 A4 验收**；Insiders 已由用户卸载，不纳入本次验证范围，脚本不得探测或依赖它。当前记录为「客户端就位、待人工验证」，不得写成通过；盘点与最小人工步骤见 `docs/009-copilot-plugin.md` §11。
 - **A6（保活演练）**：Windows 机制演练已用 `scripts/dsh-superagent-windows.ps1 -Action drill` 对真实 `Runtime` 完成并通过（强杀后 30.1 秒恢复、14 工具可用），证据见 `docs/009` §10；真实 `dsh --profile` 宿主、计划任务开机自启与 systemd 仍未验证。
 - **真实 GitHub/飞书触发（A5 第二轮）**：需要真实凭据与仓库，未执行前只报告测试回归结果。
 - **官方 schema 的远端可用性**：已下载到本地校验输入目录后，校验过程禁止联网；schema 内容以本地文件为准。
@@ -196,7 +196,7 @@ Get-ChildItem -Recurse -File src,tests,scripts,plugin,docs -Include *.ts,*.tsx,*
 | `node scripts/validate-plugin.mjs [--dir <path>]` | 离线校验插件包 |
 | `pwsh -File scripts/dsh-superagent-windows.ps1 -Action start\|stop\|status` | Windows 守护启停与状态 |
 | `pwsh -File scripts/dsh-superagent-windows.ps1 -Action drill -Command '<cmd>'` | A6 强制终止保活演练 |
-| `pwsh -File scripts/copilot-smoke.ps1` | A4 环境盘点（只读，不装扩展、不调模型） |
+| `pwsh -File scripts/copilot-smoke.ps1` | A4 只读盘点（Stable-only；默认不装扩展、不调模型，`-Install` 才尝试安装） |
 | `node scripts/build-plugin.mjs` | 组装 `lib/plugin/` |
 | `git diff --cached --name-only` | 提交前核对暂存范围 |
 

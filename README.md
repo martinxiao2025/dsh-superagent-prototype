@@ -53,7 +53,7 @@ scripts/dsh-superagent status
 
 ### 接入 Copilot 等 agent-plugins 客户端
 
-把构建产物 `lib/plugin/`（含 `plugin.json`、`mcp.json` 与 3 个技能目录）整体放入客户端的 agent plugins 目录，然后在客户端启用插件。目录位置由客户端约定，VS Code 与 M365 各不相同。
+把构建产物 `lib/plugin/`（含 `plugin.json`、`mcp.json` 与 3 个技能目录）整体放入客户端的 agent plugins 目录，然后在客户端启用插件。目录位置由客户端约定，VS Code 与 M365 各不相同。VS Code Stable 1.119 可在命令面板执行 `Chat: Install Plugin from Source` 并指向本机的 `lib/plugin`；本机人工步骤见 `docs/009-copilot-plugin.md` §11.4。
 
 `plugin/mcp.json` 指向 `http://127.0.0.1:3083/mcp`。若在机器配置里改了 `mcpPort`，这个 URL 必须同步修改；端点由本机守护进程提供，**客户端自身不能代替守护进程**。
 
@@ -151,7 +151,7 @@ node scripts/validate-plugin.mjs [--dir <path>]   # 单独校验某个插件目�
 - **图片读取**：MCP 侧没有 DSH 主会话的附件通道，`orchestrator_eval_read` 的图片分支会被拒绝并给出原因。
 - **客户端差异**：agent plugins 目录与启用方式由各客户端约定；规范未定义 `streamable-http` 的重连语义，断线重试由客户端负责。
 - **必须常驻守护进程**：插件只是客户端入口，端点由 `scripts/dsh-superagent start` 启动的守护进程提供。
-- **未闭合的人工验收**：VS Code Copilot 冒烟（A4）、systemd/计划任务保活演练（A6）尚未执行；真实 GitHub/飞书触发（A5 第二轮）未执行，当前只报告自动化回归结果。
+- **未闭合的人工验收**：VS Code Copilot 冒烟（A4）客户端已就位、待 IDE 内人工验证（CLI 与 Insiders 不计入）；systemd/计划任务长期保活未验证（A6 的 Windows 机制演练已通过）；真实 GitHub/飞书触发（A5 第二轮）未执行，当前只报告自动化回归结果。
 - **平台覆盖**：自动化验证在 Windows 完成；POSIX 专属对象按上述方式跳过，Linux 行为仍需在目标环境复核。
 
 ## 文档

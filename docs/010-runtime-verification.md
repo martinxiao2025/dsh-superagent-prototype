@@ -20,14 +20,16 @@
 
 | 客户端 | 探测结果 | 能否用于本次验证 |
 | --- | --- | --- |
-| VS Code | 已安装 1.145.1 | — |
-| GitHub Copilot / Copilot Chat 扩展 | **未安装**（`code --list-extensions` 中只有第三方扩展：`automatalabs.copilot-mcp` 0.0.97、`ikaros.glm-for-vscode-copilot` 0.13.1、`johnny-zhao.oai-compatible-copilot` 0.4.2） | 否，A4 仍无法执行 |
+| VS Code | 已安装 `1.145.1`（2026-11-06 复核时 Stable 为 `1.119.0`，客户端口径以 `009` §11 为准） | — |
+| GitHub Copilot / Copilot Chat 扩展 | 当时 `code --list-extensions` 未见官方 Copilot 扩展；后续在 Stable `1.119.0` 确认 Copilot Chat 是内置扩展 `0.47.0`（`resources\app\extensions\copilot`） | 否，VS Code 内的 A4 仍需人工验证 |
 | GitHub Copilot CLI | 已安装 1.0.103，已登录，`-p` 非交互可用 | **是**，作为真实模型客户端 |
 | `copilot plugin` / `copilot mcp` | 子命令可用；`--plugin-dir lib/plugin` 能加载本插件 | 是 |
 | `dsh` 宿主 CLI | 未安装 | 否，改为脚本宿主 |
 | `gh` CLI | 未安装（验证配置使用脚本替代的 CLI 路径） | 否 |
 
 `copilot --plugin-dir ./lib/plugin plugin list --json` 的实际输出：插件 `dsh-superagent`、版本 0.1.0、来源 external、状态 enabled。这证明 `plugin/` 清单结构被真实客户端接受。
+
+A4 的验收环境限定为 **Windows + VS Code Stable 1.119.0 的官方 Copilot Chat**；本节的 Copilot CLI 路径只作前置证据，**不计入 A4 验收**（见 `009` §11.1）。
 
 ## 3. 验证拓扑
 
@@ -117,10 +119,10 @@ Streamable HTTP MCP 端点（src/app/mcp.ts，真实）
 
 | 项目 | 状态 | 原因 |
 | --- | --- | --- |
-| VS Code Copilot Chat 冒烟（A4） | 未执行 | 本机未安装官方 Copilot / Copilot Chat 扩展，无账号会话；不能用第三方扩展替代 |
+| VS Code Copilot Chat 冒烟（A4） | 未执行 | Stable 1.119.0 内置 Copilot Chat 0.47.0 已就位，但 IDE 内登录、插件可见、技能可见与工具调用仍需人工完成；状态与最小步骤见 `009` §11 |
 | 真实 worker 执行（改代码 → 提交 → PR） | 未执行 | 没有 `dsh` 宿主与真实模型 worker，工单停在 `working/queued` |
 | 双人 SoD（请求者与停止者不同） | 未覆盖 | 验证宿主只配置一个允许发送者，且无 worker 推进到 `person/review` |
-| 保活演练（A6） | 未执行 | 需要 systemd / Windows 计划任务与真实部署 |
+| 保活演练（A6） | Windows 机制演练已通过 | 强杀后自动拉起已验证（`009` §10）；真实 `dsh --profile` 宿主、systemd 与计划任务长期部署仍未验证 |
 | 真实 GitHub / 飞书事件 | 未执行 | 无凭据；Trigger 由脚本注入替代 |
 
 ## 8. 复现方式
@@ -135,4 +137,4 @@ copilot -p "<中文操作指令>" --plugin-dir ./lib/plugin --allow-all-tools -s
 
 ## 9. 结论
 
-中文化后的提示词、工具描述与 SKILL.md 在真实模型会话中可用：工具选择正确、参数完整、中文拒绝可读、审核门有效。发现的三个问题均属文案层，已修复并复验；没有为了通过验证而放宽任何测试断言。剩余未覆盖项集中在缺少真实 Copilot Chat 客户端、DSH 宿主与真实凭据，已在 §7 如实保留。
+中文化后的提示词、工具描述与 SKILL.md 在真实模型会话中可用：工具选择正确、参数完整、中文拒绝可读、审核门有效。发现的三个问题均属文案层，已修复并复验；没有为了通过验证而放宽任何测试断言。剩余未覆盖项集中在 VS Code 内的 A4 人工验证、DSH 宿主与真实凭据，已在 §7 如实保留。
