@@ -294,18 +294,18 @@ export interface ToolScope {
 **T2.2 `src/app/mcp-tools.ts`**
 
 1. 导出 `McpTool`：`{ name, description, inputSchema, execute(args, signal) }`。
-2. 导出 `mcpTools(host, scope)`：调用 `mainTools(host, scope)` 映射；`inputSchema` 用 `z.toJSONSchema(tool.schema, { io: 'input' })` 生成，去掉 `$schema` 键，保留 `additionalProperties: false`。
-3. `execute` 必须先 `tool.schema.parse(args ?? {})`，再调用 `tool.execute(parsed, signal)`。
-4. 错误统一转换：`ZodError` → `{ refused: 'Invalid arguments', issues }`；`UserError` → `{ refused: message, code, values }`；其他 → `{ refused: message }` 并 `host.context.logger.warn`。
-5. 导出 `createToolServer(host, scope, version)`：返回未连接的 MCP `Server`，注册 `tools/list` 与 `tools/call` 两个 handler；HTTP 层与测试共用。
+2. 导出 `mcpTools(host, id: string)`：调用 `mainTools(host, { id })` 映射；`inputSchema` 用 `z.toJSONSchema(tool.schema, { io: 'input' })` 生成，去掉 `$schema` 键，保留 `additionalProperties: false`。
+3. `CallTool` 必须先 `tool.schema.safeParse(args ?? {})`，成功后再调用 `tool.execute(parsed.data, signal)`。
+4. 错误统一转换：校验失败 → `{ error: '参数无效', issues }`；`UserError` → `{ error: message, code }`；其他 → `{ error: message }`，并以 `isError: true` 返回。
+5. 导出 `mountTools(server, tools)`：在给定 `Server` 上注册 `tools/list` 与 `tools/call`，HTTP 层与测试共用。
 
 **T2.3 `src/app/mcp.ts`**
 
 1. 新增 `McpEndpoint` 类（必须带 JSDoc，`tests/class-docs.spec.ts` 强制）。
-2. 宿主接口包含：`context`、`masterId`、`port`、`version`、`health: HealthEntry`、`lifetime: AbortSignal`、`tools(): McpTool[]`。
+2. 宿主接口 `McpEndpointOptions` 包含：`port`、`tools: readonly Tool[]`、`health: HealthEntry`、`log`。
 3. `start()`：
    - `node:http` 创建服务器，`listen(port, '127.0.0.1')`；
-   - 只处理 `/mcp`；`POST` 解析 JSON（上限 1 MiB）后交给对应会话的 transport；`GET`/`DELETE` 按 `mcp-session-id` 查找；
+   - 只处理 `/mcp`；`POST` 解析 JSON（上限 4 MiB，超限返回 HTTP 413）后交给对应会话的 transport；`GET`/`DELETE` 按 `mcp-session-id` 查找；
    - 无会话的 `POST` 新建 `StreamableHTTPServerTransport`（`sessionIdGenerator`、`enableDnsRebindingProtection: true`、`allowedHosts`/`allowedOrigins` 按**实际监听端口**生成，`port: 0` 时取 `server.address()`，不得写死 3083）与 `Server` 并连接；
    - 会话空闲 10 分钟自动关闭；`DELETE` 立即关闭；
    - `listening` 时健康置 `ready`（detail 写明地址）；`EADDRINUSE` 等其他错误置 `error`（detail 写明端口与原因），进程不退出。
@@ -316,10 +316,10 @@ export interface ToolScope {
 
 1. `Config` 增加 `mcpEnabled: s.boolean().default(true)` 与 `mcpPort: s.number().min(0).max(65535).step(1).default(3083)`；`Machine` 与 `machineOf` 同步；两者非 volatile。
 2. 同步更新 `tests/fixtures/deployment.ts` 的 `testMachine` 默认值（`mcpEnabled: false`、`mcpPort: 0`），否则 `pnpm typecheck` 与既有测试无法通过。
-3. `Runtime` 新增 `readonly mcp?: McpEndpoint`；仅当 `mcpEnabled` 为真时 `this.board.claim('mcp', { state: 'starting', detail: '' })`，否则不创建条目。
-4. 在 `initialize()` 中，`registerHttp` 之后、`setup.run()` 之前启动端点，使 setup 等待期间仍可查询。
+3. `Runtime` 持有 `mcp?: McpEndpoint`，并在构造时认领 `mcp` 健康条目；`mcpEnabled` 为假时把该条目标为 `paused`。
+4. 在 `initialize()` 中，`setup.run()` 成功且主会话 `sessions.ensure()` 之后启动端点（代码事实；原计划的“setup 之前启动”未采纳：工具需要主会话已就绪，等待 setup 期间由面板负责配置）。
 5. `shutdown()` 中在关闭 Store 之前 `await this.mcp?.stop()`，保证端口释放。
-6. 版本号从 `packagePath('package.json')` 读取，不硬编码第二份版本。
+6. `mcp.ts` 的 `SERVER_VERSION` 与 `package.json` 的 `version` 由 `tests/mcp.spec.ts` 断言一致，避免第二份版本长期漂移。
 
 **T2.5 健康与文案**
 
@@ -337,7 +337,7 @@ export interface ToolScope {
 
 **T3.1 测试夹具扩展**
 
-1. `tests/fixtures/host.ts`：`startRuntime(seed?, machine?)` 支持覆盖 Machine；把 `runtime.mcp` 暴露给测试读取实际端口。
+1. `tests/fixtures/host.ts`：`startRuntime(seed?, { mcpPort })` 支持覆盖 Machine 的 MCP 配置；`Host.mcpPort()` 读取实际端口。
 2. 确认 `tests/fixtures/deployment.ts` 已在 T2.4 更新默认值（默认不监听端口），本任务只做覆盖能力。
 
 **T3.2 工具面防漂移**
@@ -557,5 +557,6 @@ npx -y @modelcontextprotocol/inspector --cli http://127.0.0.1:3083/mcp --method 
 | 中文化·模型运行时资产 | 2026-11-06 | `pnpm check`、`tests/model-surface.spec.ts` | `prompts/**`、14 个主会话工具的描述与 schema 说明、executor 指令共 38 个文件；工具名、参数名、机器解析串未翻译 | `330df33` |
 | 真实运行验证 | 2026-11-06 | `copilot -p … --plugin-dir lib/plugin`、官方 MCP SDK 探针、`pnpm check` | 真实 Copilot CLI 1.0.103 两次会话跑通（读候选、建工单、审核门 `notReady`、备注）；协议层 14 工具、中文错误、提示词预览正常；修复 3 个文案问题（SKILL 资源名、默认规则漏译、zod 英文默认消息），记录见 `docs/010-runtime-verification.md` | `dab5a99` |
 | 进度登记 | 2026-11-06 | `pnpm check`、`git push origin feat/phase1-agent-plugins` | `AGENTS.md`、README、本表与 `docs/010` 对齐当前编号与状态；`pnpm check` 全绿；远端 `feat/phase1-agent-plugins` 与本地一致 | 本批 |
+| 全量核对与修复 | 2026-11-06 | `pnpm install --frozen-lockfile`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`pnpm plugin:check` | 安装 314 个包退出 0；typecheck 退出 0；全量 1177 通过 / 26 跳过 / 0 失败；`lib/plugin` 3 个技能；两处插件校验通过。核对发现并修复 1 个 Windows 跨盘符缺陷：`promptFile` 收到绝对路径时被 `join` 拼坏（包根在 D:、临时目录在 C:）；`tests/mcp.spec.ts` 增补「参数拒绝后继续服务」与「过期 revision 被拒」两例；T2.2/T2.3/T2.4/T3.1 与 `docs/007` 测试表按代码事实更正。本机 node v24.2.0（满足 `>=24.0.0`），与 §1.1 记录的 v24.19.0 不同 | 本批 |
 
 未闭合项（截至本批）：VS Code Copilot Chat 冒烟（A4，本机未安装官方 Copilot 扩展）、真实 worker 执行（无 `dsh` 宿主与真实模型 worker）、双人 SoD（验证宿主只有一个允许发送者）、保活演练（A6，需 systemd/计划任务）、真实 GitHub/飞书事件（无凭据）。Windows 上跳过的测试仍为 26 项，均为 POSIX 专属被测对象（`#!/bin/sh` worker shim、服务管理脚本、飞书假 CLI 与权限位），已在测试文件内写明原因，不视为通过。

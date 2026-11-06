@@ -4,6 +4,8 @@
 > 状态:方案定稿 | 语言:简体中文 | 编码:UTF-8(无 BOM)
 > 规范依据:[agent-plugins-spec 1.0.0](https://github.com/agentplugins/agent-plugins-spec)([agent-plugins.org](https://agent-plugins.org))
 
+> **2026-11-06 修订(以代码事实为准)**:本文保留原始方案,实施口径与偏差裁决见 [01-phase1-task-plan.md](01-phase1-task-plan.md) §0/§2。已知差异:A3 的工具数是 **14**(非 20);worker 自有工具 **5** 个(加共享 `orchestrator_read`,每个执行器注册 6 个);端口冲突只写 `mcp` 健康条目,不走 `SetupError`;MCP 不使用 `x-orchestrator-request` 自定义头,只绑回环并启用 DNS rebinding 防护;`plugin.json` 不写占位 `homepage`;内置技能留在仓库 `skills/`,构建时拷入 `lib/plugin/skills/`。
+
 ## 1. 定位与迁移思路
 
 总迁移路线分四个阶段,本文档只覆盖**阶段一**:
