@@ -543,6 +543,11 @@ npx -y @modelcontextprotocol/inspector --cli http://127.0.0.1:3083/mcp --method 
 | 批次 | 日期 | 命令 / 动作 | 真实结果 | 提交 |
 | --- | --- | --- | --- | --- |
 | 基线 | 2026-11-06 | `git status`、`node -v`、`pnpm -v` | 原型 `main@8c32a9d`；未跟踪 `.zcode/`、`AGENTS.md`；node v24.19.0、pnpm 11.7.0 | — |
-| 迁入 | 2026-11-06 | `robocopy … /XD node_modules lib .zcode .git /XF AGENTS.md` | 源码/测试/配置/脚本/技能已入本根；`AGENTS.md`、`docs/00`、`docs/01`、`.screenshots` 未覆盖 | 待提交 |
+| 迁入 | 2026-11-06 | `robocopy … /XD node_modules lib .zcode .git /XF AGENTS.md` | 源码/测试/配置/脚本/技能已入本根；`AGENTS.md`、`docs/00`、`docs/01`、`.screenshots` 未覆盖 | `73ccce7` |
 | 基线测试（原型） | 2026-11-06 | `vitest run --reporter=json` | 8 个文件失败，全部为 Windows 环境性：`sh`/`sleep`/`env`/`gh` ENOENT、symlink EPERM、POSIX 权限位、`docs.spec` 反斜杠路径。非本阶段代码引入 | — |
-| 1 | 2026-11-06 | `pnpm install`、`pnpm check` | 进行中；本根需重建 `node_modules` 后复跑 | 待填 |
+| 1 | 2026-11-06 | `pnpm install`、`pnpm build`、`node scripts/validate-plugin.mjs` | 安装退出 0；`lib/plugin` 生成；正例退出 0；4 类负例均退出 1 | `5f9c999` |
+| 2 | 2026-11-06 | `pnpm typecheck`、`vitest run tests/tools.spec.ts tests/model-surface.spec.ts` | typecheck 退出 0；两组防漂移测试通过；MCP 端点、映射层、配置、健康与文案落地 | `38726b4` |
+| 3 | 2026-11-06 | `vitest run tests/mcp.spec.ts`、全量 `vitest run` | mcp 4 项全过（握手、14 工具、read、route 建票、非法参数、端口占用）；全量 1159 通过 / 42 失败 / 8 文件，与基线完全一致 | `3a4b5bd` |
+| 4 | 2026-11-06 | `pnpm build`、`pnpm plugin:check` | `plugin/` 1 技能、`lib/plugin/` 3 技能均 valid；009、006、README、AGENTS 同步 | `781ab5d` |
+| A1/A2 | 2026-11-06 | 正例 + 4 负例 + 构建 | 全部符合预期；`lib/plugin/` 结构与方案 §3.4 一致；全仓跟踪文件 BOM 数为 0 | 本批 |
+| A3–A6 | 2026-11-06 | 见 `docs/009-copilot-plugin.md` §8 | A3 自动等价通过；A4/A6 待用户环境；A5 仅测试回归，真实触发未执行 | 本批 |

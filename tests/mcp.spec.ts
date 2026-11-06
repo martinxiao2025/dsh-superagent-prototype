@@ -33,9 +33,9 @@ async function connect(host: Host) {
   await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`)))
   return client
 }
-const listening = async (server: NetServer): Promise<number> => new Promise((resolve, reject) => {
+const listening = async (server: NetServer, port = 0): Promise<number> => new Promise((resolve, reject) => {
   server.once('error', reject)
-  server.listen(0, '127.0.0.1', () => resolve((server.address() as AddressInfo).port))
+  server.listen(port, '127.0.0.1', () => resolve((server.address() as AddressInfo).port))
 })
 const closeNet = (server: NetServer) => new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
 
@@ -96,6 +96,11 @@ describe('MCP endpoint', () => {
       const after = await client.callTool({ name: 'orchestrator_read', arguments: { resource: 'tickets' } })
       expect(after.isError).toBeFalsy()
     } finally { await client.close() }
+    const port = host.mcpPort()!
+    await host.stop()
+    host = undefined
+    const reuse = createServer()
+    try { await listening(reuse, port) } finally { await closeNet(reuse) }
   }, 30_000)
 
   it('reports a busy port in health and keeps the orchestrator running', async () => {
