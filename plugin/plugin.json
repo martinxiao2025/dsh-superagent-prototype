@@ -1,0 +1,13 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "dsh-superagent",
+  "version": "0.1.0",
+  "description": "Proactive coding agent for one GitHub repository: evaluate requests, route tickets, and drive workers from Copilot.",
+  "license": "MIT",
+  "keywords": [
+    "agent",
+    "orchestrator",
+    "github",
+    "feishu"
+  ]
+}
