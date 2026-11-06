@@ -57,7 +57,7 @@ it('reads a review thread from any of its comments, the first with its file, lin
   const thread = await readGithub(commands, 'github/pulls/9/thread/2') as { messages: { id: string; text: string; reply_to?: string }[] }
   expect(thread.messages.map(message => [message.id, message.reply_to])).toEqual([['1', undefined], ['2', '1']])
   expect(thread.messages[0]!.text).toBe('src/render.ts:43\n   const title = view.title\n   const margin = 12\n+  const padding = 8\n\ncomment 1')
-  await expect(readGithub(commands, 'github/issues/9/thread/2')).rejects.toThrow('require a pull request')
+  await expect(readGithub(commands, 'github/issues/9/thread/2')).rejects.toThrow('只适用于 pull request')
 })
 it('reads an Issue or PR as its author, time, title, state, description and a PR\'s branches', async () => {
   vi.spyOn(commands, 'gh').mockResolvedValue({ number: 9, id: 1, title: 'Fix the margin', state: 'open', body: 'Details', draft: true,

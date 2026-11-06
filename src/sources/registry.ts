@@ -18,8 +18,8 @@ export class SourceRegistry implements SourceScope {
 
   /** 注册 SourceKind，在 HealthBoard 上认领其健康条目（拒绝由 Settings 拥有的 `sync:` 前缀），并返回一个注销 disposer。 */
   register<C extends Record<string, unknown>>(kind: SourceKind<C>): () => void {
-    if (this.kinds.has(kind.kind)) throw new Error(`Source kind already registered: ${kind.kind}`)
-    const refused = (name: string) => new Error(`Source kind ${kind.kind} declares the health entry ${name}, which another part reports`)
+    if (this.kinds.has(kind.kind)) throw new Error(`Source kind 已注册：${kind.kind}`)
+    const refused = (name: string) => new Error(`Source kind ${kind.kind} 声明了健康条目 ${name}，但该条目由其他部分报告`)
     const synced = kind.health.find(name => name.startsWith('sync:'))
     if (synced) throw refused(synced)
     const entries = new Map<string, HealthEntry>()
@@ -53,7 +53,7 @@ export class SourceRegistry implements SourceScope {
   }
   validate(id: string, value: { enabled: boolean; config: unknown }): { enabled: boolean; config: Record<string, unknown> } {
     const kind = this.kinds.get(id)
-    if (!kind) throw new Error(`Source kind not installed: ${id}`)
+    if (!kind) throw new Error(`Source kind 未安装：${id}`)
     return { enabled: value.enabled, config: kind.schema.parse(value.config) }
   }
   /** 按各 Source 的 kind 校验提交的 Policy 中属于它的部分；未安装 kind 的 Source 的 policy 部分保持存储时的原样。 */
@@ -116,7 +116,7 @@ export class SourceRegistry implements SourceScope {
       read: (commands, part, cursor) => context.read(commands, trigger, part, cursor, config),
       images: text => context.images?.(text) ?? [],
       image: async (agent, commands, message, key, stateDir, signal) => {
-        if (!context.image) throw new Error(`The ${kind.kind} Source has no images`)
+        if (!context.image) throw new Error(`${kind.kind} Source 不支持图片`)
         return context.image(agent, commands, trigger, message, key, stateDir, signal)
       },
     }

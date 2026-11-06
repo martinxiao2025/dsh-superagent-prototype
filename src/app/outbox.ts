@@ -40,13 +40,13 @@ export class Outbox implements OutboxPort {
     const { store, sources, commands } = this.host
     const receipt = store.receipts.get(id)
     if (receipt?.status !== 'pending') return
-    if (!sources.instance(receipt.channel.source)?.enabled) throw new Later('The Source is off or not installed')
+    if (!sources.instance(receipt.channel.source)?.enabled) throw new Later('该 Source 已关闭或未安装')
     // 同一工单、同一会话中，在较早的待投递消息超过失败阈值之前，后续消息排在其后。
-    if (store.receipts.behind(id, FAILURES_BEFORE_ERROR)) throw new Later('An earlier message of this ticket to this conversation waits')
+    if (store.receipts.behind(id, FAILURES_BEFORE_ERROR)) throw new Later('该工单发往该会话的较早消息仍在等待')
     if (!sources.channelAllowed(receipt.channel)) { store.receipts.settle(receipt, 'channelIgnored'); return }
     // 永久不可达的目标（例如已撤回的消息或已删除的 Issue）按 `channelGone` 结算，其回执可阻止后续重试。
     const result = await sources.send(receipt, commands)
-    if (result === 'waiting') throw new Later('The Source is not installed')
+    if (result === 'waiting') throw new Later('该 Source 未安装')
     store.receipts.settle(receipt, result === 'gone' ? 'channelGone' : 'sent')
   }
 }

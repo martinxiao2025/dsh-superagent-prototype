@@ -156,7 +156,7 @@ export class Runtime extends Service implements SourceHost {
           }
         } })
       // 若最近一小时内有过不可用的评估，则在每次 pass 时更新 `evals` 健康条目。
-      const evals = board.claim('evals', { state: 'ready', detail: 'No unavailable Eval in the last hour' })
+      const evals = board.claim('evals', { state: 'ready', detail: '最近一小时没有不可用的 Eval' })
       const evaluateDue = () => { engine.evaluateDue(); evals.set(evalsHealth(store)) }
       const passes = this.passes = new Passes({ engine: { receive: trigger => engine.receive(trigger), evaluateDue }, effects,
         health: this.runtimeHealth, lifetime: this.lifetime, configured: () => setup.configured(), closing: () => this.closing() })
@@ -221,12 +221,12 @@ export class Runtime extends Service implements SourceHost {
     this.executor.resume()
     this.passes.start()
     this.effects.start()
-    this.runtimeHealth.set({ state: 'ready', detail: 'Orchestrator is ready', at: now() })
+    this.runtimeHealth.set({ state: 'ready', detail: '编排器已就绪', at: now() })
   }
   /** 启动回环 MCP 端点。端口占用只写为健康错误，绝不阻塞编排器。 */
   private async startMcp(): Promise<void> {
     if (!this.machine.mcpEnabled) {
-      this.mcpHealth.set({ state: 'paused', detail: 'The MCP endpoint is off (mcpEnabled is false)', at: now() })
+      this.mcpHealth.set({ state: 'paused', detail: 'MCP 端点已关闭（mcpEnabled 为 false）', at: now() })
       return
     }
     const endpoint = new McpEndpoint({ port: this.machine.mcpPort, health: this.mcpHealth,
@@ -238,7 +238,7 @@ export class Runtime extends Service implements SourceHost {
       this.mcp = endpoint
     } catch (error) {
       this.mcpHealth.set({ state: 'error', at: now(),
-        detail: `The MCP endpoint could not listen on 127.0.0.1:${this.machine.mcpPort}: ${error instanceof Error ? error.message : String(error)}` })
+        detail: `MCP 端点无法监听 127.0.0.1:${this.machine.mcpPort}：${error instanceof Error ? error.message : String(error)}` })
     }
   }
   private httpHost(): HttpHost {
@@ -272,7 +272,7 @@ export class Runtime extends Service implements SourceHost {
       // 释放目录锁之前先关闭数据库，使其他进程无法在写入中途打开它；被抢占的锁可能已经释放。
       this.setup.restore()
       try { this.store.close() } finally {
-        const unreleased = (error: unknown) => { this.ctx.logger.warn('dsh-superagent could not release its state directory lock: %s',
+        const unreleased = (error: unknown) => { this.ctx.logger.warn('dsh-superagent 无法释放状态目录锁：%s',
           String(error)) }
         await this.releaseLock?.().catch(unreleased)
       }

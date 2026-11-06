@@ -121,7 +121,7 @@ it('does not dispatch when cancelled or disposed during history loading', async 
   expect(cancelled.steer).not.toHaveBeenCalled()
   const disposed = fixture()
   disposed.read.mockImplementationOnce(async () => { disposed.agents.clear(); return { events: [] } })
-  await expect(disposed.send()).rejects.toThrow('disposed')
+  await expect(disposed.send()).rejects.toThrow('投递目标已被销毁')
   expect(disposed.steer).not.toHaveBeenCalled()
 })
 

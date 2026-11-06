@@ -50,10 +50,10 @@ const readBody = (req: IncomingMessage): Promise<unknown> => new Promise((resolv
     chunks.push(chunk)
   })
   req.on('end', () => {
-    if (tooLarge) { reject(new BodyTooLarge('The MCP request body is too large')); return }
+    if (tooLarge) { reject(new BodyTooLarge('MCP 请求体过大')); return }
     if (size === 0) { resolve(undefined); return }
     try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))) }
-    catch { reject(new Error('The MCP request body is not JSON')) }
+    catch { reject(new Error('MCP 请求体不是 JSON')) }
   })
   req.on('error', reject)
 })
@@ -76,12 +76,12 @@ export class McpEndpoint {
     const http = createServer((req, res) => { void this.handle(req, res) })
     this.http = http
     // 启动之后的错误没有启动 promise 可拒绝；若没有监听器，它会终结进程。
-    http.on('error', error => { this.options.log('MCP server error', error) })
+    http.on('error', error => { this.options.log('MCP 服务器错误', error) })
     // 约束慢客户端：请求头必须尽快到达，整个请求需在回环场景合理的窗口内完成。
     http.headersTimeout = HEADERS_TIMEOUT_MS
     http.requestTimeout = REQUEST_TIMEOUT_MS
     http.on('clientError', (error, socket) => {
-      this.options.log('MCP client error', error)
+      this.options.log('MCP 客户端错误', error)
       socket.destroy()
     })
     try {
@@ -102,7 +102,7 @@ export class McpEndpoint {
     this.bound = typeof address === 'object' && address ? address.port : this.options.port
     this.sweepTimer = setInterval(() => { void this.sweep() }, SWEEP_MS)
     this.sweepTimer.unref()
-    this.options.health.set({ state: 'ready', detail: `MCP endpoint on http://127.0.0.1:${this.port}${PATH}` })
+    this.options.health.set({ state: 'ready', detail: `MCP 端点位于 http://127.0.0.1:${this.port}${PATH}` })
   }
   /** 停止监听并关闭所有 session；重复调用共享同一个 promise。 */
   stop(): Promise<void> { return this.stopping ??= this.closeAll() }
@@ -113,7 +113,7 @@ export class McpEndpoint {
     if (http) {
       await new Promise<void>(resolve => { http.close(() => { resolve() }); http.closeAllConnections() })
     }
-    this.options.health.set({ state: 'paused', detail: 'MCP endpoint stopped' })
+    this.options.health.set({ state: 'paused', detail: 'MCP 端点已停止' })
   }
   /** transport 为 DNS rebinding 防护所接受的 host 与 origin 值。 */
   private allowed(): string[] { return [`127.0.0.1:${this.port}`, `localhost:${this.port}`] }
@@ -121,7 +121,7 @@ export class McpEndpoint {
     const path = new URL(req.url ?? '/', 'http://127.0.0.1').pathname
     if (path !== PATH) {
       res.writeHead(404, { 'content-type': 'text/plain' })
-      res.end(`MCP is served at ${PATH}`)
+      res.end(`MCP 服务位于 ${PATH}`)
       return
     }
     const header = req.headers['mcp-session-id']
@@ -135,17 +135,17 @@ export class McpEndpoint {
       if (body !== Rejected) await this.forward(session.transport, req, res, body)
       return
     }
-    if (id) { rpcError(res, 404, -32001, 'Session not found; initialize a new session'); return }
-    if (req.method !== 'POST') { rpcError(res, 400, -32000, 'Only POST can start an MCP session; use the mcp-session-id header after initialize'); return }
+    if (id) { rpcError(res, 404, -32001, 'Session 不存在；请初始化新的 Session'); return }
+    if (req.method !== 'POST') { rpcError(res, 400, -32000, '只有 POST 能创建 MCP Session；initialize 之后请使用 mcp-session-id 请求头'); return }
     const body = await this.receive(req, res)
     if (body === Rejected) return
-    if (!isInitializeRequest(body)) { rpcError(res, 400, -32000, 'The first request must be initialize'); return }
+    if (!isInitializeRequest(body)) { rpcError(res, 400, -32000, '第一个请求必须是 initialize'); return }
     try {
       await this.open(req, res, body)
     } catch (error) {
       // 客户端只看到固定消息；细节留在日志中，避免路径或堆栈经该端口泄漏。
-      this.options.log('MCP initialize failed', error)
-      if (!res.headersSent) rpcError(res, 500, -32603, 'The MCP session could not be initialized')
+      this.options.log('MCP initialize 失败', error)
+      if (!res.headersSent) rpcError(res, 500, -32603, 'MCP Session 无法初始化')
       else res.end()
     }
   }
@@ -154,9 +154,9 @@ export class McpEndpoint {
     try { return await readBody(req) }
     catch (error) {
       const tooLarge = error instanceof BodyTooLarge
-      this.options.log('MCP request body rejected', error)
+      this.options.log('MCP 请求体被拒绝', error)
       if (!res.headersSent) {
-        rpcError(res, tooLarge ? 413 : 400, -32600, tooLarge ? 'The MCP request body is too large' : 'The MCP request body is not JSON')
+        rpcError(res, tooLarge ? 413 : 400, -32600, tooLarge ? 'MCP 请求体过大' : 'MCP 请求体不是 JSON')
       }
       return Rejected
     }
@@ -189,8 +189,8 @@ export class McpEndpoint {
   private async forward(transport: StreamableHTTPServerTransport, req: IncomingMessage, res: ServerResponse, body?: unknown): Promise<void> {
     try { await transport.handleRequest(req, res, body) }
     catch (error) {
-      this.options.log('MCP request failed', error)
-      if (!res.headersSent) rpcError(res, 500, -32603, 'The MCP request failed')
+      this.options.log('MCP 请求失败', error)
+      if (!res.headersSent) rpcError(res, 500, -32603, 'MCP 请求失败')
       else res.end()
     }
   }

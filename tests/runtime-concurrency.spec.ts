@@ -198,7 +198,7 @@ it('lets a worker go on after a passing provider failure, three times, before it
     fail(busy)
     await vi.advanceTimersByTimeAsync(15_000)
     expect(h.deliveries.mock.calls.map(([call]) => call).filter(call => call.sessionId === one.sessionId).at(-1)!.text)
-      .toContain('Your last turn failed for a passing reason')
+      .toContain('你上一轮因可恢复原因失败')
     expect(latestAssignment(ticket())?.report).toBeUndefined()
   } finally { vi.useRealTimers() }
   fail(busy); fail(busy)
@@ -210,7 +210,7 @@ it('lets a worker go on after a passing provider failure, three times, before it
 describe('a worker that goes on after a passing failure', () => {
   const busy = () => Object.assign(new Error('Service Unavailable'), { status: 503 })
   const told = (sessionId: string) => h.deliveries.mock.calls.map(([call]) => call)
-    .filter(call => call.sessionId === sessionId && call.text.includes('Your last turn failed for a passing reason'))
+    .filter(call => call.sessionId === sessionId && call.text.includes('你上一轮因可恢复原因失败'))
   it('starts the count of passing failures again once its turn ends as turns do', async () => {
     const one = await h.acceptedTicket(feishu('1', '@bot 修一'))
     const agent = h.agents.get(one.sessionId)!
@@ -342,7 +342,7 @@ describe('a worker whose work runs in the background', () => {
     expect(h.jobs.released).toBe(1)
     // worker 会在下一轮读取到该结束。
     await vi.waitFor(() => expect(h.agents.get(one.sessionId)!.inject).toHaveBeenCalledWith(expect.objectContaining({
-      content: [expect.objectContaining({ text: `Your background job ${job} (pnpm dev) ended: completed.` })] })))
+      content: [expect.objectContaining({ text: `你的后台作业 ${job} (pnpm dev) 已结束：completed。` })] })))
     await h.runtime.idle()
     expect(h.runtime.executor.activeCount()).toBe(0)
     expect(h.relays(h.runtime.masterId)).toHaveLength(relayed)
@@ -485,11 +485,11 @@ describe('a worker whose work runs in the background', () => {
       await minutes(1)
     } finally { vi.useRealTimers() }
     await vi.waitFor(() => expect(latestAssignment(ticket())?.report).toMatchObject({ state: 'waiting', summary: 'The tests run in the background.\n\n'
-      + `Background jobs ran 30 minutes after the worker's turn ended and were killed: ${job} (pnpm test).` }))
+      + `后台作业在 worker 轮次结束 30 分钟后仍在运行，已被终止：${job} (pnpm test)。` }))
     expect(h.jobs.service.kill).toHaveBeenCalledWith(job, one.sessionId, expect.any(String))
     // kill 已被收集，因此 worker 会在下一轮读取到它。
     expect(h.agents.get(one.sessionId)!.inject).toHaveBeenCalledWith(expect.objectContaining({ content: [expect.objectContaining({
-      text: `Your background jobs ran 30 minutes after your turn ended and were killed: ${job} (pnpm test).` })] }))
+      text: `你的后台作业在你的轮次结束 30 分钟后仍在运行，已被终止：${job} (pnpm test)。` })] }))
     // 停止它的 subagent 会用结束来唤醒它，而且是在它刚刚报告为等待的那个 Assignment 中。
     expect(h.subagents.live(child)).toBe(true)
     expect(h.relays(h.runtime.masterId).at(-1)).toMatchObject({ kind: 'worker_report', state: 'waiting' })
@@ -500,7 +500,7 @@ describe('a worker whose work runs in the background', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     try { idle(one.sessionId); await minutes(30) } finally { vi.useRealTimers() }
     await vi.waitFor(() => expect(latestAssignment(h.runtime.store.tickets.get(one.ticket.id)!)?.report).toMatchObject({ state: 'waiting',
-      summary: 'Subagents still ran 30 minutes after the worker\'s turn ended.' }))
+      summary: 'subagent 在 worker 轮次结束 30 分钟后仍在运行。' }))
   })
   it('holds a delivery that reached a worker while a hand-off stopped its subagents until the stop ended', async () => {
     const one = await h.acceptedTicket(feishu('1', '@bot 修一'))

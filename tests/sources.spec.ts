@@ -110,7 +110,7 @@ describe('feishu source', () => {
     const refused = await run({ deployment: testDeployment({ feishu: undefined }), feishuProblem: problem })
     // bot 检查失败会等待操作者修复并重新检查；它不会像轮询错误那样自行重试。
     expect(refused.health.feishu).toEqual({ state: 'paused', detail: problem.detail })
-    expect((await run({ configured: () => false })).health.feishu).toEqual({ state: 'paused', detail: 'Waiting for the deployment check', code: 'setupPending' })
+    expect((await run({ configured: () => false })).health.feishu).toEqual({ state: 'paused', detail: '等待部署检查', code: 'setupPending' })
   })
   it('translates live events into triggers keyed by root message, and drops the bot\'s own messages', () => {
     const trigger = feishuTrigger({ message_id: 'om_2', chat_id: 'oc_1', chat_type: 'group', sender_id: MEMBER, sender_type: 'user', content: 'hi', create_time: '1757376000000', mentions: [{ id: 'cli_bot' }], root_id: 'om_1', parent_id: 'om_1', thread_id: 'omt_1', message_app_link: 'https://applink/x' }, 'ou_bot', 'cli_bot')!
@@ -179,7 +179,7 @@ describe('feishu source', () => {
   it('reads message times given as epoch milliseconds or as local times, and refuses others', () => {
     expect(feishuTime('1757376000000')).toBe('2025-09-09T00:00:00.000Z')
     expect(feishuTime('2026-09-11 12:00')).toBe(new Date(2026, 8, 11, 12, 0).toISOString())
-    expect(() => feishuTime('soon')).toThrow('Unreadable Feishu message time')
+    expect(() => feishuTime('soon')).toThrow('无法解析的飞书消息时间')
   })
   it('polls a subscribed topic while a live ticket follows it or it had a message in the last two weeks', async () => {
     const h = host()
@@ -223,17 +223,17 @@ describe('feishu source', () => {
     const now = new Date().toISOString()
     const recover = () => backfillChat(h, 'oc_team', false, new Date(Date.now() - 60_000).toISOString(), now, new AbortController().signal)
     lark.mockResolvedValueOnce({ has_more: false, items: [message({ chat_id: 'oc_other' })] })
-    await expect(recover()).rejects.toThrow('outside the requested chat or thread')
+    await expect(recover()).rejects.toThrow('飞书历史返回了所请求群聊或话题之外的消息')
     // 包含另一个 topic 消息的 topic 页面。
     h.store.set('feishu-history-threads:oc_team', { omt_1: now })
     lark.mockResolvedValueOnce({ has_more: false, items: [] }).mockResolvedValueOnce({ has_more: false, items: [message({ thread_id: 'omt_2' })] })
-    await expect(recover()).rejects.toThrow('outside the requested chat or thread')
+    await expect(recover()).rejects.toThrow('飞书历史返回了所请求群聊或话题之外的消息')
     h.store.set('feishu-history-threads:oc_team', {})
     const stuck = { has_more: true, page_token: 'p1', items: [] }
     lark.mockResolvedValueOnce(stuck).mockResolvedValueOnce(stuck)
-    await expect(recover()).rejects.toThrow('did not advance')
+    await expect(recover()).rejects.toThrow('飞书历史分页没有推进')
     lark.mockResolvedValueOnce({ has_more: true, items: [] })
-    await expect(recover()).rejects.toThrow('did not advance')
+    await expect(recover()).rejects.toThrow('飞书历史分页没有推进')
     h.store.close()
   })
   it('stops reading a polled topic at the first message it knew, once the topic\'s first poll ran', async () => {
@@ -320,7 +320,7 @@ describe('feishu source', () => {
     expect(withSignal).toHaveBeenCalledWith(signal)
     expect(lark.mock.calls[0]![0]).toEqual(expect.arrayContaining(['+chat-members-list', '--chat-id', 'oc_team']))
     lark.mockResolvedValue({ users: [], has_more: true })
-    await expect(sync.run(h, { allowed: [], syncChat: 'oc_team' }, new AbortController().signal)).rejects.toThrow('incomplete member list')
+    await expect(sync.run(h, { allowed: [], syncChat: 'oc_team' }, new AbortController().signal)).rejects.toThrow('飞书返回的成员列表不完整')
     h.store.close()
   })
 })
@@ -333,8 +333,8 @@ describe('github source', () => {
     expect(commentTrigger({ id: 7, body: 'x', user: { login: 'ci[bot]', type: 'Bot' } }, { number: 7, isPr: false }, 'conversation', 'agent-bot').human).toBe(false)
     // 即使没有正文，review decision 也会送达 ticket；普通 review 评论只携带其正文。
     const review = (fields: Partial<GithubComment>) => commentTrigger({ id: 8, user: { login: 'carol', type: 'User' }, submitted_at: '2026-09-01T00:00:00Z', ...fields }, { number: 7, isPr: true }, 'review', 'agent-bot').text
-    expect(review({ state: 'APPROVED', commit_id: 'abc123' })).toBe('APPROVED review of commit abc123')
-    expect(review({ state: 'CHANGES_REQUESTED', commit_id: 'abc123', body: 'Keep the margin' })).toBe('CHANGES_REQUESTED review of commit abc123\n\nKeep the margin')
+    expect(review({ state: 'APPROVED', commit_id: 'abc123' })).toBe('对提交 abc123 的 APPROVED review')
+    expect(review({ state: 'CHANGES_REQUESTED', commit_id: 'abc123', body: 'Keep the margin' })).toBe('对提交 abc123 的 CHANGES_REQUESTED review\n\nKeep the margin')
     expect(review({ state: 'COMMENTED', commit_id: 'abc123' })).toBe('')
     // 对 agent 的提及无论大小写都会指向它；agent 自己的消息则按自动化处理。
     expect(commentTrigger({ id: 9, body: '@Agent-Bot please fix', user: { login: 'alice', type: 'User' } }, { number: 7, isPr: true }, 'conversation', 'agent-bot')).toMatchObject({ human: true, addressed: 'mention' })
@@ -394,11 +394,11 @@ describe('github source', () => {
       check('unit', 'completed', 'success'), check('docs', 'in_progress', null)], statuses: [] }
     const read = 'github/pulls/9/checks'
     expect(ciSummary(failing, 'PR #9',
-      read)).toBe('CI failed 2/4 on PR #9 at abc1234: lint, e2e; 1 still running\nRead github/pulls/9/checks for every check.')
+      read)).toBe('CI 失败 2/4 于 PR #9（提交 abc1234）：lint, e2e；1 个仍在运行\n用 github/pulls/9/checks 读取每一项检查。')
     expect(ciSummary({ ...failing, checks: [check('docs', 'queued', null)] }, 'PR #9',
-      read)).toMatch(/^CI running 1\/1 on PR #9 at abc1234: docs/)
+      read)).toMatch(/^CI 进行中 1\/1 于 PR #9（提交 abc1234）：docs/)
     expect(ciSummary({ ...failing, checks: [check('unit', 'completed', 'success')] }, 'PR #9',
-      read)).toMatch(/^CI passed 1\/1 on PR #9 at abc1234/)
+      read)).toMatch(/^CI 通过 1\/1 于 PR #9（提交 abc1234）/)
   })
   it('binds a PR to the unique live ticket on its branch and ends tickets when the PR closes', async () => {
     const h = host()
@@ -542,7 +542,7 @@ describe('github source', () => {
     ] })
     await pollGithubThreads(h)
     expect(h.receive).toHaveBeenCalledTimes(1)
-    expect(h.receive.mock.calls[0]![0]).toMatchObject({ actor: { id: 'carol' }, text: 'APPROVED review of commit abc123', meta: { kind: 'review' } })
+    expect(h.receive.mock.calls[0]![0]).toMatchObject({ actor: { id: 'carol' }, text: '对提交 abc123 的 APPROVED review', meta: { kind: 'review' } })
     h.store.close()
   })
   it('reads each PR once per round and takes its end, auto-merge and CI from that read', async () => {
@@ -613,7 +613,7 @@ describe('github source', () => {
     expect(h.store.get('github-cursor:14')).toBeUndefined()
     expect(h.store.threads.get('github:14')!.meta.pollError).toContain('deleted')
     // 没有 Thread 承载它时，会由 Source 的 health 指出它。
-    expect(h.health.github).toMatchObject({ state: 'ready', detail: '2 notifications; next poll ≥ 60s; deleted on GitHub: #14, #15' })
+    expect(h.health.github).toMatchObject({ state: 'ready', detail: '2 条通知；下次轮询 ≥ 60 秒；已在 GitHub 删除：#14, #15' })
     // GitHub 对 agent 失去访问权限的私有仓库也会返回 404：这种情况会作为失败再次读取。
     github(h, { notifications: [notification(16)] })
     await expect(pollRound(h)).rejects.toThrow('#16: Error: gh: Not Found (HTTP 404)')
@@ -630,7 +630,7 @@ describe('github source', () => {
       'issues/12/comments': [comment, { body: 'no id' }] })
     await pollRound(h)
     expect(h.receive.mock.calls.map(([trigger]) => trigger.text)).toEqual(['@agent-bot please fix'])
-    expect(h.health.github).toMatchObject({ state: 'ready', detail: '1 notifications; next poll ≥ 60s; 2 unreadable items skipped' })
+    expect(h.health.github).toMatchObject({ state: 'ready', detail: '1 条通知；下次轮询 ≥ 60 秒；跳过 2 个无法读取的条目' })
     h.store.close()
   })
   it('reads every page of the notifications when GitHub says there are more, and waits as long as GitHub asks', async () => {
@@ -652,7 +652,7 @@ describe('github source', () => {
     expect(notifications.map(args => args.includes('--paginate'))).toEqual([false, true])
     const paths = calls.map(args => args[1]!.split('?')[0])
     expect(paths).toEqual(expect.arrayContaining(['repos/acme/widgets/issues/12', 'repos/acme/widgets/issues/13']))
-    expect(h.health.github).toMatchObject({ state: 'ready', detail: '2 notifications; next poll ≥ 120s' })
+    expect(h.health.github).toMatchObject({ state: 'ready', detail: '2 条通知；下次轮询 ≥ 120 秒' })
     h.store.close()
   })
   it('drops a notified Issue whose reads fail for a day, so the Source leaves the error, and keeps its read position', async () => {
@@ -677,7 +677,7 @@ describe('github source', () => {
     expect(h.store.get('github-cursor:16')).toBe('2026-09-01T00:00:00.000Z')
     expect(h.store.threads.get('github:16')?.meta.pollError).toContain('Not Found')
     expect(h.health.github).toMatchObject({ state: 'ready',
-      detail: '0 notifications; next poll ≥ 60s; dropped after their reads kept failing: #16' })
+      detail: '0 条通知；下次轮询 ≥ 60 秒；读取持续失败后放弃：#16' })
     h.store.close()
   })
   it('polls the PRs of open tickets and subscribed Threads although the notifications fail, and then fails the round', async () => {
@@ -756,7 +756,7 @@ describe('github source', () => {
     })
     // 当每次失败都是 410 时，该轮成功，并指出 GitHub 删除了哪些内容。
     await pollRound(h)
-    expect(h.health.github).toMatchObject({ state: 'ready', detail: expect.stringContaining('deleted on GitHub: #5, #7, #8') })
+    expect(h.health.github).toMatchObject({ state: 'ready', detail: expect.stringContaining('已在 GitHub 删除：#5, #7, #8') })
     h.store.close()
   })
   it('waits for setup, pauses while the Source is off, and counts only consecutive failed polls towards an error', async () => {
@@ -921,7 +921,7 @@ describe('github source', () => {
         head: { sha: 'abc', ref: 'fix', repo: null } } })
     await pollRound(h)
     expect(bare(reads)).toEqual(['notifications', 'issues/9', 'pulls/9', 'issues/9/comments', 'pulls/9/comments', 'pulls/9/reviews'])
-    expect(h.receive.mock.calls.map(([trigger]) => trigger)).toEqual([expect.objectContaining({ text: 'APPROVED review of commit abc',
+    expect(h.receive.mock.calls.map(([trigger]) => trigger)).toEqual([expect.objectContaining({ text: '对提交 abc 的 APPROVED review',
       meta: expect.objectContaining({ isPr: true }) })])
     h.store.close()
   })
@@ -949,10 +949,10 @@ describe('github source', () => {
     h.store.tickets.save({ ...openTicket('t2'), execution: execution('other-2'), ...pulled(41) })
     const agents = (number: number, ref: string, repo = 'acme/widgets'): Pull => ({ ...openPull(number), user: { login: 'agent-bot' },
       head: { sha: 'abc', ref, repo: { full_name: repo } } })
-    expect(claimPull(h, 't1', agents(40, 'agent/fix-1', 'someone/fork'))).toContain('PR does not belong to this ticket')
+    expect(claimPull(h, 't1', agents(40, 'agent/fix-1', 'someone/fork'))).toContain('PR 不属于这个工单')
     expect(claimPull(h, 't1', { ...openPull(31), head: { sha: 'abc', ref: 'agent/fix-1',
-      repo: { full_name: 'acme/widgets' } } })).toContain('PR does not belong to this ticket')
-    expect(claimPull(h, 't1', agents(41, 'agent/fix-1'))).toBe('PR already belongs to another active ticket')
+      repo: { full_name: 'acme/widgets' } } })).toContain('PR 不属于这个工单')
+    expect(claimPull(h, 't1', agents(41, 'agent/fix-1'))).toBe('PR 已属于另一个未结工单')
     // 未开启的 PR 不会被绑定，而这并不构成拒绝。
     expect(claimPull(h, 't1', { ...agents(42, 'agent/fix-1'), state: 'closed' })).toBeUndefined()
     expect(pullOf(h.store.tickets.get('t1')!)).toBeUndefined()
@@ -965,7 +965,7 @@ describe('github source', () => {
     // ticket 起始所依据的 PR 并非它自己开启的：当它自己的 PR 合并时，ticket 会结束而不是追随该 PR。
     expect(await observePull(h, endedPull(43, '2026-09-02T00:00:00Z'))).toBe(true)
     expect(h.store.tickets.get('t1')).toMatchObject({ ended: { outcome: 'merged' } })
-    expect(claimPull(h, 't1', openPull(30))).toBe('Ticket ended because its PR was closed')
+    expect(claimPull(h, 't1', openPull(30))).toBe('工单已结束，因为它的 PR 已关闭')
     h.store.close()
   })
 })
@@ -985,7 +985,7 @@ describe('source context', () => {
     const github = h.context(githubKind)
     github.report('github', { state: 'ready', detail: 'ok' })
     expect(h.health.github).toEqual({ state: 'ready', detail: 'ok' })
-    expect(() => github.report('feishu', { state: 'error', detail: 'x' })).toThrow('no health entry feishu')
+    expect(() => github.report('feishu', { state: 'error', detail: 'x' })).toThrow('没有健康条目 feishu')
     h.store.close()
   })
   it('patches a Thread\'s meta as it is now, so a change another writer made meanwhile stays', () => {
@@ -1022,7 +1022,7 @@ it('reports GitHub as failing only after the configured number of consecutive fa
   const eof = new Error('Get "https://api.github.com/x": EOF')
   expect(pollFailure(1, 3, eof)).toBeUndefined()
   expect(pollFailure(2, 3, eof)).toBeUndefined()
-  expect(pollFailure(3, 3, eof)).toEqual({ state: 'error', detail: '3 consecutive failed polls; last: Error: Get "https://api.github.com/x": EOF', code: 'pollFailures', values: { count: '3', error: 'Error: Get "https://api.github.com/x": EOF' } })
+  expect(pollFailure(3, 3, eof)).toEqual({ state: 'error', detail: '连续 3 次轮询失败；最近一次：Error: Get "https://api.github.com/x": EOF', code: 'pollFailures', values: { count: '3', error: 'Error: Get "https://api.github.com/x": EOF' } })
   expect(githubKind.schema.parse({})).toEqual({ repository: '', cli: '', pollSeconds: 60, failuresBeforeError: 3, observeIssues: false,
     observePulls: false, observeComments: false, observeCi: false })
 })
@@ -1400,10 +1400,10 @@ describe('observing the GitHub repository', () => {
     await pollRound(h)
     answers.branch = { sha: 'ccc3333', checks: [check('lint', 'success'), check('e2e', 'success')] }
     await pollRound(h)
-    expect(texts()).toEqual(['CI failed 1/2 on main at bbb2222: lint; 1 still running', 'CI passed 2/2 on main at ccc3333'])
+    expect(texts()).toEqual(['CI 失败 1/2 于 main（提交 bbb2222）：lint；1 个仍在运行', 'CI 通过 2/2 于 main（提交 ccc3333）'])
     expect(h.receive.mock.calls[0]![0]).toMatchObject({ human: false, actor: { id: '' }, threads: [{ source: 'github', id: 'ci:main' }],
       meta: { ci: true, branch: 'main', sha: 'bbb2222' }, url: 'https://github.com/acme/widgets/commit/bbb2222' })
-    expect(h.receive.mock.calls[0]![0].text).toContain('Read github/commits/bbb2222/checks for every check.')
+    expect(h.receive.mock.calls[0]![0].text).toContain('用 github/commits/bbb2222/checks 读取每一项检查。')
     h.store.close()
   })
 })

@@ -41,10 +41,10 @@ export function mountTools(server: Server, tools: readonly Tool[]): void {
   }))
   server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     const tool = byName.get(request.params.name)
-    if (!tool) return failure(new Error(`Unknown tool ${request.params.name}; call tools/list for the available tools`))
+    if (!tool) return failure(new Error(`未知工具 ${request.params.name}；请调用 tools/list 查看可用工具`))
     const parsed = tool.schema.safeParse(request.params.arguments ?? {})
     if (!parsed.success) {
-      return { content: [text({ error: 'Invalid arguments', issues: parsed.error.issues.map(issue => ({
+      return { content: [text({ error: '参数无效', issues: parsed.error.issues.map(issue => ({
         path: issue.path.join('.'), message: issue.message })) })], isError: true }
     }
     try { return { content: [text(await tool.execute(parsed.data, extra.signal))] } }

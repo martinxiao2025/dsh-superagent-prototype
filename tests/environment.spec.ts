@@ -56,16 +56,16 @@ describe('worker shims', () => {
     expect(readdirSync(workerBin(dir)).sort()).toEqual(['gh', 'lark-cli'])
     // 仅仅在后续行包含标记的文件、指向 shim 的符号链接以及外来的 gitconfig 都会被拒绝。
     writeFileSync(join(workerBin(dir), 'notes'), `notes\nmore\n${readFileSync(join(workerBin(dir), 'gh'), 'utf8').split('\n')[1]}\n`)
-    await expect(writeEnvironment(testDeployment({ stateDir: dir }), [])).rejects.toThrow(`${join(workerBin(dir), 'notes')} was not written by dsh-superagent`)
+    await expect(writeEnvironment(testDeployment({ stateDir: dir }), [])).rejects.toThrow(`${join(workerBin(dir), 'notes')} 不是由 dsh-superagent 写入的`)
     rmSync(join(workerBin(dir), 'notes'))
     // 文件符号链接在 Windows 上需要 SeCreateSymbolicLinkPrivilege，因此该写法只在 POSIX 上检查。
     if (posix) {
       symlinkSync(join(workerBin(dir), 'gh'), join(workerBin(dir), 'link'))
-      await expect(writeEnvironment(testDeployment({ stateDir: dir }), [])).rejects.toThrow('link was not written by dsh-superagent')
+      await expect(writeEnvironment(testDeployment({ stateDir: dir }), [])).rejects.toThrow('link 不是由 dsh-superagent 写入的')
       rmSync(join(workerBin(dir), 'link'))
     }
     writeFileSync(workerGitConfig(dir), '[user]\n\tname = someone\n')
-    await expect(writeEnvironment(testDeployment({ stateDir: dir }), [])).rejects.toThrow(`${workerGitConfig(dir)} was not written by dsh-superagent`)
+    await expect(writeEnvironment(testDeployment({ stateDir: dir }), [])).rejects.toThrow(`${workerGitConfig(dir)} 不是由 dsh-superagent 写入的`)
     expect(readFileSync(workerGitConfig(dir), 'utf8')).toBe('[user]\n\tname = someone\n')
   })
   it('replaces the files it wrote under the project\'s earlier names', async () => {
@@ -159,7 +159,7 @@ describe('ticket directory check', () => {
   it('names the credential settings of the repository\'s own configuration', async () => {
     await git('init', '-q', 'repo')
     await git('-C', 'repo', 'config', 'http.https://github.com/.extraheader', 'AUTHORIZATION: basic x')
-    await expect(check('repo')).rejects.toThrow('sets http.https://github.com/.extraheader')
+    await expect(check('repo')).rejects.toThrow('设置了 http.https://github.com/.extraheader')
   })
   it('fails when git cannot read the repository\'s configuration, instead of passing it', async () => {
     await git('init', '-q', 'repo')

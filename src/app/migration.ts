@@ -22,7 +22,7 @@ export const SCHEMA_VERSION = 11
 export const OLDEST_SCHEMA = 10
 /** 返回错误消息，说明为何无法打开 `version`：更旧的 schema 需要新的 state 目录。 */
 export const tooOld = (version: number): string =>
-  `Orchestrator database schema ${version} predates schema ${OLDEST_SCHEMA}, which this version cannot migrate; start with a new state directory`
+  `编排器数据库 schema ${version} 早于 schema ${OLDEST_SCHEMA}，本版本无法迁移它；请使用新的 state 目录`
 
 type Stored = Record<string, unknown>
 const isObject = (value: unknown): value is Stored => !!value && typeof value === 'object' && !Array.isArray(value)
@@ -34,8 +34,8 @@ function step<T>(record: string, work: () => T): T {
 }
 /** 就地重写所有 schema 10 记录，转换为 schema 11 的形状。 */
 export function migrateTo11(store: Store): void {
-  step('the settings', () => { migrateSettingsRecords(store) })
-  step('the prompt versions', () => { migratePrompts(store) })
+  step('设置', () => { migrateSettingsRecords(store) })
+  step('提示词版本', () => { migratePrompts(store) })
   const answers = new Map<string, string[]>()
   for (const name of store.keys('answer-ready:')) {
     const [, ticketId, triggerId] = name.split(':')
@@ -56,7 +56,7 @@ export function migrateTo11(store: Store): void {
     const evaluating = thread.evaluating
     if (evaluating) step(`thread ${thread.key}`, () => { store.threads.save({ ...thread, evaluating: { ...evaluating, basis: basisOf(evaluating.basis as unknown) } }) })
   }
-  step('the Threads\' activity times', () => { backfillThreadTimes(store) })
+  step('Thread 的活动时间', () => { backfillThreadTimes(store) })
   // worker 可读的 input key 现在以 `ticket/` 为前缀而非 `task/`；已写在 `ticket/` 下的 key 保持不变。
   for (const name of store.keys('task/')) {
     const renamed = `ticket/${name.slice('task/'.length)}`
@@ -73,21 +73,21 @@ export function migrateTo11(store: Store): void {
     WHEN 'The conversation can no longer receive messages' THEN 'channelGone'
     WHEN 'The Source no longer listens to this conversation' THEN 'channelIgnored'
     ELSE value ->> '$.dropped.reason' END) WHERE value -> '$.dropped' IS NOT NULL`)
-  step('the outbox', () => { outboxReceipts(store) })
-  step('the current settings', () => { settingsAsVersions(store) })
+  step('outbox', () => { outboxReceipts(store) })
+  step('当前设置', () => { settingsAsVersions(store) })
   // Session 在 `KV.sessions.prompts`（`session-prompts:`）中持久化每个 Session 工作过的提示词修订，用于授权读取；删除旧的 `prompt-version-read:` 标记。
   store.db.exec("DELETE FROM kv WHERE key LIKE 'prompt-version-read:%'")
   // schema 6 的表保持原地：schema 7 导入过它们，但并未导入每一行。
-  step('the Sources\' records', () => { migrateSourceRecords(store) })
+  step('Source 记录', () => { migrateSourceRecords(store) })
   // Worker Session 现在直接从工单记录渲染 input，因此独立的 input 正文 key 已废弃。
-  step('the Inputs\' bodies', () => { store.db.exec("DELETE FROM kv WHERE key LIKE 'ticket/%/input/%'") })
-  step('the pull request ends', () => { dropPullEnds(store) })
-  step('the dismissed problems', () => { moveDismissals(store) })
+  step('Input 正文', () => { store.db.exec("DELETE FROM kv WHERE key LIKE 'ticket/%/input/%'") })
+  step('拉取请求结束记录', () => { dropPullEnds(store) })
+  step('已忽略的问题', () => { moveDismissals(store) })
   for (const row of store.db.prepare('SELECT id, value FROM ticket').all()) {
     step(`ticket ${String(row.id)}`, () => { store.tickets.save(withoutCopies(JSON.parse(String(row.value)) as Stored)) })
   }
-  step('the reasons', () => { reasonsAsCodes(store) })
-  step('the Triggers\' times', () => { triggerTimes(store) })
+  step('原因', () => { reasonsAsCodes(store) })
+  step('Trigger 时间', () => { triggerTimes(store) })
 }
 /**
  * 把 trigger 与 thread 的时间戳规范为定宽的毫秒 ISO 字符串，使字典序文本顺序与时间顺序一致

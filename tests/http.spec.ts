@@ -45,11 +45,11 @@ it('answers each kind of failure with its own status', async () => {
   expect(await call('PUT', 'settings/executor', { value: 'broken', revision: 0 })).toEqual({ status: 500, body: { error: 'disk full' } })
   // 调用 settings.save 之前会校验 block 名称：拒绝未知 block 或不存在的 Source。
   expect(await call('PUT', 'settings/pause', { value: {}, revision: 0 })).toMatchObject({ status: 400 })
-  expect(await call('PUT', 'settings/source:feishu', { value: {}, revision: 0 })).toEqual({ status: 404, body: { error: 'Source not found' } })
+  expect(await call('PUT', 'settings/source:feishu', { value: {}, revision: 0 })).toEqual({ status: 404, body: { error: 'Source 不存在' } })
   expect(saves).toHaveLength(4)
-  expect(await call('POST', 'tickets/t9/retry')).toEqual({ status: 404, body: { error: 'Ticket not found' } })
-  expect(await call('GET', 'nothing/here')).toEqual({ status: 404, body: { error: 'Unknown operation' } })
-  expect(await call('POST', 'executor/pause', 'not json')).toEqual({ status: 400, body: { error: 'The request body is not JSON' } })
+  expect(await call('POST', 'tickets/t9/retry')).toEqual({ status: 404, body: { error: '工单不存在' } })
+  expect(await call('GET', 'nothing/here')).toEqual({ status: 404, body: { error: '未知操作' } })
+  expect(await call('POST', 'executor/pause', 'not json')).toEqual({ status: 400, body: { error: '请求体不是 JSON' } })
 })
 
 it('decodes path parameters and parses each route\'s query', async () => {
@@ -73,11 +73,11 @@ it('answers only a same-origin request from the panel on the loopback address', 
   for (const headers of [{ 'x-orchestrator-request': undefined }, { host: 'evil.example:3082' }, { host: '127.0.0.1:9999' },
     { origin: 'http://evil.example' }, { host: 'localhost:3082', origin: 'http://127.0.0.1:3082' }]) {
     expect(await post(headers), JSON.stringify(headers)).toEqual({ status: 403,
-      body: { error: 'Same-origin management request required' } })
+      body: { error: '管理请求必须同源' } })
   }
   expect(await post({ host: 'localhost:3082', origin: 'http://localhost:3082' })).toMatchObject({ status: 200 })
   // 管理路由要求回环地址上的 Web 服务器。
-  expect(() => serve({}, '0.0.0.0')).toThrow('Orchestrator management requires a loopback Web server')
+  expect(() => serve({}, '0.0.0.0')).toThrow('编排器管理接口要求 Web 服务器绑定回环地址')
 })
 
 it('answers a prompt save that lost a race with 409, and a settings body over 128 KiB with 400', async () => {
@@ -93,6 +93,6 @@ it('answers a prompt save that lost a race with 409, and a settings body over 12
     .toEqual({ status: 409, body: { error: 'Prompt version changed to 3; compare the latest version before saving' } })
   const value = { prepare: 'x'.repeat(128 * 1024) }
   expect(await call('PUT', 'settings/executor', { value, revision: 0 })).toEqual({ status: 400,
-    body: { error: `Request exceeds ${128 * 1024} bytes` } })
+    body: { error: `请求超过 ${128 * 1024} 字节` } })
   expect(saves).toEqual([])
 })

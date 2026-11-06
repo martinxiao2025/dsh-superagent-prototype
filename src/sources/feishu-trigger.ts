@@ -24,7 +24,7 @@ export const withMentionNames = (text: string, mentions: { key?: string | undefi
  */
 export function feishuTime(value: string): string {
   const time = /^\d+$/.test(value) ? Number(value) : Date.parse(value)
-  if (!Number.isFinite(time)) throw new Error(`Unreadable Feishu message time: ${value}`)
+  if (!Number.isFinite(time)) throw new Error(`无法解析的飞书消息时间：${value}`)
   return new Date(time).toISOString()
 }
 /** 把规范化的飞书事件转换为 Trigger；机器人自己发送的消息返回 undefined。 */

@@ -32,7 +32,7 @@ export class Passes {
     return Promise.allSettled([this.pumping, this.pumpAgain])
   }
   receive(trigger: Trigger): ReceiveResult {
-    if (this.host.closing()) throw new Error('Orchestrator is stopping')
+    if (this.host.closing()) throw new Error('编排器正在停止')
     const result = this.host.engine.receive(trigger)
     if (result === 'stored') this.request()
     return result
@@ -41,8 +41,8 @@ export class Passes {
     const { health } = this.host
     this.pump().then(() => {
       if (health.get()?.state !== 'error' || this.host.lifetime.aborted) return
-      health.set({ state: 'ready', detail: 'Orchestrator is ready', at: now() })
-    }, (error: unknown) => { health.set({ state: 'error', detail: `A pass failed: ${String(error)}`, at: now() }) })
+      health.set({ state: 'ready', detail: '编排器已就绪', at: now() })
+    }, (error: unknown) => { health.set({ state: 'error', detail: `一次 pass 失败：${String(error)}`, at: now() }) })
   }
   /** 等待直到当前可启动的 pass 与 effect 都不再运行。 */
   async idle(): Promise<void> {

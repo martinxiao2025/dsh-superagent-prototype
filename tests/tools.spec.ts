@@ -41,7 +41,7 @@ it('reads the lists, a ticket, a decision, the settings, the prompts and the mod
     expect(JSON.parse(page.text)).toEqual({ block, revision: h.runtime.store.blockRevision(block as 'policy'), value: h.runtime.settings.block(block).value })
   }
   expect(JSON.parse((await read('settings/policy') as { text: string }).text).value.sources.feishu.allowed).toEqual([{ id: 'ou_alice', name: 'Alice' }])
-  await expect(read('settings/source:retired')).rejects.toThrow('Unknown settings block')
+  await expect(read('settings/source:retired')).rejects.toThrow('未知设置块')
   const skills = { built_in: ['dsh-superagent-feishu', 'dsh-superagent-github'], team: [] }
   expect(await read('prompts')).toMatchObject({ revision: 0, read: 'prompts/0', skills, items: [expect.objectContaining({ revision: 0 })], next_offset: null })
   const models = [{ id: 'm1', name: 'One' }, { id: 'm2', name: 'Two' }]
@@ -49,7 +49,7 @@ it('reads the lists, a ticket, a decision, the settings, the prompts and the mod
   Object.assign(h.controller, { modelCatalog: vi.fn(async () => catalog) })
   expect(await read('models')).toMatchObject({ providers: [{ id: 'p', count: 2, read: 'models/p' }], roles: expect.any(Object) })
   expect(await read('models/p', { limit: 1 })).toEqual({ items: [models[0]], next_offset: 1 })
-  await expect(read('ticket')).rejects.toThrow('Unknown context resource')
+  await expect(read('ticket')).rejects.toThrow('未知的上下文资源')
   // 列表页最多容纳 50 项，prompt 历史也是如此。
   const config = h.runtime.prompts.current().config
   for (let revision = 0; revision < 51; revision++) h.runtime.prompts.save({ ...config, scope: `Scope ${revision}.` }, revision, 'panel')
@@ -94,7 +94,7 @@ it('saves with the prompt save tool an override without its base, refuses a part
 it('keeps the main Session\'s resources from an Executor Session, which lists only its own', async () => {
   const { ticket, sessionId } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
   for (const resource of ['tickets', 'triggers', 'threads', 'decisions', 'settings', 'prompts', 'models']) {
-    await expect(h.runTool(sessionId, 'orchestrator_read', { resource })).rejects.toThrow('belongs to the main Session')
+    await expect(h.runTool(sessionId, 'orchestrator_read', { resource })).rejects.toThrow('该资源属于主 Session')
   }
   expect(await h.runTool(sessionId, 'orchestrator_read', { resource: `ticket/${ticket.id}` })).toMatchObject({ ticket_id: ticket.id })
   type Registered = { description: string; parameters: { properties: { resource: { description: string } } } }
@@ -156,7 +156,7 @@ it('routes several triggers in one call, in order, and answers a refused or fail
     { trigger_id: thanks.id, kind: 'ignore', decision: 'ignore', reason: 'Thanks only.' },
     { trigger_id: request.id, kind: 'stop', refused: 'stop needs ticket_id' },
     expect.objectContaining({ trigger_id: request.id, kind: 'accept', decision: 'accept', ticket: expect.objectContaining({ title: 'Other' }) }),
-    { trigger_id: other.id, kind: 'attach', refused: 'Unknown ticket' },
+    { trigger_id: other.id, kind: 'attach', refused: '未知工单' },
     // 意外失败没有记录任何内容，因此该条目可以再次发送。
     { trigger_id: more.id, kind: 'attach', refused: 'Not recorded: database is locked; retry this item' },
   ])
@@ -240,9 +240,9 @@ it('ignores a proactive candidate from its card beside other decisions, marked s
     { kind: 'accept', trigger_id: proposal.id, title: 'Shorter title', worktree_name: 'short-title', acknowledgement: '收到。' },
   ] }) as { results: Record<string, unknown>[] }
   expect(results).toEqual([
-    { trigger_id: chat.id, kind: 'ignore', decision: 'ignore', reason: 'Ignored from its card, without a rule assessment; Lunch chat.' },
+    { trigger_id: chat.id, kind: 'ignore', decision: 'ignore', reason: '从卡片上忽略，未做规则评估; Lunch chat.' },
     { trigger_id: thanks.id, kind: 'ignore', decision: 'ignore', reason: 'Thanks only.' },
-    { trigger_id: proposal.id, kind: 'accept', refused: expect.stringContaining('assess proactive candidates with orchestrator_eval') },
+    { trigger_id: proposal.id, kind: 'accept', refused: expect.stringContaining('请用 orchestrator_eval 与 orchestrator_eval_decide 评估主动候选') },
   ])
 })
 
@@ -314,7 +314,7 @@ it('reads a thread by the key cards show: its label, tickets, latest decisions a
   const elsewhere = feishu('5', '@bot 别的事', { chat_id: 'oc_other' })
   h.runtime.store.triggers.save(elsewhere)
   h.runtime.store.threads.save({ key: `feishu:oc_other:om_5`, ref: { source: 'feishu', id: 'oc_other:om_5' }, createdAt: '', subscriptions: [], correlated: [], pending: [], meta: {} })
-  await expect(h.runTool(sessionId, 'orchestrator_read', { resource: 'thread/feishu:oc_other:om_5' })).rejects.toThrow('Unknown or inaccessible thread')
+  await expect(h.runTool(sessionId, 'orchestrator_read', { resource: 'thread/feishu:oc_other:om_5' })).rejects.toThrow('Thread 不存在或不可访问')
 })
 
 it('reads a ticket with the ids it is tied to, its reports by assignment, and its assignments and inputs a page at a time, each by the name its line gives or by its id', async () => {

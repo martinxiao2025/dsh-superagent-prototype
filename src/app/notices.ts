@@ -14,14 +14,14 @@ import { ticketCard } from './cards.ts'
 export type Notice = readonly [name: string, value: Record<string, unknown>, summary: string]
 /** 为已保存的提示词配置修订构建通知，按 `'prompts'` 合并。 */
 export const promptsNotice = (revision: number): Notice =>
-  ['prompts', { prompt_config_saved: revision, effect: 'next-request', read: `prompts/${revision}` }, `Prompt configuration saved (revision ${revision})`]
+  ['prompts', { prompt_config_saved: revision, effect: 'next-request', read: `prompts/${revision}` }, `提示词配置已保存（修订 ${revision}）`]
 /**
  * 为已保存的设置块构建通知，附带变更的点分路径（按块在 `settings:<block>` 下合并）；
  * 对未记录块的旧版保存则针对整体设置。
  */
 export const settingsNotice = (block?: string, changed: string[] = []): Notice => block
-  ? [`settings:${block}`, { settings_saved: block, changed, read: `settings/${block}` }, `Settings saved: ${block}`]
-  : ['settings', { settings_saved: true, read: 'settings' }, 'Settings saved']
+  ? [`settings:${block}`, { settings_saved: block, changed, read: `settings/${block}` }, `设置已保存：${block}`]
+  : ['settings', { settings_saved: true, read: 'settings' }, '设置已保存']
 /** 返回最多 20 个两值不同的点分路径（例如 `eval.mode` 或 `policy.rules.1.enabled`）。 */
 export function changedPaths(before: unknown, after: unknown, path = ''): string[] {
   if (JSON.stringify(before) === JSON.stringify(after)) return []
@@ -39,7 +39,7 @@ function brief(ticket: Ticket) {
 export const receiptNotice = (value: Record<string, unknown>, summary: string): Notice => [key('receipt', randomUUID()), value, summary]
 /** 构建“某人在 `at` 时刻移除了 thread 订阅”的通知；同一 thread 之后再次移除会替换尚未发送的等待通知。 */
 export const subscriptionNotice = (thread: string, at?: string): Notice => [`subscription:${thread}`,
-  { subscription_changes: [{ thread, removed: true }], ...at ? { at } : {} }, `Removed the subscriptions on thread ${thread}`]
+  { subscription_changes: [{ thread, removed: true }], ...at ? { at } : {} }, `已移除 Thread ${thread} 上的订阅`]
 
 /**
  * 把非请求触发的领域事件转换为主 Session 通知（`ticket.ended`、`trigger.requeued`，或由真人或执行器触发的
@@ -50,11 +50,11 @@ export function eventNotice(event: DomainEvent, ticket: (id: string) => Ticket |
   if (event.type === 'ticket.ended') {
     const { ticketId, by, outcome, reason = outcome } = event.data
     const ended = ticket(ticketId)
-    return receiptNotice(ended ? { ticket_ended: brief(ended) } : { ticket_ended: ticketId, by, outcome, reason, at }, `Ticket ${ticketId} ended (${reason})`)
+    return receiptNotice(ended ? { ticket_ended: brief(ended) } : { ticket_ended: ticketId, by, outcome, reason, at }, `工单 ${ticketId} 已结束（${reason}）`)
   }
   if (event.type === 'trigger.requeued') {
     const id = event.data.triggerId
-    return receiptNotice({ trigger_requeued: id, read: `trigger/${id}`, at }, `Trigger ${id} queued for a fresh assessment`)
+    return receiptNotice({ trigger_requeued: id, read: `trigger/${id}`, at }, `Trigger ${id} 已排队等待重新评估`)
   }
   if (event.type === 'thread.unsubscribed' && event.data.by === 'person') return subscriptionNotice(event.data.threadKey, at)
   if (event.type === 'thread.unsubscribed') {
@@ -62,7 +62,7 @@ export function eventNotice(event: DomainEvent, ticket: (id: string) => Ticket |
     const note = 'Its Executor found this thread unrelated after reading it; attach later triggers there to this ticket only when they '
       + 'point at it explicitly.'
     return receiptNotice({ thread_unrelated: { ticket_id: ticketId, thread, reason }, at, note },
-      `Ticket ${ticketId} no longer follows thread ${thread}: ${reason}`)
+      `工单 ${ticketId} 不再关注 Thread ${thread}：${reason}`)
   }
   return undefined
 }
@@ -71,7 +71,7 @@ export function eventNotice(event: DomainEvent, ticket: (id: string) => Ticket |
 export const threadFollowedNotice = (ticketId: string, thread: string, reason: string): Notice =>
   receiptNotice({ thread_followed: { ticket_id: ticketId, thread, reason },
     note: 'For context only: its messages reach this ticket and grant nothing.' },
-    `Ticket ${ticketId} follows thread ${thread} for context: ${reason}`)
+    `工单 ${ticketId} 为获取上下文而关注 Thread ${thread}：${reason}`)
 
 /** 面向主 Session 的引导中继载荷：`id` 是保证投递幂等的 request ID，`text` 是消息正文。 */
 export interface Relay { id: string; text: string }

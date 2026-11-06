@@ -55,7 +55,7 @@ it('leaves a delivered follow-up to its ticket\'s worker: the main Session may s
     return message.id
   }
   const master = (name: string, args: Record<string, unknown>) => h!.runTool(h!.runtime.masterId, name, args)
-  const decides = /its worker decides whether it belongs there/
+  const decides = /由该工单的 worker 决定它是否属于那里/
   // 访客的 follow-up 仍为 inferred，因此其 stop 不会停止工作；主 Session 无法路由或重新排队它。
   const guest = await settle('4', '别做了', 'ou_guest')
   expect(await h!.route({ kind: 'stop', ticket_id: ticket.id, trigger_id: guest })).toMatchObject({ decision: 'ignore' })
@@ -148,10 +148,10 @@ it('relays a message a worker handed back as a candidate with the worker\'s reas
     && item.trigger_id === message.id)).toMatchObject({ strength: 'explicit',
     handed_back: [{ trigger_id: message.id, ticket_id: ticket.id, reason: 'It asks for an export button.' }] })
   await expect(h.runTool(sessionId, 'orchestrator_trigger_handback', { trigger_id: message.id,
-    reason: 'Again' })).rejects.toThrow(/handed that trigger back/)
+    reason: 'Again' })).rejects.toThrow(/该工单已经把那个 Trigger 交回了/)
   // 把它重新附加回交回它的 ticket 会被拒绝。
   await expect(h.route({ kind: 'attach', ticket_id: ticket.id, trigger_id: message.id }))
-    .rejects.toThrow(/handed that trigger back as beyond it/)
+    .rejects.toThrow(/已把那个 Trigger 作为超出其范围交回/)
 })
 
 it('lets a worker follow a related thread for context, which the main Session hears of without waking, and notes a ticket', async () => {
@@ -273,7 +273,7 @@ it('keeps a listed member\'s request on a ticket\'s thread to that ticket, so it
   expect(notices(h)).toEqual([expect.objectContaining({ trigger_id: request.id,
     note: expect.stringContaining('orchestrator_route kind stop') })])
   await expect(h.route({ kind: 'accept', trigger_id: request.id, title: '概览页按钮',
-    worktree_name: 'overview-button', acknowledgement: '收到。' })).rejects.toThrow(/its worker decides whether it belongs there/)
+    worktree_name: 'overview-button', acknowledgement: '收到。' })).rejects.toThrow(/由该工单的 worker 决定它是否属于那里/)
   // worker 认为它属于其 ticket，并如此说明。
   expect(await h.runTool(sessionId, 'orchestrator_ack', { trigger_id: request.id, text: '收到：概览页的保存按钮也一起改。' }))
     .toMatchObject({ trigger_id: request.id })
@@ -290,7 +290,7 @@ it('leaves a follow-up to its ticket\'s worker after the main Session drops the 
   expect(await master('orchestrator_thread_unsubscribe', { thread: THREAD })).toEqual({ removed: true, thread: THREAD })
   // worker 已收到该消息并仍在决定，因此主 Session 无法为它开启第二个 ticket。
   await expect(h!.route({ kind: 'accept', trigger_id: request.id, title: '导出按钮', worktree_name: 'export',
-    acknowledgement: '收到，加导出按钮。' })).rejects.toThrow(/its worker decides whether it belongs there/)
+    acknowledgement: '收到，加导出按钮。' })).rejects.toThrow(/由该工单的 worker 决定它是否属于那里/)
   expect(h.runtime.store.tickets.list().map(item => item.id)).toEqual([ticket.id])
 })
 

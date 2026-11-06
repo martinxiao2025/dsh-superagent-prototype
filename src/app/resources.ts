@@ -81,7 +81,7 @@ type Route = readonly [name: string, read: (read: Read) => unknown]
 
 /** 保证仅限主 Session 的资源不能被 worker Session 读取。 */
 const main = ({ host, ticketId }: Read): MainResourceHost => {
-  if (ticketId || !('settings' in host)) throw new Error('This resource belongs to the main Session')
+  if (ticketId || !('settings' in host)) throw new Error('该资源属于主 Session')
   return host as MainResourceHost
 }
 const text = ({ resource, offset, limit }: Read, body: string) => textPage(resource, body, offset, limit ?? 4000)
@@ -104,7 +104,7 @@ const trigger = (host: ResourceHost, id: string, ticketId?: string): Trigger => 
 async function sourcePage(read: Read, source: string, fetch: () => Promise<unknown>) {
   const { host, resource, offset, sessionId } = read
   const body = offset === 0 ? JSON.stringify(await fetch()) : host.pages.get(`${sessionId}:${resource}`)
-  if (body === undefined) throw new Error(`Read this ${source === 'feishu' ? 'Feishu' : 'GitHub'} resource from offset 0 first`)
+  if (body === undefined) throw new Error(`请先从 offset 0 读取该资源（来源：${source === 'feishu' ? '飞书' : 'GitHub'}）`)
   if (offset === 0) host.pages.set(`${sessionId}:${resource}`, body)
   return text(read, body)
 }
@@ -136,7 +136,7 @@ const ROUTES: readonly Route[] = [
     const ticket = ticketId ? host.store.tickets.get(ticketId) : undefined
     // Worker Session 只能读取自身工单订阅或关注的 thread。
     if (!thread || (ticketId && !(thread.subscriptions.includes(ticketId) || ticket?.follows?.some(follow => follow.thread === rest)))) {
-      throw new Error('Unknown or inaccessible thread')
+      throw new Error('Thread 不存在或不可访问')
     }
     const { store } = host
     const { read: _read, tickets: ids, ...card } = threadCard(thread, threadTitle(store, thread))
@@ -150,7 +150,7 @@ const ROUTES: readonly Route[] = [
   ['decisions', read => list(read, (offset, count) => main(read).store.read.recentDecisions(offset, count).map(decisionCard))],
   ['decision/', read => {
     const decision = main(read).store.decisions.get(read.rest)
-    if (!decision) throw new Error('Unknown decision')
+    if (!decision) throw new Error('未知的决策')
     return decisionDetails(decision)
   }],
   ['settings', read => main(read).settings.view()],
@@ -180,12 +180,12 @@ const ROUTES: readonly Route[] = [
     const parts = () => Object.fromEntries(Object.entries(builtInParts()).map(([key, part]) => [key, part.text]))
     const version = rest === 'current' ? bound : rest === 'defaults' && !ticketId ? { revision: 0, config: defaultPrompts(), parts: parts() }
       : /^\d+$/.test(rest) ? (Number(rest) === 0 && prompts.current().revision === 0 ? prompts.current() : prompts.version(Number(rest))) : undefined
-    if (!version || (ticketId && !host.mayRead(sessionId, version.revision))) throw new Error('Unknown or inaccessible prompt version')
+    if (!version || (ticketId && !host.mayRead(sessionId, version.revision))) throw new Error('提示词版本不存在或不可访问')
     return text({ ...read, resource: rest === 'current' ? `prompts/${version.revision}` : resource }, JSON.stringify(version))
   }],
   ['prompt-preview/', read => {
     const body = main(read).pages.get(`${read.sessionId}:${read.resource}`)
-    if (body === undefined) throw new Error('Unknown preview for this Session')
+    if (body === undefined) throw new Error('该 Session 没有这个预览')
     return text(read, body)
   }],
   ['models', async read => {
@@ -196,20 +196,20 @@ const ROUTES: readonly Route[] = [
   }],
   ['models/', async read => {
     const models = (await main(read).context.sessionController.modelCatalog()).groups.find(group => group.id === read.rest)?.models
-    if (!models) throw new Error('Unknown model provider')
+    if (!models) throw new Error('未知的模型 provider')
     return list(read, (offset, count) => models.slice(offset, offset + count))
   }],
   ['feishu/', async read => {
     const source = trigger(read.host, read.rest.split('/')[0]!, read.ticketId)
     const ref = feishuRef(source)
-    if (!ref) throw new Error('A Feishu source trigger is required')
+    if (!ref) throw new Error('需要来自飞书的 Trigger')
     const commands = read.host.commands.withSignal(read.signal)
     return sourcePage(read, 'feishu', () => feishuRead(commands, ref, read.resource, read.host.feishuPageSize()))
   }],
   ['github/', read => sourcePage(read, 'github', () => readGithub(read.host.commands.withSignal(read.signal), read.resource))],
   ['trigger/', async read => {
     const { host, rest, ticketId, offset, signal } = read
-    if (!rest || rest.includes('/')) throw new Error('Unknown context resource')
+    if (!rest || rest.includes('/')) throw new Error('未知的上下文资源')
     const found = trigger(host, rest, ticketId)
     const ref = feishuRef(found)
     // worker session 读取 trigger 时，隐去决策 ID、其他工单与不可达的相邻 trigger。
@@ -235,8 +235,8 @@ const ROUTES: readonly Route[] = [
   ['ticket/', async read => {
     const { host, resource, rest, ticketId, signal } = read
     const [id, section, part, ...more] = rest.split('/')
-    if (!id || more.length) throw new Error('Unknown context resource')
-    if (ticketId && ticketId !== id) throw new Error('Ticket does not belong to this worker')
+    if (!id || more.length) throw new Error('未知的上下文资源')
+    if (ticketId && ticketId !== id) throw new Error('该工单不属于这个 worker')
     const ticket = host.store.tickets.get(id)
     if (!ticket) throw new UserError('unknownTicket')
     if (section === undefined) {
@@ -252,7 +252,7 @@ const ROUTES: readonly Route[] = [
       return { ...ticketDetails(ticket, threads, batchOf(host, ticket), !!ticketId), ...retry }
     }
     if (section === 'assignments' || section === 'inputs') {
-      if (part !== undefined) throw new Error('Unknown context resource')
+      if (part !== undefined) throw new Error('未知的上下文资源')
       const size = Math.min(read.limit ?? (section === 'assignments' ? ASSIGNMENTS : INPUTS), 50)
       const { items, next_offset } = section === 'assignments'
         ? newestPage(ticket.assignments, read.offset, size, item => assignmentLine(ticket, item), resource)
@@ -266,18 +266,18 @@ const ROUTES: readonly Route[] = [
       const trigger = input?.kind === 'trigger' ? host.store.triggers.get(input.triggerId) : undefined
       const card = trigger && input?.kind === 'trigger' ? triggerMessage(trigger, await host.sourceLink(trigger, signal), input.note) : undefined
       const message = input && inputMessage(input, card)
-      if (message === undefined) throw new Error('Unknown ticket input')
+      if (message === undefined) throw new Error('未知的工单输入')
       body = message
     } else if (section === 'message' && part && /^\d+$/.test(part)) {
       const event = (await transcript(host, id))[Number(part)]
       const entry = event && transcriptEntry(event)
-      if (!entry) throw new Error('Unknown transcript entry')
+      if (!entry) throw new Error('未知的对话记录条目')
       body = JSON.stringify(entry)
     } else if (section === 'report' && part) {
       const report = ticket.assignments.find(item => item.id === part)?.report
-      if (!report) throw new Error('Unknown assignment report')
+      if (!report) throw new Error('未知的 Assignment 报告')
       body = report.summary
-    } else if (part !== undefined) throw new Error('Unknown context resource')
+    } else if (part !== undefined) throw new Error('未知的上下文资源')
     else if (section === 'assignment') body = ticket.execution?.assignment ?? ''
     else if (section === 'result') body = latestReport(ticket)?.summary ?? ''
     else if (section === 'transcript') {
@@ -287,7 +287,7 @@ const ROUTES: readonly Route[] = [
         return entry ? [{ type: entry.type, preview: preview(said).slice(0, 80), chars: JSON.stringify(entry).length,
           read: `ticket/${id}/message/${index}` }] : []
       }).reverse().map(event => JSON.stringify(event)).join('\n')
-    } else throw new Error('Unknown context resource')
+    } else throw new Error('未知的上下文资源')
     return text(read, body)
   }],
 ]
@@ -300,7 +300,7 @@ export async function readResource(host: ResourceHost, resource: string, offset:
   signal?: AbortSignal) {
   const name = resource.replace(/^event\//, 'trigger/').replace(/^task\//, 'ticket/').replace(/^observation\//, 'decision/')
   const route = ROUTES.find(([route]) => route.endsWith('/') ? name.startsWith(route) : name === route)
-  if (!route) throw new Error('Unknown context resource')
+  if (!route) throw new Error('未知的上下文资源')
   const sessionId = ticketId ? workerSessionId(ticketId) : host.masterId
   const rest = route[0].endsWith('/') ? name.slice(route[0].length) : ''
   return route[1]({ host, resource: name, rest, offset, sessionId, ...limit ? { limit } : {}, ...ticketId ? { ticketId } : {},

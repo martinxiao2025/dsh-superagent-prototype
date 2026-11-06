@@ -26,10 +26,10 @@ function unjudged(store: Store, since: string): { thread: Thread; decision: Deci
 export function evalsHealth(store: Store, now = Date.now()): Health {
   const since = new Date(now - 3_600_000).toISOString()
   const open = unjudged(store, since)
-  if (!open.length) return { state: 'ready', detail: 'No unavailable Eval in the last hour' }
+  if (!open.length) return { state: 'ready', detail: '最近一小时没有不可用的 Eval' }
   const latest = open[0]!.decision
-  return { state: 'error', at: latest.at, detail: `${open.length} Eval(s) unavailable in the last hour without a later judgement; `
-    + `the latest on ${latest.threadKey}: ${reasonText(latest.reason)}` }
+  return { state: 'error', at: latest.at, detail: `${open.length} 个 Eval 在最近一小时内不可用且之后没有新的判定；`
+    + `最近一次在 ${latest.threadKey}：${reasonText(latest.reason)}` }
 }
 /**
  * 构建运维总览：当前系统问题、等待人工处理的工单、执行器负载，以及 24 小时 trigger 流量。

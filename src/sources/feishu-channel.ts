@@ -18,7 +18,7 @@ const gone = (error: unknown): boolean => error instanceof CliError && error.cod
 /** 在目标消息所在话题中回复；飞书按幂等键（出站消息的 `message.id`）至多保留一条回复。 */
 export async function sendFeishu(host: Pick<SourceContext, 'commands'>, message: OutboundMessage): Promise<'sent' | 'gone'> {
   const messageId = message.channel.address.messageId
-  if (!messageId) throw new Error('Missing Feishu reply target')
+  if (!messageId) throw new Error('缺少飞书回复目标')
   const text = checkedImText(message.text)
   const reply = ['im', '+messages-reply', '--message-id', messageId, '--markdown', text, '--reply-in-thread', '--idempotency-key', message.id]
   try { await host.commands.lark(reply) }

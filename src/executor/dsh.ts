@@ -191,7 +191,7 @@ export class WorkerSlots {
    */
   reserve(ticketId: string, by: 'launch' | 'wake' | 'person'): void {
     if (this.starting.has(ticketId)) return
-    if (this.used() >= this.max() + (by === 'person' ? 1 : 0)) throw new Later('No worker slot is free')
+    if (this.used() >= this.max() + (by === 'person' ? 1 : 0)) throw new Later('没有空闲的 worker 槽位')
     this.starting.set(ticketId, by)
   }
   /** 在其 worker 会话开始运行或启动/唤醒尝试结束后，释放 `ticketId` 的启动槽位。 */
@@ -255,7 +255,7 @@ export class DshExecutor implements Executor {
       .catch(async (error: unknown) => {
         // 删除失败的 prepare 命令留下的空目录，避免后续重试把它当作已准备。
         await rmdir(directory).catch(() => { /* 目录不存在，或其中含有该命令写入的内容，具体见命令输出。 */ })
-        throw new PrepareFailed(`The prepare command failed: ${error instanceof Error ? error.message : String(error)}`)
+        throw new PrepareFailed(`prepare 命令失败：${error instanceof Error ? error.message : String(error)}`)
       })
     await mkdir(directory, { recursive: true })
     await verifyDirectory(directory, this.host.context.subprocess, this.host.lifetime)
@@ -330,9 +330,9 @@ export class DshExecutor implements Executor {
     // 在会话投递前再检查一次，因为等待 `sourceLink` 期间工单可能已结束。
     const live = () => {
       const current = this.host.store.tickets.get(ticket.id)
-      if (!current || !liveTicket(current) || runningAssignment(current)?.id !== assignment.id) throw new Error('The ticket ended or another Assignment took it over')
+      if (!current || !liveTicket(current) || runningAssignment(current)?.id !== assignment.id) throw new Error('工单已结束，或被另一个 Assignment 接管')
       // 期间开始的 worker 后台工作停止会以一次取消结束，这会丢掉该 Input。
-      if (this.stopping.has(ticket.id)) throw new Later('The worker\'s background work is stopping')
+      if (this.stopping.has(ticket.id)) throw new Later('worker 的后台工作正在停止')
     }
     live()
     const trigger = input.kind === 'trigger' ? await this.triggerCard(ticket, input.triggerId, input.note) : undefined
@@ -423,8 +423,8 @@ export class DshExecutor implements Executor {
   private relay({ id, text }: { id: string; text: string }): void { this.host.sessions.relay(id, text) }
   private async launch(ticket: Ticket, assignment: Assignment): Promise<void> {
     const current = () => {
-      if (this.host.closing()) throw new Error('dsh-superagent is stopping')
-      if (this.host.paused()) throw new Later('Processing is paused')
+      if (this.host.closing()) throw new Error('dsh-superagent 正在停止')
+      if (this.host.paused()) throw new Later('处理已暂停')
       const stored = this.host.store.tickets.get(ticket.id)
       return !!stored && liveTicket(stored) && latestAssignment(stored)?.id === assignment.id
     }
@@ -464,7 +464,7 @@ export class DshExecutor implements Executor {
         ...(batch.length ? { batch } : {}), ...retried })
     const requestId = later ? `assignment:${ticket.id}:${assignment.id}` : first
     await this.host.sessions.prompt(sessionId, requestId, text, 'queue',
-      () => { if (!current()) throw new Error('Launch authorization changed before worker delivery') },
+      () => { if (!current()) throw new Error('投递给 worker 前启动授权已变更') },
       () => { this.host.engine.assignmentStarted(ticket.id, assignment.id) })
     this.host.engine.assignmentStarted(ticket.id, assignment.id)
   }
@@ -538,7 +538,7 @@ export class DshExecutor implements Executor {
   /** 运行后台 worker 事件处理，并在失败或恢复时更新 `worker` 健康条目。 */
   private background(work: Promise<void>): Promise<void> {
     const { health } = this.host
-    return work.then(() => { if (health.get()?.state === 'error') health.set({ state: 'ready', detail: 'Worker events are handled', at: now() }) },
+    return work.then(() => { if (health.get()?.state === 'error') health.set({ state: 'ready', detail: 'worker 事件已处理', at: now() }) },
       (error: unknown) => { health.set({ state: 'error', detail: String(error), at: now() }) })
   }
   /**
@@ -554,7 +554,7 @@ export class DshExecutor implements Executor {
   /** 在临时的提供方或网络错误后，按指数退避安排一次 worker 轮次重试。 */
   private resumeAfter(ticketId: string, assignmentId: string, error: unknown): void {
     const tries = this.transient.get(assignmentId)!
-    const text = `Your last turn failed for a passing reason (${String(error).slice(0, 200)}). Continue the assignment where it stopped.`
+    const text = `你上一轮因可恢复原因失败（${String(error).slice(0, 200)}）。请从停止处继续该 Assignment。`
     this.resuming.add(assignmentId)
     const go = () => {
       if (this.host.closing()) return
@@ -593,8 +593,8 @@ export class DshExecutor implements Executor {
       left.jobs.add(job.id)
       void this.background(collectJob(this.host.context, agent.id, job, left.collect.signal).then(async ended => {
         if (!ended) return
-        const note = `Your background job ${ended.name} ended: ${ended.status}.`
-        await this.host.sessions.prompt(agent.id, `ended:${job.id}`, note, { inject: 'Background job ended' })
+        const note = `你的后台作业 ${ended.name} 已结束：${ended.status}。`
+        await this.host.sessions.prompt(agent.id, `ended:${job.id}`, note, { inject: '后台作业已结束' })
       }))
     }
   }
@@ -647,12 +647,12 @@ export class DshExecutor implements Executor {
       const sessionId = workerSessionId(ticket.id), minutes = BACKGROUND_LIMIT_MS / 60_000
       const jobs = runningJobs(this.host.context, sessionId, left).map(job => job.name)
       if (jobs.length) {
-        void this.background(killJobs(this.host.context, sessionId, 'The job ran past its limit', left))
-        const note = `Your background jobs ran ${minutes} minutes after your turn ended and were killed: ${jobs.join(', ')}.`
-        void this.background(this.host.sessions.prompt(sessionId, `killed:${jobs.join(',')}`, note, { inject: 'Background jobs killed' }))
+        void this.background(killJobs(this.host.context, sessionId, '作业超出时限仍在运行', left))
+        const note = `你的后台作业在你的轮次结束 ${minutes} 分钟后仍在运行，已被终止：${jobs.join(', ')}。`
+        void this.background(this.host.sessions.prompt(sessionId, `killed:${jobs.join(',')}`, note, { inject: '后台作业已被终止' }))
       }
-      stopped = jobs.length ? `Background jobs ran ${minutes} minutes after the worker's turn ended and were killed: ${jobs.join(', ')}.`
-        : `Subagents still ran ${minutes} minutes after the worker's turn ended.`
+      stopped = jobs.length ? `后台作业在 worker 轮次结束 ${minutes} 分钟后仍在运行，已被终止：${jobs.join(', ')}。`
+        : `subagent 在 worker 轮次结束 ${minutes} 分钟后仍在运行。`
     }
     // worker 可能在其轮次结束期间已经报告；被人消息解除的 blocked 或 failed 报告已经过时。
     if (handedOff(current)) return
@@ -666,7 +666,7 @@ export class DshExecutor implements Executor {
       // orchestrator_report 之后的静默收尾不构成新状态，也不是空交接。
       if (said) this.relay(resultRelay(updated, 'waiting', said))
       else if (!before.trim()) {
-        this.relay(resultRelay(updated, 'waiting', 'Worker ended without a status report. Use orchestrator_ticket_request_status to request one.'))
+        this.relay(resultRelay(updated, 'waiting', 'worker 结束时没有状态报告。请用 orchestrator_ticket_request_status 请求一次。'))
       }
     })
   }

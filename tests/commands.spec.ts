@@ -32,7 +32,7 @@ describe('account-isolated operations', () => {
     } finally { delete process.env.GH_TOKEN }
   })
   it('refuses Feishu commands when the deployment has no Feishu bot', async () => {
-    await expect(new Commands(() => testDeployment({ feishu: undefined }), {}, new AbortController().signal).lark(['im', '+chat-list'])).rejects.toThrow('The Feishu Source has no working bot CLI')
+    await expect(new Commands(() => testDeployment({ feishu: undefined }), {}, new AbortController().signal).lark(['im', '+chat-list'])).rejects.toThrow('飞书 Source 没有可用的机器人 CLI')
   })
   it('reconciles an uncertain GitHub send with its stable marker', async () => {
     const commands = new Commands(() => deployment, {}, new AbortController().signal)
@@ -80,7 +80,7 @@ describe('Channels', () => {
       expect(await send(value, feishu)).toBe('gone')
     }
     run.mockRejectedValueOnce(lark(232011, 'operator is not in the chat'))
-    const hint = 'The Feishu bot is not a member of the chat. Add the bot in the chat settings, then retry.'
+    const hint = '飞书机器人不在该群中。请在群设置中添加机器人，然后重试。'
     await expect(send(value, feishu)).rejects.toThrow(hint)
     run.mockRejectedValueOnce(lark(99991400, 'rate limited'))
     await expect(send(value, feishu)).rejects.toThrow('rate limited (99991400)')
@@ -89,7 +89,7 @@ describe('Channels', () => {
     const value = commands()
     const timedOut = { killed: true, signal: 'SIGTERM', code: null, stderr: '', message: 'Command failed: lark-bot --markdown withdrawn' }
     vi.spyOn(value, 'run').mockRejectedValueOnce(commandError(timedOut, 'lark-bot'))
-    await expect(send(value, { ...feishu, text: 'The change was withdrawn' })).rejects.toThrow('lark-bot timed out after 90 s')
+    await expect(send(value, { ...feishu, text: 'The change was withdrawn' })).rejects.toThrow('lark-bot 在 90 秒后超时')
   })
   it('drop a GitHub reply to an Issue that is deleted or locked, and keep others for a retry', async () => {
     const value = commands()
@@ -138,7 +138,7 @@ describe('GitHub calls', () => {
     expect(run).toHaveBeenLastCalledWith('/path/agent-gh', ['api', `repos/${REPOSITORY}/issues/12`])
     await expect(value.api(z.looseObject({ number: z.string() }), 'issues/12')).rejects.toThrow()
     for (const path of ['../other/repo/issues', 'issues/../../x', '/repos/x/y', 'https://api.github.com/x']) {
-      await expect(value.api(z.unknown(), path)).rejects.toThrow('restricted to the configured repository')
+      await expect(value.api(z.unknown(), path)).rejects.toThrow('GitHub 调用仅限于已配置的仓库')
     }
     expect(run).toHaveBeenCalledTimes(2)
     // 空路径指向仓库根目录。
@@ -166,7 +166,7 @@ it('says how to add the bot to a chat when Feishu answers that it is not a membe
   const commands = new Commands(() => deployment, {}, new AbortController().signal)
   const membership = JSON.stringify({ error: { code: 232011, message: 'operator is not in the chat' } })
   const run = vi.spyOn(commands, 'run').mockRejectedValueOnce(commandError({ stderr: membership, code: 1 }))
-  const hint = 'The Feishu bot is not a member of the chat. Add the bot in the chat settings, then retry.'
+  const hint = '飞书机器人不在该群中。请在群设置中添加机器人，然后重试。'
   await expect(commands.lark(['im', '+chat-members-list'])).rejects.toMatchObject({ message: hint, code: 232011, exitCode: 1 })
   run.mockResolvedValueOnce(JSON.stringify({ ok: false, error: { code: 232011, message: 'operator is not in the chat' } }))
   await expect(commands.lark(['im', '+chat-members-list'])).rejects.toMatchObject({ message: hint, code: 232011 })
@@ -176,16 +176,16 @@ it('names only the program and how it ended when a command prints no diagnostics
   const secret = 'secret reply text'
   const node = basename(process.execPath)
   // 用 Node 代替 `sh -c`，使该检查在没有 POSIX shell 的地方也能运行；断言不变。
-  await expect(commands.run(process.execPath, ['-e', 'process.exit(3)', secret])).rejects.toMatchObject({ message: `${node} exited with code 3`, exitCode: 3 })
+  await expect(commands.run(process.execPath, ['-e', 'process.exit(3)', secret])).rejects.toMatchObject({ message: `${node} 退出码为 3`, exitCode: 3 })
   // POSIX 报告终止信号；Windows 报告 TerminateProcess 产生的退出码。
   const killed = commands.run(process.execPath, ['-e', "process.kill(process.pid, 'SIGKILL')"])
-  if (process.platform === 'win32') await expect(killed).rejects.toMatchObject({ message: `${node} exited with code 1`, exitCode: 1 })
-  else await expect(killed).rejects.toMatchObject({ message: `${node} was stopped by SIGKILL` })
-  await expect(commands.run('/no/such/program', ['secret reply text'])).rejects.toMatchObject({ message: 'program could not run: ENOENT' })
+  if (process.platform === 'win32') await expect(killed).rejects.toMatchObject({ message: `${node} 退出码为 1`, exitCode: 1 })
+  else await expect(killed).rejects.toMatchObject({ message: `${node} 被 SIGKILL 停止` })
+  await expect(commands.run('/no/such/program', ['secret reply text'])).rejects.toMatchObject({ message: 'program 无法运行：ENOENT' })
   // 超时用 SIGTERM 杀死子进程；Node 默认的错误消息会回显每个参数。
   const timedOut = { killed: true, signal: 'SIGTERM', code: null, stderr: '',
     message: 'Command failed: /path/lark-bot im +messages-reply --markdown withdrawn' }
-  expect(commandError(timedOut, '/path/lark-bot')).toMatchObject({ message: 'lark-bot timed out after 90 s' })
+  expect(commandError(timedOut, '/path/lark-bot')).toMatchObject({ message: 'lark-bot 在 90 秒后超时' })
   expect(String(commandError(timedOut, '/path/lark-bot'))).not.toContain('withdrawn')
 })
 it('reports failures as CliError with the code the CLI names and the exit status', async () => {

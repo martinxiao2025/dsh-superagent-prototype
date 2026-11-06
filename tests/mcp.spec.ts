@@ -116,10 +116,10 @@ describe('MCP endpoint', () => {
     const headers = { 'content-type': 'application/json', accept: 'application/json, text/event-stream' }
     const init = await fetch(url, { method: 'POST', headers, body: 'x'.repeat(MAX_BODY + 1) })
     expect(init.status).toBe(413)
-    expect(((await init.json()) as { error: { message: string } }).error.message).toBe('The MCP request body is too large')
+    expect(((await init.json()) as { error: { message: string } }).error.message).toBe('MCP 请求体过大')
     const malformed = await fetch(url, { method: 'POST', headers, body: '{' })
     expect(malformed.status).toBe(400)
-    expect(((await malformed.json()) as { error: { message: string } }).error.message).toBe('The MCP request body is not JSON')
+    expect(((await malformed.json()) as { error: { message: string } }).error.message).toBe('MCP 请求体不是 JSON')
 
     // 已建立的 session 也必须受限，而不只是 initialize。
     const transport = new StreamableHTTPClientTransport(new URL(url))

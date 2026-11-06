@@ -15,12 +15,12 @@ export async function apply(ctx: Context, config: DeploymentConfig): Promise<voi
   // 提供该条目，并且只在写入配置时才重新读取它，因此要在重启后触发 `describe()`，让已打开的表单无需刷新页面即可继续编辑。
   // TODO: 等 DSH 的设置服务在插件重新激活后会重读该条目时，删除这次读取。
   const restart = (): void => {
-    ctx.fiber.restart().then(() => { ctx.get('settings')?.describe() }).catch((error: unknown) => { ctx.logger.error('dsh-superagent restart failed: %s', String(error)) })
+    ctx.fiber.restart().then(() => { ctx.get('settings')?.describe() }).catch((error: unknown) => { ctx.logger.error('dsh-superagent 重启失败：%s', String(error)) })
   }
   const runtime = new Runtime(ctx, machine, restart)
   ctx.effect(() => async () => { await runtime.stop() })
   await runtime.ready
-  ctx.logger.info(runtime.configured() ? 'dsh-superagent ready; the Superagent sidebar entry opens the management panel' : `dsh-superagent is waiting for setup: ${runtime.setupProblem?.detail ?? ''}`)
+  ctx.logger.info(runtime.configured() ? 'dsh-superagent 已就绪；Superagent 侧边栏入口会打开管理面板' : `dsh-superagent 正在等待 setup：${runtime.setupProblem?.detail ?? ''}`)
 }
 export type { Deployment, DeploymentConfig } from './deployment.ts'
 export * from './core/index.ts'

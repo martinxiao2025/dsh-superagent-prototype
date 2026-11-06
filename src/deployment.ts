@@ -10,20 +10,20 @@ import { runAsWorker, sameDirectory, withoutDirectory, workerBin } from './infra
 import { SetupError } from './setup.ts'
 
 const reason = (error: unknown): string => error instanceof Error ? error.message : String(error)
-const absolute = (description: string) => s.string().pattern(/^\//).description(`${description} Absolute path.`)
+const absolute = (description: string) => s.string().pattern(/^\//).description(`${description} 绝对路径。`)
 /** dsh-superagent 条目的插件配置。Volatile 字段无需重启即生效，因为 dsh-superagent 每次使用时都会读取它们；修改 `stateDir` 会重新挂载插件。 */
 export const Config = s.object({
-  stateDir: absolute('Directory for the database, locks, worker shims, the agent\'s git configuration and, by default, the ticket directories.').required(),
+  stateDir: absolute('用于存放数据库、锁、worker shim、agent 的 git 配置，以及（默认）工单目录的目录。').required(),
   promptMaxChars: s.number().min(LIMITS.promptMaxChars.min).max(LIMITS.promptMaxChars.max).step(1).default(100000)
-    .description('Largest saved prompt configuration, in characters.').volatile(),
+    .description('可保存的提示词配置上限，以字符计。').volatile(),
   admissionContextMaxPages: s.number().min(LIMITS.admissionContextMaxPages.min).max(LIMITS.admissionContextMaxPages.max).step(1).default(10)
-    .description('Pages of thread context one assessment may read.').volatile(),
+    .description('一次评估最多可读取的 Thread 上下文页数。').volatile(),
   admissionContextTimeoutMs: s.number().min(LIMITS.admissionContextTimeoutMs.min).max(LIMITS.admissionContextTimeoutMs.max).step(1)
-    .default(15000).description('Time limit of one context read during an assessment, in milliseconds.').volatile(),
+    .default(15000).description('评估期间单次上下文读取的时限，以毫秒计。').volatile(),
   mcpEnabled: s.boolean().default(true)
-    .description('Serve the main Session\'s tools over MCP on 127.0.0.1 for agent-plugins clients. Changing it takes effect on restart.'),
+    .description('通过 MCP 在 127.0.0.1 上向 agent-plugins 客户端提供主会话的工具。修改后需重启生效。'),
   mcpPort: s.number().min(0).max(65535).step(1).default(3083)
-    .description('Loopback port of the MCP endpoint at /mcp; keep plugin/mcp.json in step. 0 picks a free port. Changing it takes effect on restart.'),
+    .description('/mcp 上 MCP 端点的回环端口；请同步更新 plugin/mcp.json。0 表示自动选择空闲端口。修改后需重启生效。'),
 })
 export type DeploymentConfig = ReturnType<typeof Config>
 export interface Machine {
@@ -35,15 +35,15 @@ export interface Machine {
   mcpPort: number
 }
 const MOVED: Record<string, string> = {
-  repository: 'on the GitHub Source', branchPrefix: 'in the prepare command of the Execution settings', github: 'on the GitHub Source',
-  feishu: 'on the Feishu Source', author: 'prompt text', repositoryPath: 'in the prepare command of the Execution settings',
-  worktreeRoot: 'the ticket directory of the Execution settings', blockedCommands: 'in the Execution settings',
+  repository: 'GitHub Source 上', branchPrefix: 'Execution 设置的 prepare 命令中', github: 'GitHub Source 上',
+  feishu: 'Feishu Source 上', author: '提示词文本中', repositoryPath: 'Execution 设置的 prepare 命令中',
+  worktreeRoot: 'Execution 设置的工单目录中', blockedCommands: 'Execution 设置中',
 }
 
 /** 读取机器设置，并拒绝未知的配置键（同时指出已弃用的键迁移到了哪里）。 */
 export function machineOf(config: DeploymentConfig): Machine {
   const unknown = Object.keys(config).filter(key => !(key in (Config.dict ?? {})))
-  if (unknown.length) throw new Error(`dsh-superagent configuration has keys it does not use: ${unknown.map(key => MOVED[key] ? `${key} (now ${MOVED[key]})` : key).join(', ')}; docs/006-deployment.md lists the keys`)
+  if (unknown.length) throw new Error(`dsh-superagent 的配置包含它不使用的键：${unknown.map(key => MOVED[key] ? `${key}（现在位于${MOVED[key]}）` : key).join('、')}；docs/006-deployment.md 列出了这些键`)
   const { stateDir, promptMaxChars, admissionContextMaxPages, admissionContextTimeoutMs, mcpEnabled, mcpPort } = config
   return { stateDir, promptMaxChars, admissionContextMaxPages, admissionContextTimeoutMs, mcpEnabled, mcpPort }
 }
@@ -65,13 +65,13 @@ export interface FeishuBot { cli: string; appId: string; brand: 'feishu' | 'lark
 
 /** 将命令名或绝对路径解析为可执行文件，并忽略 worker shim 目录。 */
 export function executable(name: string, path: string, exclude?: string): string {
-  if (name.includes('/') && !isAbsolute(name)) throw new Error(`${name} must be a command name or an absolute path`)
+  if (name.includes('/') && !isAbsolute(name)) throw new Error(`${name} 必须是命令名或绝对路径`)
   const candidates = isAbsolute(name) ? [name] : path.split(delimiter).filter(dir => isAbsolute(dir) && !(exclude && sameDirectory(dir, exclude))).map(dir => join(dir, name))
   for (const candidate of candidates) {
     try { if (statSync(candidate).isFile()) { accessSync(candidate, constants.X_OK); return candidate } }
     catch { /* 这里不是可执行文件；继续尝试 PATH 中的下一个目录。 */ }
   }
-  throw new Error(`${name} is not an executable file${isAbsolute(name) ? '' : ' on PATH'}`)
+  throw new Error(`${name} 不是可执行文件${isAbsolute(name) ? '' : '（在 PATH 中）'}`)
 }
 
 export type Probe = (argv: string[]) => Promise<string>

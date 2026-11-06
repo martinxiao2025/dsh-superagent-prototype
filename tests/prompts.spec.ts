@@ -65,8 +65,8 @@ it('reads a prompt file whatever its line ends and blank lines, and names a miss
     writeFileSync(join(dir, 'crlf.md'), 'One.\r\nTwo. \r\n \t\r\n\r\nThree.\r\n')
     writeFileSync(join(dir, 'blank.md'), ' \n\t\n')
     expect(promptFile(name('crlf'))).toBe('One. Two.\nThree.')
-    expect(() => promptFile(name('blank'))).toThrow(`Empty packaged file: ${join(dir, 'blank.md')}`)
-    expect(() => promptFile(name('absent'))).toThrow(`Missing packaged file: ${join(dir, 'absent.md')}`)
+    expect(() => promptFile(name('blank'))).toThrow(`打包文件为空：${join(dir, 'blank.md')}`)
+    expect(() => promptFile(name('absent'))).toThrow(`缺少打包文件：${join(dir, 'absent.md')}`)
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })
 
@@ -97,7 +97,7 @@ it('rejects unknown keys, built-in skill names and oversized configuration befor
     expect(() => prompts.save({ communication: '', scope: '' }, 0, 'panel')).toThrow()
     for (const name of ['github', 'feishu']) expect(() => prompts.save({ ...defaultPrompts(), skills: { [name]: 'mine' } }, 0, 'panel')).toThrow('built-in skill')
     expect(() => prompts.save({ ...defaultPrompts(), skills: { 'Bad Name': 'x' } }, 0, 'panel')).toThrow()
-    expect(() => promptsOf(store, 1000).save(defaultPrompts(), 0, 'panel')).toThrow('exceeds')
+    expect(() => promptsOf(store, 1000).save(defaultPrompts(), 0, 'panel')).toThrow('超过')
     expect(prompts.current().revision).toBe(0)
   })
 })

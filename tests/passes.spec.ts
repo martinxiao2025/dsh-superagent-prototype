@@ -19,10 +19,10 @@ it('reports a failed pass as an error of the runtime, which the next pass that s
   h.engine.evaluateDue.mockImplementationOnce(() => { throw new Error('database is locked') })
   h.passes.request()
   await h.passes.idle()
-  expect(h.health.get()).toMatchObject({ state: 'error', detail: 'A pass failed: Error: database is locked' })
+  expect(h.health.get()).toMatchObject({ state: 'error', detail: '一次 pass 失败：Error: database is locked' })
   h.passes.request()
   await h.passes.idle()
-  expect(h.health.get()).toMatchObject({ state: 'ready', detail: 'Orchestrator is ready' })
+  expect(h.health.get()).toMatchObject({ state: 'ready', detail: '编排器已就绪' })
 })
 
 it('runs the passes asked for during a pass as one pass after it', async () => {
@@ -36,7 +36,7 @@ it('runs the passes asked for during a pass as one pass after it', async () => {
 it('refuses a Trigger while dsh-superagent stops, before the Engine stores anything, and starts a pass for one it stored', async () => {
   let closing = true
   const h = passes(() => closing)
-  expect(() => h.passes.receive(trigger)).toThrow('Orchestrator is stopping')
+  expect(() => h.passes.receive(trigger)).toThrow('编排器正在停止')
   expect(h.engine.receive).not.toHaveBeenCalled()
   closing = false
   expect(h.passes.receive(trigger)).toBe('stored')

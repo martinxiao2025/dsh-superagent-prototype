@@ -89,7 +89,7 @@ it('keeps nothing from a context read that finishes after its Eval was decided',
   const details = s.assessor.context('issue-1', signal)
   s.engine.decide('issue-1', { kind: 'ignore', reason: 'not a request' })
   hold.resolve()
-  await expect(details).rejects.toThrow('This assessment has finished')
+  await expect(details).rejects.toThrow('本次评估已结束')
   expect(s.size()).toBe(0)
 })
 
@@ -104,9 +104,9 @@ it('reads the context of a Trigger through its Source, and none for a Source tha
   const other: Trigger = { ...issue(2), id: 'other-2', source: 'probe', threads: [{ source: 'probe', id: '2' }], actor: { source: 'probe',
     id: 'bob' } }
   s.engine.receive(other); s.engine.evaluateDue()
-  expect((await s.assessor.context('other-2', signal)).thread).toMatchObject({ error: expect.stringContaining('gives no Thread context') })
+  expect((await s.assessor.context('other-2', signal)).thread).toMatchObject({ error: expect.stringContaining('该 Source 不提供 Thread 上下文') })
   await expect(s.tools.orchestrator_eval_read!({ trigger_id: 'other-2', resource: 'thread', offset: 0 },
-    signal)).rejects.toThrow('gives no Thread context')
+    signal)).rejects.toThrow('该 Source 不提供 Thread 上下文')
   // 当 Source 不提供 Thread context 时，Trigger 自身的文本仍可读取。
   expect(await s.tools.orchestrator_eval_read!({ trigger_id: 'other-2', resource: 'message', offset: 0 },
     signal)).toMatchObject({ text: 'issue 2' })
@@ -114,7 +114,7 @@ it('reads the context of a Trigger through its Source, and none for a Source tha
 it('routes an explicit candidate instead of assessing it: each eval tool names the routing tools', async () => {
   const s = setup('explicit')
   s.engine.receive(issue(1)); s.engine.evaluateDue()
-  const routed = 'orchestrator_route with its trigger_id and kind accept, attach, stop or ignore'
+  const routed = '这是一个显式请求，应直接路由而不是评估：请用 orchestrator_route，传入它的 trigger_id 和 kind accept、attach、stop 或 ignore'
   await expect(s.assessor.context('issue-1', signal)).rejects.toThrow(routed)
   await expect(s.tools.orchestrator_eval_read!({ trigger_id: 'issue-1', resource: 'message', offset: 0 }, signal)).rejects.toThrow(routed)
   const direction = { implementation_requested: false, target_basis: 'undetermined', requires_design_decision: false, evidence: 'chatter' }

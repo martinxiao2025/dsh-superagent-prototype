@@ -35,8 +35,8 @@ export const AssessmentSchema = z.object({
 
 /** 初始 thread 窗口的字符上限：分别用于 trigger 本身、其最近的两条邻居、窗口内其他消息与 stub 预览。 */
 const TRIGGER_CHARS = 4000, NEAR_CHARS = 1200, WINDOW_CHARS = 400, STUB_CHARS = 50
-const FINISHED = 'This assessment has finished: it was decided, timed out or restarted'
-const EXPLICIT = 'This is an explicit request, which is routed instead of assessed: use orchestrator_route with its trigger_id and kind accept, attach, stop or ignore'
+const FINISHED = '本次评估已结束：它已被判定、超时或重启'
+const EXPLICIT = '这是一个显式请求，应直接路由而不是评估：请用 orchestrator_route，传入它的 trigger_id 和 kind accept、attach、stop 或 ignore'
 type AssessmentContext = Awaited<ReturnType<typeof admissionContext>>
 type ReadCache = {
   snapshots: Map<string, string>; images: Map<string, { id: string; text: string }>; messages: Map<string, string>; cursors: Set<string>
@@ -44,7 +44,7 @@ type ReadCache = {
 /** Eval 运行期间保留的每次评估状态：已提供的读取缓存、已加载的 thread 上下文（或错误），以及正在进行的初始加载。 */
 interface EvalReads { cache: ReadCache; context?: AssessmentContext; error?: string; loading?: Promise<void> }
 /** 评估某个 Source 不提供 thread 上下文的 Trigger 时返回的消息。 */
-const NO_CONTEXT = 'This Source gives no Thread context; assess the Trigger\'s own text and the batch.'
+const NO_CONTEXT = '该 Source 不提供 Thread 上下文；请评估 Trigger 自身的文本与同批内容。'
 /** `MasterAssessor` 使用的宿主依赖。 */
 export interface AssessorHost {
   /** `Engine` 中评估器会读取并作出决策的活跃评估。 */
@@ -109,7 +109,7 @@ export class MasterAssessor implements Assessor {
   /** 解析 trigger 的活跃评估；历史 trigger 没有，而明确请求会改为路由。 */
   private evalFor(triggerId: string): { candidate: Candidate; trigger: Trigger } {
     const candidate = this.host.engine.candidate(triggerId)
-    if (!candidate) throw new Error('No assessment is in progress for this trigger; it was already decided, timed out, or never reached assessment')
+    if (!candidate) throw new Error('该 trigger 当前没有进行中的评估；它已被判定、已超时，或从未进入评估')
     if (candidate.strength === 'explicit') throw new Error(EXPLICIT)
     const trigger = candidate.triggers.find(item => item.id === triggerId)!
     return { candidate, trigger }
@@ -163,7 +163,7 @@ export class MasterAssessor implements Assessor {
           }
         } catch (error) {
           caller?.throwIfAborted()
-          if (current()) reads.error = `Thread context unavailable: ${String(error).slice(0, 300)}. Use orchestrator_eval_read before deciding based on missing context.`
+          if (current()) reads.error = `Thread 上下文不可用：${String(error).slice(0, 300)}。在依据缺失上下文做判定之前，请先使用 orchestrator_eval_read。`
         }
       }).finally(() => { if (current()) delete reads.loading })
       reads.loading = loading
@@ -203,7 +203,7 @@ export class MasterAssessor implements Assessor {
       })
       return { complete: context.complete, loaded_messages: context.messages.length, source_found: context.window.source_found,
         ...context.next ? { next_cursor: context.next } : {}, messages }
-    })() : { error: error ?? 'Call orchestrator_eval to load initial context', complete: false }
+    })() : { error: error ?? '请调用 orchestrator_eval 加载初始上下文', complete: false }
     const settings = this.host.settings()
     const others = candidate.triggers.filter(item => item.id !== trigger.id)
     return { trigger_id: trigger.id, strength: candidate.strength, mode: settings.eval.mode,
@@ -229,10 +229,10 @@ export class MasterAssessor implements Assessor {
       const { snapshots, images, messages, cursors } = cache
       const commands = this.host.commands.withSignal(AbortSignal.any([this.controller.signal, signal]))
       if (read.resource === 'image') {
-        if (!agent) throw new Error('Reading an image needs the DSH main Session. Read the thread text here, or open the thread in DSH and read the image there.')
-        if (read.offset !== 0) throw new Error('Images are not paginated; use offset 0')
+        if (!agent) throw new Error('读取图片需要 DSH 主 Session。请在此处读取 Thread 文本，或在 DSH 中打开该 Thread 再读取图片。')
+        if (read.offset !== 0) throw new Error('图片不支持分页；请使用 offset 0')
         const image = images.get(read.image_id!)
-        if (!image) throw new Error('Unknown image reference. Read the source/root/thread for this trigger first and copy its image read arguments.')
+        if (!image) throw new Error('未知的图片引用。请先读取该 Trigger 的 source/root/thread，再复制其图片读取参数。')
         const source = this.host.threadContext(trigger)
         if (!source) throw new Error(NO_CONTEXT)
         const key = read.image_id!.slice(read.image_id!.indexOf('/') + 1)
@@ -241,19 +241,19 @@ export class MasterAssessor implements Assessor {
       const cacheKey = JSON.stringify([read.resource, read.path, read.cursor, read.message_id])
       if (read.offset > 0) {
         const cached = snapshots.get(cacheKey)
-        if (cached === undefined) throw new Error('Read this resource at offset 0 first')
+        if (cached === undefined) throw new Error('请先以 offset 0 读取该资源')
         return textPage(read.resource, cached, read.offset, 4000)
       }
       let body: string
       const source = this.host.threadContext(trigger)
       if (read.resource === 'message') {
         const message = messages.get(read.message_id ?? source?.messageId ?? '')
-        if (message === undefined) throw new Error('Unknown message reference. Use resource=root/parent or read the thread first; copy a returned message read call.')
+        if (message === undefined) throw new Error('未知的消息引用。请使用 resource=root/parent，或先读取该 Thread；并复制返回的消息读取调用。')
         body = message
       }
       else if (read.resource === 'thread' || read.resource === 'root' || read.resource === 'parent') {
         if (!source) throw new Error(NO_CONTEXT)
-        if (read.cursor !== undefined && !cursors.has(read.cursor)) throw new Error('Unknown thread cursor. First call {resource:"thread"}; then copy the returned next_read exactly.')
+        if (read.cursor !== undefined && !cursors.has(read.cursor)) throw new Error('未知的 Thread 游标。请先调用 {resource:"thread"}；然后原样复制返回的 next_read。')
         const result = await source.read(commands, read.resource, read.cursor)
         const references = result.messages.filter(message => !message.deleted).flatMap(message => {
           messages.set(message.id, message.text)

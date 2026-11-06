@@ -11,7 +11,7 @@ export function wordCount(text: string): number {
 /** 校验出站 IM Markdown 消息不超过 `IM_WORDS`（链接文字与 URL 都计入上限）。 */
 export function checkedImText(text: string): string {
   const count = wordCount(text)
-  if (count > IM_WORDS) throw new Error(`IM message has ${count} words; maximum is ${IM_WORDS}. Rewrite as a short high-level update. Do not split it into multiple messages.`)
+  if (count > IM_WORDS) throw new Error(`IM 消息有 ${count} 个词，上限为 ${IM_WORDS} 个。请改写为简短的高层更新，不要拆成多条消息。`)
   return text
 }
 export const fill = (template: string, values: Record<string, string>): string => template.replace(/\{(\w+)\}/g, (_, name: string) => values[name] ?? '')

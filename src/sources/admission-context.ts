@@ -34,7 +34,7 @@ export async function admissionContext(context: TriggerContext, commands: Comman
     status ??= result.status
     next = result.next
     more = next !== undefined
-    if (next !== undefined && cursors.has(next)) throw new Error('Thread pagination repeated a cursor; context is incomplete')
+    if (next !== undefined && cursors.has(next)) throw new Error('Thread 分页重复了同一个游标；上下文不完整')
     if (next !== undefined) cursors.add(next)
   }
   return { messages, window: threadWindow(messages, context.messageId), complete: !more, next: more ? next ?? null : null,

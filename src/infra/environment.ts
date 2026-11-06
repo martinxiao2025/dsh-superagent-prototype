@@ -98,9 +98,9 @@ export async function writeEnvironment(deployment: Pick<Deployment, 'stateDir' |
   const run = (program: string): string => `${withoutShims}\nexec ${shellQuote(program)} "$@"`
   const fail = (message: string): string => `echo ${shellQuote(message)} >&2\nexit 1`
   await shim('gh', run(github.cli))
-  await shim('lark-cli', feishu ? run(feishu.cli) : fail('lark-cli is unavailable: this installation has no Feishu bot.'))
+  await shim('lark-cli', feishu ? run(feishu.cli) : fail('lark-cli 不可用：本次安装没有飞书机器人。'))
   for (const name of new Set(blockedCommands.filter(name => !WORKER_COMMANDS.includes(name)))) {
-    await shim(name, fail(`${name} is blocked in this installation; use gh, which acts as ${github.login}.`))
+    await shim(name, fail(`${name} 在本次安装中被阻止；请使用 gh，它以 ${github.login} 的身份行事。`))
   }
   for (const name of before) if (!kept.has(name)) await unlink(join(dir, name))
   await own(workerGitConfig(stateDir), [
@@ -130,7 +130,7 @@ export async function runAsWorker(subprocess: SubprocessRuntime, argv: string[],
   const { exitCode } = await handle.done
   const read = (reader: SubprocessOutputReader | undefined): string => reader?.readFrom(0).text ?? ''
   if (exitCode === 0) return read(handle.collected.stdout)
-  const ended = exitCode === null ? 'was stopped before it finished' : `exited with ${exitCode}`
+  const ended = exitCode === null ? '在完成前被停止' : `退出码为 ${exitCode}`
   throw new CliError(read(handle.collected.stderr).trim() || `${argv.join(' ')} ${ended}`, undefined, exitCode ?? undefined)
 }
 
@@ -153,5 +153,5 @@ export async function verifyDirectory(directory: string, subprocess: SubprocessR
     .catch((error: unknown) => { if (error instanceof CliError && error.exitCode === 1) return ''; throw error })
   const scoped = output.split('\0')
   const local = scoped.flatMap((scope, index) => index % 2 === 0 && (scope === 'local' || scope === 'worktree') ? [scoped[index + 1]!.split('\n')[0]!] : [])
-  if (local.length) throw new Error(`The git configuration of the repository in ${directory} sets ${local.join(', ')}, which the agent's git would also read; remove them.`)
+  if (local.length) throw new Error(`位于 ${directory} 的仓库 git 配置设置了 ${local.join(', ')}，agent 的 git 也会读取它们；请移除这些配置。`)
 }

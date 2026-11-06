@@ -71,9 +71,9 @@ pnpm check          # typecheck + test + build + plugin:check
 | 现象 | 原因与处理 |
 | --- | --- |
 | 健康面板 `mcp` 为 `error` | 端口被占用或无权监听;换 `mcpPort` 或释放端口,重启后重试 |
-| 客户端收到 404 `Session not found` | 会话已被回收或守护进程重启;重新 initialize |
-| 客户端收到 400 `first request must be initialize` | 首帧不是 `initialize`;按 MCP 规范先握手 |
-| 客户端收到 413 `request body is too large` | 单次请求体超过 4 MB;缩小 payload,不要重试同一请求 |
+| 客户端收到 404 `Session 不存在` | 会话已被回收或守护进程重启;重新 initialize |
+| 客户端收到 400 `第一个请求必须是 initialize` | 首帧不是 `initialize`;按 MCP 规范先握手 |
+| 客户端收到 413 `MCP 请求体过大` | 单次请求体超过 4 MB;缩小 payload,不要重试同一请求 |
 | 工具返回 `isError` 且带 `code` | 领域拒绝,原样展示 `error` 与 `code`;不要用改参或换工具绕过 |
 | 读图片被拒 | MCP 侧没有 DSH 主会话的附件通道;改用线程文本,或提示用户到 DSH 会话读图 |
 | `plugin:check` 报版本不一致 | `plugin.json` 的 `version` 必须等于 `package.json`;构建会注入,源文件需同步 |

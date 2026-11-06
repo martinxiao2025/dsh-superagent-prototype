@@ -21,7 +21,7 @@ it('refuses databases newer than this build and rolls back failed atomic work', 
   expect(() => store.atomic(() => { store.set('a', 1); throw new Error('boom') })).toThrow('boom')
   expect(store.get('a')).toBeUndefined()
   store.set('schema', SCHEMA_VERSION + 1); store.close()
-  expect(() => new Store(path)).toThrow('Unsupported')
+  expect(() => new Store(path)).toThrow('不支持的')
 })
 it('finds triggers by thread', () => {
   const store = new Store(join(directory, 'orchestrator.sqlite'))
@@ -185,7 +185,7 @@ it('closes a database it cannot open as this version\'s, so a later attempt can 
   store.close()
   const close = vi.spyOn(DatabaseSync.prototype, 'close')
   try {
-    expect(() => new Store(path)).toThrow('Unsupported orchestrator database version')
+    expect(() => new Store(path)).toThrow('不支持的编排器数据库版本')
     expect(close).toHaveBeenCalledOnce()
   } finally { close.mockRestore() }
 })

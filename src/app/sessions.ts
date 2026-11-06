@@ -222,8 +222,8 @@ export class Sessions {
   private updateModelHealth(): void {
     const retries = this.retryHealth.list()
     this.host.health.set(retries.length
-      ? { state: 'error', detail: retries.slice(0, 5).map(item => `${item.sessionId}: ${item.provider} is over its model budget; retried ${item.attempts} times, waiting since ${item.since}; the model and retry policy are unchanged`).join('; ') + (retries.length > 5 ? `; ${retries.length - 5} more Sessions` : ''), at: retries.at(-1)!.lastAt }
-      : { state: 'ready', detail: 'No managed Session is waiting on a model budget retry' })
+      ? { state: 'error', detail: retries.slice(0, 5).map(item => `${item.sessionId}：${item.provider} 已超出模型预算；已重试 ${item.attempts} 次，自 ${item.since} 起等待；模型与重试策略均未改变`).join('; ') + (retries.length > 5 ? `; 另有 ${retries.length - 5} 个 Session` : ''), at: retries.at(-1)!.lastAt }
+      : { state: 'ready', detail: '没有托管 Session 在等待模型预算重试' })
   }
   private ticketOf(agent: Agent): Ticket | undefined {
     const ticketId = ticketOfSession(agent.id)
@@ -253,7 +253,7 @@ export class Sessions {
       binding.skills = undefined
       this.bindSkills(binding, host.prompts.current())
     })
-    binding.disposers.push(() => { skillScope.dispose().catch((error: unknown) => { this.ctx.logger.warn('dsh-superagent could not release a skill scope: %s', String(error)) }) })
+    binding.disposers.push(() => { skillScope.dispose().catch((error: unknown) => { this.ctx.logger.warn('dsh-superagent 无法释放技能作用域：%s', String(error)) }) })
     await skillScope
     // 若 agent 在等待技能作用域期间已被销毁则退出。
     if (this.bindings.get(agent) !== binding) return
@@ -292,7 +292,7 @@ export class Sessions {
     const allow = WORK_TOOLS.filter(name => agent.ctx.tools.get(name, parent))
     return [agent.ctx.tools.restrict({ allow }), agent.ctx.tools.guard(() => {
       const current = store.tickets.get(ticketId)
-      return !current || !liveTicket(current) ? 'Ticket ended; new work needs a new authorized ticket' : undefined
+      return !current || !liveTicket(current) ? '工单已结束；新工作需要一个新建的授权工单' : undefined
     })]
   }
   /**
@@ -344,7 +344,7 @@ export class Sessions {
     this.bindings.delete(agent)
     binding.skills?.dispose()
     for (const dispose of binding.disposers.splice(0).reverse()) {
-      try { dispose() } catch (error) { this.ctx.logger.warn('dsh-superagent could not release what it registered for a Session: %s', String(error)) }
+      try { dispose() } catch (error) { this.ctx.logger.warn('dsh-superagent 无法释放为 Session 注册的内容：%s', String(error)) }
     }
   }
   /** 释放 `Sessions` 为所有已装饰 agent 注册的提示词片段、技能与工具。 */

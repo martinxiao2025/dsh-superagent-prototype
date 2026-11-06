@@ -32,7 +32,7 @@ export async function readFeishuLink(commands: Commands, ref: FeishuRef): Promis
   const result = z.object({ messages: z.array(z.object({ message_id: messageId, chat_id: z.string(), message_app_link: z.url().optional(), deleted: z.boolean().optional() })) })
     .parse(await commands.lark(['im', '+messages-mget', '--message-ids', id, '--no-reactions']))
   const message = result.messages.find(item => item.message_id === id)
-  if (!message || message.deleted || message.chat_id !== ref.chatId || !message.message_app_link) throw new Error('Source message link unavailable')
+  if (!message || message.deleted || message.chat_id !== ref.chatId || !message.message_app_link) throw new Error('来源消息链接不可用')
   return message.message_app_link
 }
 
@@ -47,7 +47,7 @@ export function feishuReferences(ref: FeishuRef) {
 export function feishuResource(resource: string) {
   const match = /^feishu\/([^/]+)\/(message|root|parent|thread|around)(?:\/([^/]+))?$/.exec(resource)
   if (!match || (match[3] && match[2] !== 'thread' && match[2] !== 'around')) {
-    throw new Error('Use feishu/<trigger-id>/message, /root, /parent, /thread or /around; follow returned next_resource for another page')
+    throw new Error('使用 feishu/<trigger-id>/message、/root、/parent、/thread 或 /around；按返回的 next_resource 读取下一页')
   }
   return { triggerId: match[1]!, section: match[2]!, cursor: match[3] ? decodeURIComponent(match[3]) : undefined }
 }
@@ -58,8 +58,8 @@ async function sourceOf(commands: Commands, ref: FeishuRef) {
   const listed = await commands.lark(['api', 'GET', '/open-apis/im/v1/messages/mget', '--params', params])
   const sourceResult = z.object({ items: z.array(sourceSchema) }).parse(listed)
   const source = sourceResult.items.find(message => message.message_id === id)
-  if (!source || source.deleted) throw new Error('The source Feishu message is unavailable or deleted; retained trigger text is still readable')
-  if (source.chat_id !== ref.chatId) throw new Error('Feishu source chat does not match the accepted trigger')
+  if (!source || source.deleted) throw new Error('来源飞书消息不可用或已删除；仍可读取保留的 Trigger 文本')
+  if (source.chat_id !== ref.chatId) throw new Error('飞书来源群聊与已接受的 Trigger 不一致')
   return source
 }
 
@@ -69,8 +69,8 @@ export interface FeishuOne<M> { status: string; message: M | null }
 export async function readFeishu(commands: Commands, ref: FeishuRef, resource: string, pageSize: number,
   order: 'asc' | 'desc' = 'asc'): Promise<FeishuPage<FeishuMessage> | FeishuOne<FeishuMessage>> {
   const request = feishuResource(resource)
-  if (request.triggerId !== ref.triggerId) throw new Error('A Feishu source trigger is required')
-  if (request.section === 'around') throw new Error('The chat around a message is read with feishuRead')
+  if (request.triggerId !== ref.triggerId) throw new Error('需要一个飞书来源 Trigger')
+  if (request.section === 'around') throw new Error('消息前后的群聊通过 feishuRead 读取')
   const source = await sourceOf(commands, ref)
   if (request.section === 'thread') {
     if (!source.thread_id) return { status: 'no_thread', messages: [], next_resource: null }
@@ -81,8 +81,8 @@ export async function readFeishu(commands: Commands, ref: FeishuRef, resource: s
     const messages = validItems(messageSchema, result.messages, tally)
     const outside = messages.some(message => message.chat_id !== source.chat_id
       || (message.thread_id && message.thread_id !== source.thread_id))
-    if (result.thread_id !== source.thread_id || outside) throw new Error('Feishu returned messages outside the source thread')
-    if (result.has_more && (!result.page_token || result.page_token === request.cursor)) throw new Error('Feishu thread pagination did not advance; history is incomplete')
+    if (result.thread_id !== source.thread_id || outside) throw new Error('飞书返回了来源话题之外的消息')
+    if (result.has_more && (!result.page_token || result.page_token === request.cursor)) throw new Error('飞书话题分页没有推进；历史不完整')
     return { status: 'available', thread_id: result.thread_id, messages, ...tally.skipped ? { skipped: tally.skipped } : {},
       next_resource: result.has_more ? `feishu/${ref.triggerId}/thread/${encodeURIComponent(result.page_token!)}` : null }
   }
@@ -91,8 +91,8 @@ export async function readFeishu(commands: Commands, ref: FeishuRef, resource: s
   // CLI 会渲染富文本与合并转发；自动的 thread 回复被省略，改为显式分页读取。
   const result = z.object({ messages: z.array(messageSchema) }).parse(await commands.lark(['im', '+messages-mget', '--message-ids', target, '--no-reactions']))
   const message = result.messages.find(message => message.message_id === target)
-  if (!message) throw new Error('The requested Feishu message is unavailable; do not infer its contents')
-  if (message.chat_id !== source.chat_id) throw new Error('Feishu returned a message outside the source chat')
+  if (!message) throw new Error('请求的飞书消息不可用；不要推断其内容')
+  if (message.chat_id !== source.chat_id) throw new Error('飞书返回了来源群聊之外的消息')
   return { status: message.deleted ? 'deleted' : 'available', message }
 }
 function isoTime(value: string): string {
@@ -115,7 +115,7 @@ function historyView(message: HistoricalMessage): ContextMessage {
 async function chatAround(commands: Commands, ref: FeishuRef, cursor: string | undefined, before = 5,
   after = 5): Promise<FeishuPage<ContextMessage>> {
   const time = Date.parse(ref.at ?? '')
-  if (!Number.isFinite(time)) throw new Error('The source Feishu message has no time to read the chat around')
+  if (!Number.isFinite(time)) throw new Error('来源飞书消息没有可用于读取前后群聊的时间')
   const list = async (parameters: Record<string, unknown>) => {
     const params = JSON.stringify({ container_id_type: 'chat', container_id: ref.chatId, ...parameters })
     const page = HistoryPageSchema.parse(await commands.lark(['api', 'GET', '/open-apis/im/v1/messages', '--params', params]))
@@ -137,7 +137,7 @@ export async function feishuRead(commands: Commands, ref: FeishuRef, resource: s
   pageSize: number): Promise<FeishuPage<ContextMessage> | FeishuOne<ContextMessage>> {
   const request = feishuResource(resource)
   if (request.section === 'around') {
-    if (request.triggerId !== ref.triggerId) throw new Error('A Feishu source trigger is required')
+    if (request.triggerId !== ref.triggerId) throw new Error('需要一个飞书来源 Trigger')
     await sourceOf(commands, ref)
     return chatAround(commands, ref, request.cursor)
   }
@@ -147,7 +147,7 @@ export async function feishuRead(commands: Commands, ref: FeishuRef, resource: s
 }
 function sourceRef(trigger: Trigger): FeishuRef {
   const ref = feishuRef(trigger)
-  if (!ref) throw new Error('A Feishu source trigger is required')
+  if (!ref) throw new Error('需要一个飞书来源 Trigger')
   return ref
 }
 export const feishuThreadContext: ThreadContext<{ readPageSize: number }> = {

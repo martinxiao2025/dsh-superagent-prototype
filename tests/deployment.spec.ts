@@ -80,7 +80,7 @@ describe('configuration schema', () => {
   })
   it('names keys the configuration does not define, and where the values of older keys live now', () => {
     const raw = minimal({ repository: 'acme/widgets', repositoryPath: '/srv/widgets', blockedCommands: [], author: { name: 'Alice' }, extra: 1 })
-    expect(() => machineOf(Config(raw))).toThrow('keys it does not use: repository (now on the GitHub Source), repositoryPath (now in the prepare command of the Execution settings), blockedCommands (now in the Execution settings), author (now prompt text), extra;')
+    expect(() => machineOf(Config(raw))).toThrow('dsh-superagent 的配置包含它不使用的键：repository（现在位于GitHub Source 上）、repositoryPath（现在位于Execution 设置的 prepare 命令中）、blockedCommands（现在位于Execution 设置中）、author（现在位于提示词文本中）、extra；docs/006-deployment.md 列出了这些键')
   })
 })
 
@@ -99,8 +99,8 @@ describe('setup', () => {
     const repository = 'acme/widgets'
     await needs('github', 'repositoryUnset', {}, { cli: 'gh' })
     await needs('github', 'agentCliUnset', {}, { repository })
-    await needs('github', 'agentCliMissing', { output: `${join(dir, 'missing')} is not an executable file` }, { repository, cli: join(dir, 'missing') })
-    await needs('github', 'agentCliMissing', { output: 'bin/gh must be a command name or an absolute path' }, { repository, cli: 'bin/gh' })
+    await needs('github', 'agentCliMissing', { output: `${join(dir, 'missing')} 不是可执行文件` }, { repository, cli: join(dir, 'missing') })
+    await needs('github', 'agentCliMissing', { output: 'bin/gh 必须是命令名或绝对路径' }, { repository, cli: 'bin/gh' })
     await needs('github', 'agentCliSignedOut', {}, { repository, cli: program(join(dir, 'bin', 'gh-broken'), () => { throw new Error('not signed in') }) })
     await needs('github', 'repositoryReadOnly', { account: 'Agent-Bot', repository: 'acme/widgets' }, { repository, cli: gh(join(dir, 'bin', 'gh-reader'), 'Agent-Bot', false) })
     // 已登录，但该账号无法读取仓库，或者 CLI 未指明账号。
@@ -111,7 +111,7 @@ describe('setup', () => {
     const output = expect.stringContaining('HTTP 404') as unknown
     await needs('github', 'repositoryUnreadable', { account: 'Agent-Bot', repository: 'acme/widgets', output }, { repository, cli: unreadable })
     await needs('github', 'agentCliNoAccount', {}, { repository, cli: program(join(dir, 'bin', 'gh-anonymous'), () => '{}') })
-    expect(() => executable('nothing-here', join(dir, 'bin'))).toThrow('nothing-here is not an executable file on PATH')
+    expect(() => executable('nothing-here', join(dir, 'bin'))).toThrow('nothing-here 不是可执行文件（在 PATH 中）')
   })
   it('reads the Feishu bot from a bot-only lark-cli, or finds none when the Feishu Source names no CLI', async () => {
     expect(await resolveFeishuBot(machine(), {}, probe, path)).toBeUndefined()

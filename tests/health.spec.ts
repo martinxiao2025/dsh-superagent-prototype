@@ -20,11 +20,11 @@ it('reports a relay in error once it failed three times, clears it once the rela
   for (let count = 0; count < 3; count++) steer.mockImplementationOnce(() => { throw new Error('session busy') })
   h.runtime.sessions.relay('r1', JSON.stringify({ kind: 'note' }))
   await h.runtime.idle()
-  expect(h.runtime.health.relay).toMatchObject({ state: 'ready', detail: expect.stringContaining('1 waiting') })
+  expect(h.runtime.health.relay).toMatchObject({ state: 'ready', detail: expect.stringContaining('1 项自') })
   await failThrice()
   expect(h.runtime.health.relay).toMatchObject({ state: 'error', detail: expect.stringContaining('session busy') })
   await at(14_000)
-  expect(h.runtime.health).toMatchObject({ relay: { state: 'ready', detail: 'Nothing waiting' }, runtime: { state: 'ready' } })
+  expect(h.runtime.health).toMatchObject({ relay: { state: 'ready', detail: '没有待处理项' }, runtime: { state: 'ready' } })
 })
 
 it('keeps a failing relay\'s error while replies recover, and a failing reply\'s error while relays recover', async () => {

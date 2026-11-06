@@ -37,7 +37,7 @@ export class Setup {
   /** 宿主命令环境：已应用 agent 的 git 变量，且 PATH 中排除了 worker shim 目录。 */
   get commandEnvironment(): Record<string, string | undefined> { return { ...this.variables, PATH: this.path } }
   get deployment(): Deployment {
-    if (!this.resolved) throw new Error(`dsh-superagent is waiting for setup: ${this.problem?.detail ?? 'setup has not run'}`)
+    if (!this.resolved) throw new Error(`dsh-superagent 正在等待 setup：${this.problem?.detail ?? 'setup 尚未运行'}`)
     return this.resolved
   }
   configured(): boolean { return this.resolved !== undefined }
@@ -80,7 +80,7 @@ export class Setup {
     const feishu = await resolveFeishuBot(machine, settings.sources.feishu?.config, probe).catch((error: unknown) => {
       if (!(error instanceof SetupError)) throw error
       this.feishuProblem = error.problem
-      context.logger.warn('dsh-superagent leaves Feishu out: %s', error.message)
+      context.logger.warn('dsh-superagent 跳过飞书：%s', error.message)
       return undefined
     })
     const resolved = { ...deployment, ...(feishu ? { feishu } : {}) }

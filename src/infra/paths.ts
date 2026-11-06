@@ -15,6 +15,6 @@ export function packageRoot(): string {
     }
     directory = dirname(directory)
   }
-  throw new Error('dsh-superagent package root not found')
+  throw new Error('未找到 dsh-superagent 的包根目录')
 }
 export const packagePath = (...parts: string[]): string => join(packageRoot(), ...parts)

@@ -22,7 +22,7 @@ const FeishuConfigSchema = FeishuBotSchema.extend({
   readPageSize: z.number().int().min(1).max(50).default(20),
   linkTimeoutMs: z.number().int().min(1).max(90000).default(5000),
   chats: z.array(z.object({ chatId: z.string().regex(/^oc_[a-zA-Z0-9]+$/), name: z.string().trim().max(60).optional(), listen: z.enum(['mentions', 'all']) }).strict())
-    .refine(chats => new Set(chats.map(chat => chat.chatId)).size === chats.length, 'Duplicate chat IDs')
+    .refine(chats => new Set(chats.map(chat => chat.chatId)).size === chats.length, '群 ID 重复')
     .default([]),
   directMessages: z.boolean().default(true),
   otherChats: z.enum(['none', 'mentions']).default('none'),
@@ -71,10 +71,10 @@ export const feishuKind: SourceKind<FeishuConfig> = {
     unnamed: { person: { zh: '飞书用户', en: 'Feishu user' }, bot: { zh: '飞书机器人', en: 'Feishu bot' } },
     schema: z.object({
       allowed: z.array(z.object({ id: z.string().regex(/^ou_[a-zA-Z0-9]+$/), name: z.string().trim().max(100).optional() }).strict())
-        .refine(users => new Set(users.map(user => user.id)).size === users.length, 'Duplicate open_ids').default([]),
+        .refine(users => new Set(users.map(user => user.id)).size === users.length, 'open_id 重复').default([]),
       syncChat: z.string().regex(/^(oc_[a-zA-Z0-9]+)?$/).default(''),
       bots: z.array(z.object({ id: z.string().regex(/^(cli|ou)_[a-zA-Z0-9]+$/), name: z.string().trim().max(100).optional() }).strict())
-        .refine(bots => new Set(bots.map(bot => bot.id)).size === bots.length, 'Duplicate bot ids').optional(),
+        .refine(bots => new Set(bots.map(bot => bot.id)).size === bots.length, '机器人 ID 重复').optional(),
     }).strict(),
     fields: [
       { key: 'allowed', type: 'rows', label: { zh: '能发起工作的飞书用户', en: 'Feishu users who may originate work' },
@@ -107,7 +107,7 @@ export const feishuKind: SourceKind<FeishuConfig> = {
         const chat = String(part.syncChat)
         const members = ['im', '+chat-members-list', '--chat-id', chat, '--member-types', 'user', '--page-all', '--page-limit', '0']
         const result = MembersSchema.parse(await commands.lark(members))
-        if (result.has_more || result.truncations?.length) throw new Error('Feishu returned an incomplete member list')
+        if (result.has_more || result.truncations?.length) throw new Error('飞书返回的成员列表不完整')
         // 保持现有成员顺序，使 policy 版本哈希保持稳定；原地更新名称并追加新成员。
         const users = new Map(result.users.map(user => [user.member_id, user.name]))
         const known = new Set(part.allowed.map(entry => entry.id))

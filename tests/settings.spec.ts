@@ -53,7 +53,7 @@ it('refuses a Policy sync that a Policy save outran, reports it on sync:feishu, 
   members.resolve({ users: [{ member_id: 'ou_alice', name: 'Alice' }, { member_id: 'ou_new', name: 'New' }], has_more: false })
   await expect(syncing).rejects.toThrow(SettingsConflict)
   expect(h.runtime.health['sync:feishu']).toMatchObject({ state: 'error',
-    detail: expect.stringContaining('Policy changed during synchronization') })
+    detail: expect.stringContaining('Policy 在同步期间发生了变化') })
   expect(store.settings().policy).toMatchObject({ rules, sources: { feishu: { allowed: [{ id: 'ou_alice', name: 'Alice' }] } } })
 })
 

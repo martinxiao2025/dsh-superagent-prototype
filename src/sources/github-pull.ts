@@ -35,16 +35,16 @@ const AUTO_MERGE_ON: ThreadFact = { label: { zh: '自动合并', en: 'Auto-merge
  */
 export function claimPull(ctx: SourceContext, ticketId: string, pr: Pull): string | undefined {
   const ticket = ctx.tickets.get(ticketId)
-  if (!ticket || !liveTicket(ticket)) return 'Ticket ended because its PR was closed'
+  if (!ticket || !liveTicket(ticket)) return '工单已结束，因为它的 PR 已关闭'
   const source = ctx.triggers.get(ticket.origin.triggerId)
   const started = source?.source === SOURCE && source.meta.isPr === true && source.meta.number === pr.number
   const opened = agentPull(pr, ctx.deployment) && ticketBranch(ticket, pr.head.ref)
   if (!started && !opened) {
     const { login } = ctx.deployment.github
-    return `PR does not belong to this ticket: use the source PR or a PR by ${login} from a branch whose last path segment is DSH_SUPERAGENT_NAME; omit pr_number when no PR exists`
+    return `PR 不属于这个工单：请使用来源 PR，或 ${login} 从最后一段路径为 DSH_SUPERAGENT_NAME 的分支开的 PR；没有 PR 时省略 pr_number`
   }
   const owner = ctx.tickets.open().find(item => pullsOf(item, true).includes(pr.number))
-  if (owner && owner.id !== ticketId) return 'PR already belongs to another active ticket'
+  if (owner && owner.id !== ticketId) return 'PR 已属于另一个未结工单'
   const follow = ticket.follows?.find(item => item.thread === `${SOURCE}:${pr.number}`)
   if (pr.state === 'open' && (!follow || follow.closed || (opened && !follow.own))) bind(ctx, ticketId, pr, opened)
   return undefined

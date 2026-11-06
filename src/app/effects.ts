@@ -65,7 +65,7 @@ export class Effects {
     this.kick()
   }
   handle<K extends EffectKind>(kind: K, run: Handler<K>['run'], options: Options<K> = {}): void {
-    if (this.handlers.has(kind)) throw new Error(`The ${kind} effects already have a handler`)
+    if (this.handlers.has(kind)) throw new Error(`${kind} 的 effect 已经有处理器`)
     this.health.set(kind, this.board.claim(kind))
     const { limit = () => 1, retry = [2000, 60_000], ordered = false, quiet = false } = options
     this.handlers.set(kind, { run, limit: ordered ? () => Math.min(1, limit()) : limit, retry, ordered, quiet } as unknown as Handler<never>)
@@ -146,16 +146,16 @@ export class Effects {
   }
   private failed(kind: EffectKind, error: unknown): void {
     this.broken.add(kind)
-    this.health.get(kind)?.set({ state: 'error', detail: `The effect queue failed: ${String(error)}`, at: new Date(this.now()).toISOString() })
+    this.health.get(kind)?.set({ state: 'error', detail: `effect 队列失败：${String(error)}`, at: new Date(this.now()).toISOString() })
   }
   private report(kind: EffectKind): void {
     const row = this.store.db.prepare(`SELECT COUNT(*) AS waiting, MIN(since) AS since, MAX(attempts) AS attempts,
       (SELECT error FROM effect WHERE kind = ? AND attempts > 0 ORDER BY seq DESC LIMIT 1) AS error FROM effect WHERE kind = ?`).get(kind, kind)
     const waiting = Number(row?.waiting ?? 0)
     const failing = Number(row?.attempts ?? 0) >= FAILURES_BEFORE_ERROR && !this.handlers.get(kind)?.quiet
-    const detail = waiting ? `${waiting} waiting since ${String(row?.since)}` : 'Nothing waiting'
+    const detail = waiting ? `${waiting} 项自 ${String(row?.since)} 起等待` : '没有待处理项'
     this.health.get(kind)?.set(failing
-      ? { state: 'error', detail: `${detail}; the last failure: ${String(row?.error)}`, at: new Date(this.now()).toISOString() }
+      ? { state: 'error', detail: `${detail}；最近一次失败：${String(row?.error)}`, at: new Date(this.now()).toISOString() }
       : { state: 'ready', detail, at: new Date(this.now()).toISOString() })
   }
 }

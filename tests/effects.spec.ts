@@ -88,17 +88,17 @@ it('retries a failed effect after a delay that doubles up to its maximum, and re
   effects.handle('notice', run, { retry: [1000, 3000] })
   effects.enqueue('notice', 'prompts', { value: { prompt_config_saved: 2 }, summary: 'Prompt configuration saved' })
   await effects.idle()
-  expect(health.notice).toMatchObject({ state: 'ready', detail: '1 waiting since 2026-09-09T00:00:00.000Z' })
+  expect(health.notice).toMatchObject({ state: 'ready', detail: '1 项自 2026-09-09T00:00:00.000Z 起等待' })
   for (const wait of [1000, 2000, 3000, 3000]) {
     clock += wait - 1; await effects.idle()
     const calls = run.mock.calls.length
     clock += 1; await effects.idle()
     expect(run).toHaveBeenCalledTimes(calls + 1)
-    if (wait === 2000) expect(health.notice).toMatchObject({ state: 'error', detail: expect.stringContaining('1 waiting since 2026-09-09T00:00:00.000Z; the last failure: Error: session busy') })
+    if (wait === 2000) expect(health.notice).toMatchObject({ state: 'error', detail: expect.stringContaining('1 项自 2026-09-09T00:00:00.000Z 起等待；最近一次失败：Error: session busy') })
   }
   fail = false
   clock += 3000; await effects.idle()
-  expect(health.notice).toMatchObject({ state: 'ready', detail: 'Nothing waiting' })
+  expect(health.notice).toMatchObject({ state: 'ready', detail: '没有待处理项' })
   expect(effects.pending('notice')).toBe(false)
 })
 
@@ -125,7 +125,7 @@ it('lets a handler defer an effect without a failure, until a later dispatch aft
   effects.handle('launch', run, { retry: [5000, 60_000] })
   effects.enqueue('launch', 'a', { ticketId: 't', assignmentId: 'a' })
   await effects.idle()
-  expect(health.launch).toMatchObject({ state: 'ready', detail: '1 waiting since 2026-09-09T00:00:00.000Z' })
+  expect(health.launch).toMatchObject({ state: 'ready', detail: '1 项自 2026-09-09T00:00:00.000Z 起等待' })
   later = false
   clock += 4999; await effects.idle()
   expect(run).toHaveBeenCalledOnce()
@@ -154,7 +154,7 @@ it('keeps a quiet kind\'s failures out of its health, and asks no limit while no
   expect(limit).not.toHaveBeenCalled()
   effects.enqueue('delivery', 't', { ticketId: 't' })
   for (let attempt = 0; attempt < 4; attempt++) { await effects.idle(); clock += 1000 }
-  expect(health.delivery).toMatchObject({ state: 'ready', detail: '1 waiting since 2026-09-09T00:00:00.000Z' })
+  expect(health.delivery).toMatchObject({ state: 'ready', detail: '1 项自 2026-09-09T00:00:00.000Z 起等待' })
 })
 
 it('keeps an effect cancelled and queued again while its first run goes on, which the first run does not end', async () => {
@@ -194,14 +194,14 @@ it('reports a failure of the queue itself under its kind, until a dispatch of th
   effects.handle('relay', async () => {}, { limit: () => { if (broken) throw new Error('database is locked'); return 1 } })
   effects.enqueue('relay', 'k', relay('a'))
   await effects.idle()
-  expect(health.relay).toMatchObject({ state: 'error', detail: 'The effect queue failed: Error: database is locked' })
+  expect(health.relay).toMatchObject({ state: 'error', detail: 'effect 队列失败：Error: database is locked' })
   broken = false
   effects.kick()
   await effects.idle()
-  expect(health.relay).toMatchObject({ state: 'ready', detail: 'Nothing waiting' })
+  expect(health.relay).toMatchObject({ state: 'ready', detail: '没有待处理项' })
 })
 
 it('refuses a second handler for a kind', () => {
   effects.handle('relay', async () => {})
-  expect(() => effects.handle('relay', async () => {})).toThrow('The relay effects already have a handler')
+  expect(() => effects.handle('relay', async () => {})).toThrow('relay 的 effect 已经有处理器')
 })

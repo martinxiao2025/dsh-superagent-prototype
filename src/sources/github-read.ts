@@ -26,13 +26,13 @@ export function ciSummary(snapshot: CiSnapshot, where: string, read: string): st
   const results = [...checks, ...statuses]
   const failed = results.filter(result => result.failed).map(result => result.name)
   const running = results.filter(result => result.running).map(result => result.name)
-  const names = (list: string[]) => list.slice(0, 5).join(', ') + (list.length > 5 ? `, and ${list.length - 5} more` : '')
-  const at = `on ${where} at ${snapshot.head.slice(0, 7)}`
-  const still = running.length ? `; ${running.length} still running` : ''
-  const line = failed.length ? `CI failed ${failed.length}/${results.length} ${at}: ${names(failed)}${still}`
-    : running.length ? `CI running ${running.length}/${results.length} ${at}: ${names(running)}`
-      : `CI passed ${results.length}/${results.length} ${at}`
-  return `${line}\nRead ${read} for every check.`
+  const names = (list: string[]) => list.slice(0, 5).join(', ') + (list.length > 5 ? `，以及另外 ${list.length - 5} 个` : '')
+  const at = `于 ${where}（提交 ${snapshot.head.slice(0, 7)}）`
+  const still = running.length ? `；${running.length} 个仍在运行` : ''
+  const line = failed.length ? `CI 失败 ${failed.length}/${results.length} ${at}：${names(failed)}${still}`
+    : running.length ? `CI 进行中 ${running.length}/${results.length} ${at}：${names(running)}`
+      : `CI 通过 ${results.length}/${results.length} ${at}`
+  return `${line}\n用 ${read} 读取每一项检查。`
 }
 export function ciFailures(snapshot: CiSnapshot): string[] {
   return [...snapshot.checks.filter(check => FAILING.has(check.conclusion ?? '')).map(check => check.name),
@@ -47,12 +47,12 @@ export function ciFact(counts: { failed: number; running: number }): ThreadFact 
 /** 通过 GitHub API 读取仓库默认分支上的非隐藏文件或目录列表；隐藏条目与 `node_modules` 会被拒绝。 */
 export async function readRepositoryPath(commands: Commands, path: string, kind: 'file' | 'directory'): Promise<string> {
   const parts = path.split('/').filter(part => part && part !== '.')
-  if (parts.some(part => part === '..' || part.startsWith('.') || part === 'node_modules')) throw new Error('Only non-hidden repository source paths are available')
+  if (parts.some(part => part === '..' || part.startsWith('.') || part === 'node_modules')) throw new Error('只能读取仓库中非隐藏的源码路径')
   const resource = `contents/${parts.map(encodeURIComponent).join('/')}`
   if (kind === 'file') return commands.api(resource, '-H', 'Accept: application/vnd.github.raw')
   // 目录返回条目数组，文件返回单个对象。
   const entries = await commands.api(z.union([z.array(z.looseObject({ name: z.string() })), z.looseObject({})]), resource)
-  if (!Array.isArray(entries)) throw new Error(`${path} is not a directory`)
+  if (!Array.isArray(entries)) throw new Error(`${path} 不是目录`)
   return entries.map(entry => entry.name).filter(name => !name.startsWith('.') && name !== 'node_modules').sort().join('\n')
 }
 
@@ -105,22 +105,22 @@ export async function readGithub(commands: Commands, resource: string): Promise<
   if (commit) return pullChecks(commands, commit[1]!)
   const match = /^github\/(issues|pulls)\/([1-9]\d*)(?:\/(comments|reviews|checks|thread)(?:\/([1-9]\d*))?)?$/.exec(resource)
   if (!match) {
-    throw new Error('Use github/issues/<number>, github/pulls/<number>, or append /comments/<page>, /reviews/<page>, /thread/<comment-id> or /checks; or github/commits/<sha>/checks')
+    throw new Error('使用 github/issues/<number>、github/pulls/<number>，或在末尾追加 /comments/<page>、/reviews/<page>、/thread/<comment-id> 或 /checks；也可以使用 github/commits/<sha>/checks')
   }
   const [, kind, number, section, page = '1'] = match
   if (kind === 'issues' && (section === 'reviews' || section === 'checks' || section === 'thread')) {
-    throw new Error('Reviews, review threads and checks require a pull request')
+    throw new Error('review、review thread 与检查只适用于 pull request')
   }
   const path = `${kind}/${number}`
   if (section === 'checks') {
-    if (match[4]) throw new Error('Checks do not take a page number')
+    if (match[4]) throw new Error('检查不接受页码')
     const pr = await commands.api(z.looseObject({ head: z.looseObject({ sha: z.string() }) }), path)
     return pullChecks(commands, pr.head.sha)
   }
   if (section === 'thread') {
-    if (!match[4]) throw new Error('Name the review thread by one of its comments: github/pulls/<number>/thread/<comment-id>')
+    if (!match[4]) throw new Error('用其中一条评论指定 review thread：github/pulls/<number>/thread/<comment-id>')
     const thread = await reviewThread(commands, Number(number), Number(match[4]))
-    if (!thread.length) throw new Error('No review comment of this PR has that id')
+    if (!thread.length) throw new Error('该 PR 没有这个 ID 的 review 评论')
     return { messages: threadMessages(thread, item => String(item.id)) }
   }
   if (!section) {

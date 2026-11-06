@@ -53,7 +53,7 @@ export function reviewPlace(comment: GithubComment): string {
 }
 function commentText(comment: GithubComment, kind: 'conversation' | 'inline' | 'review'): string {
   const decided = kind === 'review' && comment.state && comment.state !== 'COMMENTED'
-  const decision = decided ? `${comment.state} review of commit ${comment.commit_id ?? 'unknown'}` : ''
+  const decision = decided ? `对提交 ${comment.commit_id ?? '未知'} 的 ${comment.state} review` : ''
   const place = kind === 'inline' && comment.path ? reviewPlace(comment) : ''
   return [decision, place, comment.body ?? ''].filter(Boolean).join('\n\n')
 }

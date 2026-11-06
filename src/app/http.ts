@@ -63,11 +63,11 @@ async function readBody(req: IncomingMessage, maxBytes = 128 * 1024): Promise<un
   let size = 0; const chunks: Buffer[] = []
   for await (const chunk of req) {
     const bytes = Buffer.from(chunk); size += bytes.length
-    if (size > maxBytes) throw new RouteError(400, `Request exceeds ${maxBytes} bytes`)
+    if (size > maxBytes) throw new RouteError(400, `请求超过 ${maxBytes} 字节`)
     chunks.push(bytes)
   }
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown }
-  catch { throw new RouteError(400, 'The request body is not JSON') }
+  catch { throw new RouteError(400, '请求体不是 JSON') }
 }
 function json(res: ServerResponse, status: number, value: unknown): void {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' }); res.end(JSON.stringify(value))
@@ -81,7 +81,7 @@ export function sameOrigin(req: Pick<IncomingMessage, 'headers'>, port: number):
 function failure(error: unknown): [number, Record<string, unknown>] {
   if (error instanceof z.ZodError) {
     const issues = error.issues.map(issue => ({ path: issue.path.join('.'), message: issue.message }))
-    return [400, { error: `Invalid settings: ${issues.map(issue => issue.path).join(', ')}`, issues }]
+    return [400, { error: `设置无效：${issues.map(issue => issue.path).join(', ')}`, issues }]
   }
   if (error instanceof SetupError) return [400, { error: error.message, setup: error.problem }]
   if (error instanceof RouteError) return [error.status, { error: error.message }]
@@ -115,7 +115,7 @@ export type StateView = ReturnType<typeof stateView>
 /** 构建工单详情视图；等待 setup 时 `environment` 为空，因为它需要已解析的部署。 */
 function ticketPage(runtime: HttpHost, id: string) {
   const detail = ticketDetail(views(runtime), id), ticket = runtime.store.tickets.get(id)
-  if (!detail || !ticket) throw new RouteError(404, 'Ticket not found')
+  if (!detail || !ticket) throw new RouteError(404, '工单不存在')
   return { ...detail, environment: runtime.configured() ? runtime.ticketEnvironment(ticket) : [] }
 }
 export type TicketPageView = ReturnType<typeof ticketPage>
@@ -150,7 +150,7 @@ const SaveRequest = z.object({ value: z.unknown(), revision: z.number().int().no
 
 function routes(runtime: HttpHost): Routes {
   const { store } = runtime
-  const ticket = (id: string) => { if (!store.tickets.get(id)) throw new RouteError(404, 'Ticket not found'); return id }
+  const ticket = (id: string) => { if (!store.tickets.get(id)) throw new RouteError(404, '工单不存在'); return id }
   const promptBody = (input: { body: (maxBytes?: number) => Promise<unknown> }) => input.body(4 * runtime.machine.promptMaxChars.get() + 4096)
   return {
     'GET state': () => stateView(runtime),
@@ -167,7 +167,7 @@ function routes(runtime: HttpHost): Routes {
     'GET threads/:key': ({ params, query }) => {
       const { limit, before, around } = ThreadQuery.parse(query)
       const detail = threadDetail(views(runtime), params.key, before, limit, around)
-      if (!detail) throw new RouteError(404, 'Thread not found')
+      if (!detail) throw new RouteError(404, 'Thread 不存在')
       return detail
     },
     'POST threads/:key/unsubscribe': async ({ params }) => {
@@ -196,7 +196,7 @@ function routes(runtime: HttpHost): Routes {
     'PUT settings/:block': async ({ params, body }) => {
       const block = SettingsBlockSchema.parse(params.block)
       const known = !block.startsWith('source:') || runtime.sources.instances().some(instance => `source:${instance.id}` === block)
-      if (!known) throw new RouteError(404, 'Source not found')
+      if (!known) throw new RouteError(404, 'Source 不存在')
       const request = SaveRequest.parse(await body())
       return runtime.settings.save(block, request.value, request.revision, 'panel')
     },
@@ -213,7 +213,7 @@ function routes(runtime: HttpHost): Routes {
   }
 }
 function decoded(segment: string): string {
-  try { return decodeURIComponent(segment) } catch { throw new RouteError(400, 'A path segment has a malformed escape') }
+  try { return decodeURIComponent(segment) } catch { throw new RouteError(400, '路径片段包含无法解析的转义序列') }
 }
 function match(table: Routes, method: string, segments: string[]) {
   for (const [route, run] of Object.entries(table)) {
@@ -228,17 +228,17 @@ function match(table: Routes, method: string, segments: string[]) {
   return undefined
 }
 export function registerHttp(ctx: Context, runtime: HttpHost): () => void {
-  if (ctx.webServer.host !== '127.0.0.1') throw new Error('Orchestrator management requires a loopback Web server')
+  if (ctx.webServer.host !== '127.0.0.1') throw new Error('编排器管理接口要求 Web 服务器绑定回环地址')
   const table = routes(runtime)
   const disposers = [
     ctx.webServer.register({ kind: 'prefix', path: '/orchestrator', handler: async (req, res) => {
       const url = new URL(req.url ?? '/', 'http://localhost')
       if (!url.pathname.startsWith('/orchestrator/api/')) { res.writeHead(404); res.end(); return }
-      if (!sameOrigin(req, ctx.webServer.port)) { json(res, 403, { error: 'Same-origin management request required' }); return }
+      if (!sameOrigin(req, ctx.webServer.port)) { json(res, 403, { error: '管理请求必须同源' }); return }
       try {
         await runtime.ready
         const route = match(table, req.method ?? 'GET', url.pathname.slice('/orchestrator/api/'.length).split('/'))
-        if (!route) throw new RouteError(404, 'Unknown operation')
+        if (!route) throw new RouteError(404, '未知操作')
         const query = Object.fromEntries(url.searchParams)
         json(res, 200, await route.run({ params: route.params as never, query, body: maxBytes => readBody(req, maxBytes) }))
       } catch (error) { json(res, ...failure(error)) }

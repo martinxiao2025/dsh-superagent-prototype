@@ -44,9 +44,9 @@ it('retains the source-message pairing, commits an image reference and removes t
   expect(await readdir(directory)).toEqual([])
 })
 it('rejects arbitrary keys and non-visual models before downloading', async () => {
-  await expect(readAdmissionImage(agent, commands, source, text, '../img_other', directory, signal())).rejects.toThrow('source message')
+  await expect(readAdmissionImage(agent, commands, source, text, '../img_other', directory, signal())).rejects.toThrow('请从这条来源消息中选择一个图片键')
   resolveModelInfo.mockResolvedValue({ inputModalities: ['text'] })
-  await expect(readAdmissionImage(agent, commands, source, text, 'img_source', directory, signal())).rejects.toThrow('does not support image')
+  await expect(readAdmissionImage(agent, commands, source, text, 'img_source', directory, signal())).rejects.toThrow('不支持图片输入')
   expect(lark).not.toHaveBeenCalled()
   expect(saveImage).not.toHaveBeenCalled()
 })
@@ -61,8 +61,8 @@ it('cleans up refused attachments and failed downloads without returning an imag
 it('refuses escaped output paths, oversize files and unsupported types', async () => {
   const outside = join(directory, 'outside.png'); await writeFile(outside, 'data')
   lark.mockResolvedValueOnce({ saved_path: outside })
-  await expect(readAdmissionImage(agent, commands, source, text, 'img_source', directory, signal())).rejects.toThrow('outside')
-  for (const [name, bytes, error] of [['image.png', 101, 'byte limit'], ['image.svg', 4, 'supported']] as const) {
+  await expect(readAdmissionImage(agent, commands, source, text, 'img_source', directory, signal())).rejects.toThrow('临时目录之外的路径')
+  for (const [name, bytes, error] of [['image.png', 101, '字节上限'], ['image.svg', 4, '不是受支持的']] as const) {
     lark.mockImplementationOnce(async (_args, cwd) => {
       const saved_path = join(cwd!, name); await writeFile(saved_path, Buffer.alloc(bytes)); return { saved_path }
     })

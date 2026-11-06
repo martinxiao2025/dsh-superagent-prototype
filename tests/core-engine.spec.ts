@@ -130,7 +130,7 @@ describe('eval', () => {
     const first = h.requests[0]!
     h.setVersion('v2'); h.engine.policyChanged('v1', 'v2'); h.pump()
     const second = h.requests[1]!
-    expect(() => h.decide(first, { kind: 'ignore', reason: 'chatter' })).toThrow('has finished or a later eval replaced it')
+    expect(() => h.decide(first, { kind: 'ignore', reason: 'chatter' })).toThrow('已结束，或已被更晚的 Eval 取代')
     expect(h.decide(second, { kind: 'ignore', reason: 'chatter' })).toMatchObject({ kind: 'ignore', evalId: second.evalId })
   })
   it('records an accept with its ticket, subscriptions and acknowledgement together, or none of them', async () => {
@@ -892,7 +892,7 @@ describe('attach', () => {
   })
   it('names missing things apart from refusals and fills in the values', () => {
     expect([new UserError('unknownTicket').missing, new UserError('ticketEnded').missing]).toEqual([true, false])
-    expect(new UserError('notAdmissible', { reason: 'not_a_member' })).toMatchObject({ code: 'notAdmissible', values: { reason: 'not_a_member' }, message: 'Trigger is not admissible: not_a_member' })
+    expect(new UserError('notAdmissible', { reason: 'not_a_member' })).toMatchObject({ code: 'notAdmissible', values: { reason: 'not_a_member' }, message: 'Trigger 不可准入：not_a_member' })
   })
 })
 describe('direct decisions', () => {

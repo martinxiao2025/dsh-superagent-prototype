@@ -10,15 +10,15 @@ function packaged(...parts: string[]): { path: string; text: string } {
   let text: string
   try { text = readFileSync(path, 'utf8').replaceAll('\r\n', '\n') }
   catch (error) {
-    throw (error as NodeJS.ErrnoException).code === 'ENOENT' ? new Error(`Missing packaged file: ${path}`, { cause: error }) : error
+    throw (error as NodeJS.ErrnoException).code === 'ENOENT' ? new Error(`缺少打包文件：${path}`, { cause: error }) : error
   }
-  if (!text.trim()) throw new Error(`Empty packaged file: ${path}`)
+  if (!text.trim()) throw new Error(`打包文件为空：${path}`)
   return { path, text }
 }
 function load(name: string) {
   const { path, text } = packaged('skills', `dsh-superagent-${name}`, 'SKILL.md')
   const match = /^---\nname: ([^\n]+)\ndescription: ([^\n]+)\n---\n\n([\s\S]*)$/.exec(text)
-  if (!match) throw new Error(`Invalid packaged skill: ${path}`)
+  if (!match) throw new Error(`打包的 skill 无效：${path}`)
   return { name: match[1]!, description: match[2]!, content: match[3]!, path }
 }
 export const bundledSkills = { feishu: load('feishu'), github: load('github') }

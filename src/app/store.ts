@@ -63,7 +63,7 @@ export class Store implements Repositories {
       chmodSync(path, 0o600)
       this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
       const version = this.get(KV.store.schema)
-      if (version !== undefined && version > SCHEMA_VERSION) throw new Error(`Unsupported orchestrator database version ${version}`)
+      if (version !== undefined && version > SCHEMA_VERSION) throw new Error(`不支持的编排器数据库版本 ${version}`)
       if (version !== undefined && version < OLDEST_SCHEMA) throw new Error(tooOld(version))
       const migrating = version !== undefined && version < SCHEMA_VERSION
       try {
@@ -92,7 +92,7 @@ export class Store implements Repositories {
       } catch (error) {
         if (!migrating) throw error
         const reason = error instanceof Error ? error.message : String(error)
-        throw new Error(`The orchestrator database is unchanged at schema ${version}: its migration to schema ${SCHEMA_VERSION} failed: ${reason}`, { cause: error })
+        throw new Error(`编排器数据库仍停留在 schema ${version}：迁移到 schema ${SCHEMA_VERSION} 失败：${reason}`, { cause: error })
       }
     } catch (error) {
       this.db.close()

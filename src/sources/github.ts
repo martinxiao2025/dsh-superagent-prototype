@@ -165,7 +165,7 @@ function failed(ctx: SourceContext, round: Round, number: number, error: unknown
 }
 function included(raw: string): { headers: string; body: string } {
   const split = raw.search(/\r?\n\r?\n/)
-  if (split < 0) throw new Error('GitHub returned no HTTP headers')
+  if (split < 0) throw new Error('GitHub 未返回 HTTP 响应头')
   return { headers: raw.slice(0, split), body: raw.slice(split).trim() }
 }
 const ListedSchema = CommentSchema.extend({ issue_url: z.string().nullish(), pull_request_url: z.string().nullish() })
@@ -192,7 +192,7 @@ async function pollRepository(ctx: SourceContext, round: Round): Promise<void> {
     return
   }
   try { await pollBranchCi(ctx, round) }
-  catch (error) { if (!stopped(ctx, round)) round.failures.push(`default branch CI: ${String(error)}`) }
+  catch (error) { if (!stopped(ctx, round)) round.failures.push(`默认分支 CI：${String(error)}`) }
 }
 /**
  * 从其游标开始轮询一个仓库级事件流（最旧的在前），并把游标推进到最新条目之前五秒
@@ -223,7 +223,7 @@ async function readStream(ctx: SourceContext, round: Round, id: string, path: st
     kind in started && Date.parse(at ?? '') >= Math.max(Date.parse(started[kind]!), horizon)
   for (const item of items) {
     // 在流中途停止会在推进游标之前中止，使未读条目会被重试。
-    if (stopped(ctx, round)) throw new Error('The GitHub Source stopped during the poll')
+    if (stopped(ctx, round)) throw new Error('GitHub Source 在轮询期间停止')
     if (sameName(item.user.login, login)) continue
     if (id === 'issues') {
       const issue = IssueSchema.safeParse(item)
@@ -266,7 +266,7 @@ async function pollBranchCi(ctx: SourceContext, round: Round): Promise<void> {
     const summary = ciSummary(snapshot, branch, `github/commits/${head.sha}/checks`)
     const url = `https://github.com/${ctx.deployment.repository}/commit/${head.sha}`
     await ctx.receive(branchCiTrigger(branch, head.sha, revision, summary, url))
-    ctx.threads.describe(`github:ci:${branch}`, { label: `CI on ${branch}`, facts: { ci: ciFact(counts) } })
+    ctx.threads.describe(`github:ci:${branch}`, { label: `分支 ${branch} 的 CI`, facts: { ci: ciFact(counts) } })
   }
   ctx.state.set(KV.github.branchCi, { branch, failures: now, revision })
 }
@@ -286,12 +286,12 @@ export async function pollRound(ctx: SourceContext, signal?: AbortSignal): Promi
   if ('error' in notified) throw notified.error
   const { count, interval } = notified.value
   if (signal?.aborted) return interval
-  if (round.failures.length) throw new Error(`${round.failures.length} GitHub reads failed: ${round.failures.slice(0, 3).join('; ')}`)
+  if (round.failures.length) throw new Error(`${round.failures.length} 次 GitHub 读取失败：${round.failures.slice(0, 3).join('; ')}`)
   const named = (numbers: number[]) => [...new Set(numbers)].sort((a, b) => a - b).map(number => `#${number}`).join(', ')
-  const dropped = (round.dropped.length ? `; deleted on GitHub: ${named(round.dropped)}` : '')
-    + (round.abandoned.length ? `; dropped after their reads kept failing: ${named(round.abandoned)}` : '')
-    + (round.tally.skipped ? `; ${round.tally.skipped} unreadable items skipped` : '')
-  ctx.report('github', { state: 'ready', detail: `${count} notifications; next poll ≥ ${interval}s${dropped}`, at: round.started })
+  const dropped = (round.dropped.length ? `；已在 GitHub 删除：${named(round.dropped)}` : '')
+    + (round.abandoned.length ? `；读取持续失败后放弃：${named(round.abandoned)}` : '')
+    + (round.tally.skipped ? `；跳过 ${round.tally.skipped} 个无法读取的条目` : '')
+  ctx.report('github', { state: 'ready', detail: `${count} 条通知；下次轮询 ≥ ${interval} 秒${dropped}`, at: round.started })
   return interval
 }
 /** 读取自游标以来的通知及其中提到的每个 Issue 或 PR，并把游标与失败读取的重试映射原子地一起推进；已删除（410）的 Issue 在记录错误后即丢弃。 */
@@ -304,7 +304,7 @@ async function pollNotifications(ctx: SourceContext, round: Round): Promise<{ co
   const path = `notifications?all=true&per_page=50&since=${encodeURIComponent(since)}`
   const raw = await commands.api(path, '--include')
   const split = raw.search(/\r?\n\r?\n/)
-  if (split < 0) throw new Error('GitHub returned no HTTP headers')
+  if (split < 0) throw new Error('GitHub 未返回 HTTP 响应头')
   const headers = raw.slice(0, split)
   const body = raw.slice(split).trim()
   const asked = Number(/x-poll-interval:\s*(\d+)/i.exec(headers)?.[1] ?? 60)
@@ -391,7 +391,7 @@ async function intakeComments(ctx: SourceContext, ref: PullRef, since: string, r
     const comments = await commands.pages(CommentSchema, path, round.tally)
     for (const comment of comments) {
       // 读取中途停止会抛出，使该 thread 的游标停在原处。
-      if (stopped(ctx, round)) throw new Error('The GitHub Source stopped during the poll')
+      if (stopped(ctx, round)) throw new Error('GitHub Source 在轮询期间停止')
       const timestamp = Date.parse(comment.updated_at ?? comment.submitted_at ?? comment.created_at ?? '')
       if (!Number.isFinite(timestamp) || timestamp < Date.parse(since)) continue
       if (sameName(comment.user.login, login)) continue
@@ -441,7 +441,7 @@ async function pollThread(ctx: SourceContext, round: Round, thread: Thread): Pro
   // 默认分支的 CI Thread 没有 Issue 或 PR 可读；其 CI 以 Trigger 形式到达。
   if (thread.ref.id.startsWith('ci:')) return
   const number = Number(thread.ref.id)
-  if (!number) throw new Error('Subscribed thread has no GitHub issue or PR number')
+  if (!number) throw new Error('已订阅的 Thread 没有 GitHub Issue 或 PR 编号')
   round.read.add(number)
   if (typeof thread.meta.isPr !== 'boolean' || typeof thread.meta.title !== 'string') {
     const issue = await ctx.commands.withSignal(round.signal).api(IssueSchema, `issues/${number}`)

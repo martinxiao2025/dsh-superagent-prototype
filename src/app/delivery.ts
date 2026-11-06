@@ -68,7 +68,7 @@ export class AgentDelivery {
     signal.throwIfAborted()
     const seen = await this.history(agent)
     signal.throwIfAborted()
-    if (this.ctx.agents.get(agent.id) !== agent) throw new Error('Delivery target was disposed')
+    if (this.ctx.agents.get(agent.id) !== agent) throw new Error('投递目标已被销毁')
     authorize?.()
     const id = messageId(requestId)
     const pending = [...agent.inbox.nextTurn, ...agent.inbox.nextStep].some(message => deliveryId(message) === id)

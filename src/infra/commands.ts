@@ -32,12 +32,12 @@ export function commandError(error: unknown, program = 'command'): Error {
 }
 function ended(error: unknown): string {
   const { killed, signal, code } = (error ?? {}) as { killed?: boolean; signal?: string | null; code?: unknown }
-  if (code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') return 'printed more output than it may'
+  if (code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') return '输出的内容超过允许大小'
   // `execFile` 超时会以 SIGTERM 终止进程并设置 `killed: true`。
-  if (killed && signal === 'SIGTERM') return `timed out after ${TIMEOUT_MS / 1000} s`
-  if (signal) return `was stopped by ${signal}`
-  if (typeof code === 'number') return `exited with code ${code}`
-  return typeof code === 'string' ? `could not run: ${code}` : 'failed'
+  if (killed && signal === 'SIGTERM') return `在 ${TIMEOUT_MS / 1000} 秒后超时`
+  if (signal) return `被 ${signal} 停止`
+  if (typeof code === 'number') return `退出码为 ${code}`
+  return typeof code === 'string' ? `无法运行：${code}` : '失败'
 }
 export interface Tally { skipped: number }
 /** 按 schema 解析数组元素，跳过无效项并递增 `tally.skipped`。 */
@@ -49,7 +49,7 @@ export function validItems<T>(item: z.ZodType<T>, list: readonly unknown[], tall
 /** 重写飞书错误 232011（机器人不在群中），并附带修复指引。 */
 function membership(error: unknown): unknown {
   if (!(error instanceof CliError) || error.code !== 232011) return error
-  const hint = 'The Feishu bot is not a member of the chat. Add the bot in the chat settings, then retry.'
+  const hint = '飞书机器人不在该群中。请在群设置中添加机器人，然后重试。'
   return new CliError(hint, error.code, error.exitCode)
 }
 /**
@@ -93,7 +93,7 @@ export class Commands {
   }
   private path(path: string): string {
     const outside = /^\/|^[a-z]+:|(^|\/)\.\.?(\/|\?|$)/i.test(path)
-    if (outside) throw new Error('GitHub calls are restricted to the configured repository')
+    if (outside) throw new Error('GitHub 调用仅限于已配置的仓库')
     return path ? `repos/${this.repository}/${path}` : `repos/${this.repository}`
   }
   /**
@@ -102,12 +102,12 @@ export class Commands {
    */
   async lark<T>(args: string[], cwd?: string): Promise<T> {
     const bot = this.deployment.feishu
-    if (!bot) throw new Error('The Feishu Source has no working bot CLI')
+    if (!bot) throw new Error('飞书 Source 没有可用的机器人 CLI')
     const output = await this.run(bot.cli, [...args, '--as', 'bot', '--format', 'json'], cwd)
       .catch((error: unknown) => { throw membership(error) })
     const result = JSON.parse(output) as { ok: boolean; data: T; error?: { code?: number; message?: string } }
     const code = result.error?.code
-    if (!result.ok) throw membership(new CliError(`${result.error?.message ?? 'Feishu command failed'}${code ? ` (${code})` : ''}`, code))
+    if (!result.ok) throw membership(new CliError(`${result.error?.message ?? '飞书命令失败'}${code ? ` (${code})` : ''}`, code))
     return result.data
   }
   /** 使用 agent 隔离的 git 环境与凭据助手，运行 PATH 上的 `git`。 */

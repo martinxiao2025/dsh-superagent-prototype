@@ -291,8 +291,8 @@ describe('assessment outcomes', () => {
     expect(assessmentOutcome(accept(settings('observe')), settings('observe'), 'inferred'))
       .toMatchObject({ kind: 'ignore', reason: { code: 'observed', values: { text: 'asked' } }, audit: { would_accept: true } })
     expect(assessmentOutcome(accept(auto, false), auto, 'inferred')).toMatchObject({ kind: 'ignore', reason: { code: 'noRuleMatched' } })
-    expect(() => assessmentOutcome({ ...accept(auto), rule_assessments: [] }, auto, 'inferred')).toThrow('Exactly one assessment for every enabled rule')
-    expect(() => assessmentOutcome({ ...accept(auto), intent_evidence: null }, auto, 'inferred')).toThrow('Acceptance requires intent_evidence')
+    expect(() => assessmentOutcome({ ...accept(auto), rule_assessments: [] }, auto, 'inferred')).toThrow('每条已启用的规则都必须恰好有一条评估')
+    expect(() => assessmentOutcome({ ...accept(auto), intent_evidence: null }, auto, 'inferred')).toThrow('接受需要 intent_evidence')
     const scope = { scope: () => ({ listened: true as const, observed: true }) }
     const enabled = auto.policy.rules.find(rule => rule.enabled)!.id
     expect(settingsPolicy(auto, scope).admitsInferred([enabled])).toBe(true)
@@ -338,7 +338,7 @@ describe('rule judgements', () => {
     const direction = { implementation_requested: true, target_basis: 'specified', requires_design_decision: false, evidence: 'asked' }
     const assessment = { decision: 'accept' as const, direction, title: 'Fix', scope: 'small', reason: 'asked', intent_evidence: 'quote',
       rule_assessments: [{ rule_id: 'copy', matched: true, reason: 'typo' }, { rule_id: 'copy', matched: false, reason: 'again' }] }
-    expect(() => assessmentOutcome(assessment, parsed, 'inferred')).toThrow('Exactly one assessment for every enabled rule')
+    expect(() => assessmentOutcome(assessment, parsed, 'inferred')).toThrow('每条已启用的规则都必须恰好有一条评估')
     const once = { ...assessment, rule_assessments: [assessment.rule_assessments[0]!, { rule_id: 'visual', matched: false, reason: 'no colors' }] }
     expect(assessmentOutcome(once, parsed, 'inferred')).toMatchObject({ kind: 'accept', rules: ['copy'] })
   })

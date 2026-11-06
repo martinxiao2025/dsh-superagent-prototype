@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "dsh-superagent",
   "version": "0.1.0",
-  "description": "Proactive coding agent for one GitHub repository: evaluate requests, route tickets, and drive workers from Copilot.",
+  "description": "面向单个 GitHub 仓库的主动式编码代理：评估请求、路由工单，并在 Copilot 中驱动 worker。",
   "license": "MIT",
   "keywords": [
     "agent",

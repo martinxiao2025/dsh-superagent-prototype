@@ -7,13 +7,13 @@ import type { SetupProblem } from '../setup.ts'
 import type { Family, Key } from '../kv.ts'
 import { fill } from '../infra/text.ts'
 
-/** 固定的英文健康文案模板（`{name}` 占位符）；面板会按界面语言本地化每个 `code`。 */
+/** 固定的健康文案模板（`{name}` 占位符）；面板会按界面语言本地化每个 `code`。 */
 export const HEALTH_TEXT = {
-  setupPending: 'Waiting for the deployment check',
-  sourceOff: 'Off',
-  feishuCliUnset: 'The Source is on, and its bot lark-cli is not set',
-  feishuBotMissing: 'Waiting for the Feishu bot',
-  pollFailures: '{count} consecutive failed polls; last: {error}',
+  setupPending: '等待部署检查',
+  sourceOff: '已关闭',
+  feishuCliUnset: 'Source 已开启，但尚未设置它的机器人 lark-cli',
+  feishuBotMissing: '等待飞书机器人',
+  pollFailures: '连续 {count} 次轮询失败；最近一次：{error}',
 } as const
 export type HealthCode = keyof typeof HEALTH_TEXT
 export type Health = { state: 'starting' | 'ready' | 'paused' | 'error'; detail: string; at?: string; code?: HealthCode; values?: Record<string, string> }

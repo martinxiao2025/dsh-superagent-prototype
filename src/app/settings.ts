@@ -148,7 +148,7 @@ export class Settings {
   async save(block: SettingsBlock, value: unknown, revision: number, origin: SettingsOrigin) {
     const { store, sources, engine, sessions } = this.host
     const stale = () => revision !== store.blockRevision(block)
-    if (stale()) throw new SettingsConflict('Settings changed. Reload before saving.')
+    if (stale()) throw new SettingsConflict('设置已变更。请重新加载后再保存。')
     const id = block.startsWith('source:') ? block.slice(7) : block
     const kind = block.startsWith('source:') ? 'source' : block
     if (!(kind in BLOCKS)) throw new UserError('unknownBlock', { block })
@@ -165,7 +165,7 @@ export class Settings {
     }
     rules.guard?.(current, candidate, origin)
     if (setupChanged(current, candidate)) await this.host.setup.checkAccounts(block, candidate)
-    if (stale()) throw new SettingsConflict('Settings changed during the checks. Reload before saving.')
+    if (stale()) throw new SettingsConflict('设置在校验过程中发生了变化。请重新加载后再保存。')
     // 异步检查之后重新读取当前设置，以防无关的块被并发保存。
     const old = store.settings()
     const settings = rules.merge(old, parsed, id)
@@ -235,13 +235,13 @@ export class Settings {
     try {
       const revision = store.blockRevision('policy')
       const part = await sources.kind(id)!.policy!.sync!.run(this.host.sourceHost, sources.policyPart(id)!, this.host.lifetime)
-      if (revision !== store.blockRevision('policy')) throw new SettingsConflict('Policy changed during synchronization. Retry with the current settings.')
+      if (revision !== store.blockRevision('policy')) throw new SettingsConflict('Policy 在同步期间发生了变化。请用当前设置重试。')
       const policy = store.settings().policy
       // 同步后的列表没有变化时不保存新修订。
       if (JSON.stringify(part) !== JSON.stringify(policy.sources[id])) {
         await this.save('policy', { ...policy, sources: { ...policy.sources, [id]: part } }, revision, 'sync')
       }
-      health.set({ state: 'ready', detail: `${part.allowed.length} allowed`, at: now() })
+      health.set({ state: 'ready', detail: `已允许 ${part.allowed.length} 个`, at: now() })
       this.retrySync(id, false)
       return part
     } catch (error) {

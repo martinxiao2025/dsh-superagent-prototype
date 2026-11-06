@@ -115,7 +115,7 @@ export async function killJobs(ctx: Context, sessionId: string, reason: string, 
   const collected = live.map(job => jobs!.wait(job.id, KILL_WAIT_MS, sessionId).catch(() => undefined))
   for (const job of live) try { jobs!.kill(job.id, sessionId, reason) } catch (error) { failures.push(error) }
   await Promise.all(collected)
-  if (failures.length) throw new AggregateError(failures, `Killing the shell jobs of ${sessionId} failed`)
+  if (failures.length) throw new AggregateError(failures, `终止 ${sessionId} 的 shell 作业失败`)
 }
 
 /**
@@ -161,5 +161,5 @@ export async function stopBackground(ctx: Context, sessionId: string, reason: st
   await killJobs(ctx, sessionId, reason).catch((error: unknown) => { failures.push(error) })
   const agent = ctx.agents.get(sessionId as SessionId)
   if (agent) await stopSubagents(ctx, agent, keepInbox).catch((error: unknown) => { failures.push(error) })
-  if (failures.length) throw new AggregateError(failures, `Stopping the background work of ${sessionId} failed`)
+  if (failures.length) throw new AggregateError(failures, `停止 ${sessionId} 的后台工作失败`)
 }

@@ -248,28 +248,28 @@ curl -s -X PUT -H 'x-orchestrator-request: 1' -H 'content-type: application/json
 
 ## 排障
 
-安装检查问题会以面板语言显示在概览上，并附修复链接；日志与 API 则显示下文的英文原文。
+安装检查问题会以面板语言显示在概览上，并附修复链接；日志与 API 则显示下文的中文原文。
 
 | 现象 | 原因与修复 |
 | --- | --- |
-| `The agent GitHub CLI is not set.` | 在 GitHub 卡片上设置代理的 CLI |
-| `The agent GitHub CLI was not found.` | 设置包装器的绝对路径，或 `PATH` 上的某个命令名 |
-| `The agent GitHub CLI cannot read its account` | 用 `auth login` 登录该包装器 |
-| `@… cannot read …` 或 `@… cannot push to …` | 授予代理账号对该仓库的写权限 |
-| `The GitHub Source names no repository.` | 在 GitHub 卡片上设置仓库，格式为 `owner/name` |
-| 工单失败并报 `The prepare command failed: …` | 输出会指明原因，例如克隆路径错误；修正该命令后重试该工单 |
-| `git does not read the github.com credential configuration dsh-superagent writes` | 安装 git 2.32 或更高版本 |
-| 工单失败并报 `The git configuration of the repository in … sets …` | 从该克隆的 `.git/config` 中移除所指的凭证或 `http.*.extraheader` 设置 |
-| `… was not written by dsh-superagent` | 把所指文件移出 `<stateDir>/worker-bin` 或 `<stateDir>/worker-gitconfig`，或改选另一个 `stateDir` |
-| `The bot lark-cli allows user identities` | 让飞书 Source 指向仅机器人身份的配置，如上面的“飞书机器人”所述 |
-| `The bot lark-cli does not work.` 或 `The bot identity of app … is …` | 检查该配置的 app id 与密钥 |
-| `The Feishu bot is not a member of the chat.` | 在该聊天的设置中把机器人加入聊天；下一次尝试即会成功 |
+| `未设置 agent 的 GitHub CLI。` | 在 GitHub 卡片上设置代理的 CLI |
+| `未找到 agent 的 GitHub CLI。` | 设置包装器的绝对路径，或 `PATH` 上的某个命令名 |
+| `agent 的 GitHub CLI 无法读取其账号` | 用 `auth login` 登录该包装器 |
+| `@… 无法读取 …` 或 `@… 无法推送 …` | 授予代理账号对该仓库的写权限 |
+| `GitHub Source 没有指定仓库。` | 在 GitHub 卡片上设置仓库，格式为 `owner/name` |
+| 工单失败并报 `prepare 命令失败：…` | 输出会指明原因，例如克隆路径错误；修正该命令后重试该工单 |
+| `git 不会读取 dsh-superagent 写入的 github.com 凭证配置` | 安装 git 2.32 或更高版本 |
+| 工单失败并报 `位于 … 的仓库 git 配置设置了 …` | 从该克隆的 `.git/config` 中移除所指的凭证或 `http.*.extraheader` 设置 |
+| `… 不是由 dsh-superagent 写入的` | 把所指文件移出 `<stateDir>/worker-bin` 或 `<stateDir>/worker-gitconfig`，或改选另一个 `stateDir` |
+| `机器人 lark-cli 允许用户身份` | 让飞书 Source 指向仅机器人身份的配置，如上面的“飞书机器人”所述 |
+| `机器人 lark-cli 无法工作。` 或 `应用 … 的机器人身份状态为 …` | 检查该配置的 app id 与密钥 |
+| `飞书机器人不在该群中。` | 在该聊天的设置中把机器人加入聊天；下一次尝试即会成功 |
 | `status` 以 2 退出 | 某一部分报告错误，重启无法修复：`errors` 会列出每个部分（如“管理 API”下所列）及其详情；各部分恢复工作后会自行清除自己的条目 |
 | `status` 以 3 退出 | 安装检查在等待：`setup` 说明缺少什么，概览会链接到可修复该问题的设置 |
 | `status` 以 1 退出 | 服务未运行、运行了两份、无响应，或其运行时报告错误；输出与最新日志会说明是哪一种 |
-| `… timed out after 90 s`、`… was stopped by …`、`… exited with code …` 或 `… could not run: …` | 某个 CLI 失败但没有打印原因；以操作者用户手动运行所指程序，查看它自己的消息 |
+| `… 在 90 秒后超时`、`… 被 … 停止`、`… 退出码为 …` 或 `… 无法运行：…` | 某个 CLI 失败但没有打印原因；以操作者用户手动运行所指程序，查看它自己的消息 |
 | 面板提示 dsh-superagent 无响应 | 它正在重启，或因配置问题没有启动；DeepSeek Harness 的日志会指明原因 |
-| `dsh-superagent configuration has keys it does not use`（日志） | 移除所指的键；消息会说明每个值现在位于何处 |
+| `dsh-superagent 的配置包含它不使用的键`（日志） | 移除所指的键；消息会说明每个值现在位于何处 |
 | 日志提示该插件与正在运行的 dsh 不兼容 | 安装一个在 `engines.dsh` 范围内的 DeepSeek Harness 版本 |
 | DeepSeek Harness 升级后，面板显示 "Failed to load plugins" | 重启正在运行的实例 |
 | 提及之后没有任何反应 | 检查作者是否在该 Source 的允许列表中、该 Source 是否开启、处理是否未被暂停。在 GitHub 上，通过编辑 Issue 正文添加的提及不会被接收；请在评论中提及代理 |

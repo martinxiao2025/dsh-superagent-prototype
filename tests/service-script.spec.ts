@@ -1,4 +1,4 @@
-/** Tests for scripts/dsh-superagent using a temporary checkout path with spaces and stubbed ps, tmux, and dsh binaries. */
+/** 针对 scripts/dsh-superagent 的测试，使用带空格的临时检出路径，以及替身的 ps、tmux 和 dsh 二进制。 */
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, utimesSync, writeFileSync }
   from 'node:fs'
@@ -8,8 +8,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it as test } from 'vitest'
 
-// scripts/dsh-superagent is a POSIX shell service script that this suite runs through python3 with stubbed ps, tmux and
-// dsh binaries; none of those tools exist on Windows, so the suite runs on POSIX only.
+// scripts/dsh-superagent 是一个 POSIX shell 服务脚本，本套测试通过 python3 配合替身的 ps、tmux 和
+// dsh 二进制来运行它；这些工具在 Windows 上都不存在，因此本套测试仅在 POSIX 上运行。
 const it = test.skipIf(process.platform === 'win32')
 
 let root: string
@@ -17,7 +17,7 @@ let server: Server | undefined
 let sleepers: ChildProcess[] = []
 const control = (profile: string) => join(root, '.artifacts', 'control', 'profiles', profile)
 const program = (name: string, body: string) => writeFileSync(join(root, 'bin', name), `#!/bin/sh\n${body}\n`, { mode: 0o755 })
-/** Spawn a dummy process whose PID can be listed by the fake ps binary; ignoreInterrupt simulates a hung graceful stop. */
+/** 启动一个哑进程，其 PID 可被假冒的 ps 二进制列出；ignoreInterrupt 模拟卡住的优雅停止。 */
 function sleeper(ignoreInterrupt = false): number {
   const [program, args] = ignoreInterrupt ? ['sh', ['-c', 'trap "" INT; exec sleep 60']] as const : ['sleep', ['60']] as const
   const child = spawn(program, [...args], { stdio: 'ignore' })
@@ -25,7 +25,7 @@ function sleeper(ignoreInterrupt = false): number {
   return child.pid!
 }
 const service = (pid: number, profile = 'superagent') => `${pid} node node /opt/my tools/dsh --profile ${profile} --no-open`
-/** Write active process lines (`pid ucomm args`) for the fake ps binary. Entries prefixed with `after:<pid> ` appear only after that PID exits. */
+/** 为假冒的 ps 二进制写入活动进程行（`pid ucomm args`）。以 `after:<pid> ` 为前缀的条目只在该 PID 退出后才出现。 */
 const processes = (...lines: string[]) => writeFileSync(join(root, 'ps.txt'), lines.map(line => `${line}\n`).join(''))
 const started = (...lines: string[]) => writeFileSync(join(root, 'ps-started.txt'), lines.map(line => `${line}\n`).join(''))
 beforeEach(() => {
@@ -40,7 +40,7 @@ while IFS= read -r line; do
   pid=\${line%% *}; kill -0 "$pid" 2>/dev/null || continue
   if [ -z "$want" ] || [ "$pid" = "$want" ]; then printf '%s\\n' "$line"; fi
 done < "$list"`)
-  // Log tmux invocations and simulate session creation by outputting the pane PID.
+  // 记录 tmux 调用，并通过输出 pane PID 来模拟会话创建。
   program('tmux', `for a in "$@"; do printf '%s\\n' "$a"; done >> '${root}/tmux.log'; echo --- >> '${root}/tmux.log'\n`
     + `case "$1" in has-session) exit 1;; new-*) touch '${root}/launched'; cat '${root}/pane';; esac`)
   program('dsh', 'exit 0')
@@ -58,7 +58,7 @@ function run(...args: string[]): Promise<{ code: number; stdout: string; stderr:
     (error, stdout, stderr) => resolve({ code: typeof error?.code === 'number' ? error.code : 0, stdout, stderr })))
 }
 const READY = { health: { runtime: { state: 'ready', detail: '' } }, setup: { problem: null, feishuProblem: null } }
-/** Start a mock HTTP server that returns 503 until tmux launches the service (unless always is true). */
+/** 启动一个 mock HTTP 服务器，在 tmux 启动服务之前返回 503（always 为 true 时除外）。 */
 async function answering(state: unknown = READY, always = false): Promise<string> {
   server = createServer((_request, response) => {
     if (!always && !existsSync(join(root, 'launched'))) { response.writeHead(503).end(); return }
@@ -72,15 +72,15 @@ const status = async (profile: string, url = 'http://127.0.0.1:9') =>
 
 it('refuses to stop when two processes serve the profile, before it writes the stop marker', async () => {
   processes(service(sleeper()), `${sleeper()} node node /opt/dsh --profile=superagent`)
-  expect(await run('stop')).toMatchObject({ code: 1, stderr: expect.stringContaining('Multiple dsh-superagent processes found') })
+  expect(await run('stop')).toMatchObject({ code: 1, stderr: expect.stringContaining('发现多个 dsh-superagent 进程') })
   expect(existsSync(join(control('superagent'), 'manually-stopped'))).toBe(false)
 })
 it('keeps a stop per profile', async () => {
-  expect(await run('stop', '--profile', 'one')).toMatchObject({ code: 0, stdout: expect.stringContaining('Automatic recovery is paused') })
+  expect(await run('stop', '--profile', 'one')).toMatchObject({ code: 0, stdout: expect.stringContaining('自动恢复会保持暂停') })
   expect(await status('one')).toMatchObject({ manually_stopped: true })
   expect(await status('two')).toMatchObject({ manually_stopped: false })
   const skipped = await run('--respect-stop', 'start', '--profile', 'one')
-  expect(skipped).toMatchObject({ code: 0, stdout: expect.stringContaining('Intentional stop is active') })
+  expect(skipped).toMatchObject({ code: 0, stdout: expect.stringContaining('手动停止生效中') })
 })
 it('takes no `dsh plugin` command of the profile for its service', async () => {
   const service = sleeper()
@@ -97,7 +97,7 @@ it('records the service PID at start, and still refuses a second instance the sc
   expect(start).toMatchObject({ code: 0, stdout: expect.stringContaining(`"pids": [\n    ${pid}\n  ]`) })
   expect(readFileSync(join(control('superagent'), 'service.pid'), 'utf8')).toBe(`${pid}\n`)
   const tmux = readFileSync(join(root, 'tmux.log'), 'utf8').split('---\n').find(call => call.startsWith('new-session'))!.split('\n')
-  // The checkout's path, which has a space, is one argument, and the log path inside it is quoted for the shell.
+  // 检出的路径含空格，是一个参数，其中的日志路径会为 shell 加引号。
   const checkout = realpathSync(root)
   expect(tmux).toEqual(expect.arrayContaining(['-P', '-F', '#{pane_pid}', '-c', checkout]))
   const log = new RegExp(`>> '${checkout}/\\.artifacts/dsh-superagent-superagent-\\d{8}-\\d{6}-\\d+\\.log' 2>&1$`)
@@ -105,14 +105,14 @@ it('records the service PID at start, and still refuses a second instance the sc
   const second = sleeper()
   started(service(pid), `${second} node node /opt/dsh --profile superagent`)
   const again = await run('start', '--url', url, '--timeout', '10')
-  expect(again).toMatchObject({ code: 1, stderr: expect.stringContaining('Multiple dsh-superagent processes') })
+  expect(again).toMatchObject({ code: 1, stderr: expect.stringContaining('发现多个 dsh-superagent 进程') })
   expect(await status('superagent')).toMatchObject({ pids: [pid, second] })
 }, 20_000)
 it('waits only for the process it stopped', async () => {
   const pid = sleeper()
-  // Another instance shows up once the stopped one ended.
+  // 已停止的实例结束后，另一个实例会出现。
   processes(service(pid), `after:${pid} ${sleeper()} node node /opt/dsh --profile superagent`)
-  expect(await run('stop', '--stop-timeout', '5')).toMatchObject({ code: 0, stdout: expect.stringContaining('dsh-superagent stopped') })
+  expect(await run('stop', '--stop-timeout', '5')).toMatchObject({ code: 0, stdout: expect.stringContaining('dsh-superagent 已停止') })
 }, 20_000)
 it('keeps only the newest logs it wrote for the profile', async () => {
   const url = await answering()
@@ -130,7 +130,7 @@ it('keeps only the newest logs it wrote for the profile', async () => {
   const logs = readdirSync(join(root, '.artifacts'))
   const own = logs.filter(name => name.startsWith('dsh-superagent-superagent-')).sort()
   expect(own).toHaveLength(20)
-  // The oldest went; the new one stays, with the newest earlier ones. Another profile's logs and older names stay.
+  // 最旧的被删除；新的保留，同时保留最新的若干较早日志。其他 profile 的日志和更旧的名称保留。
   expect(own).not.toContain('dsh-superagent-superagent-20260901-000000-1.log')
   expect(own.filter(name => !name.startsWith('dsh-superagent-superagent-20260901-'))).toHaveLength(1)
   expect(logs.filter(name => name.startsWith('dsh-superagent-other-'))).toHaveLength(25)
@@ -154,7 +154,7 @@ it('exits 2 while a part such as a Source reports an error, which a restart does
   expect(checked.code).toBe(2)
   expect(JSON.parse(checked.stdout)).toMatchObject({ errors: { github: 'bad token' } })
   expect(await run('start', '--url', url, '--timeout', '10'))
-    .toMatchObject({ code: 2, stdout: expect.stringContaining('github reports an error, which a restart does not fix: bad token') })
+    .toMatchObject({ code: 2, stdout: expect.stringContaining('github 报告错误，重启无法修复：bad token') })
 }, 20_000)
 it('exits 3 while the service waits for setup, from status and from start, which a restart does not fix', async () => {
   processes(service(sleeper()))
@@ -172,15 +172,15 @@ it('restarts the service, and a restart whose graceful stop timed out does not k
   writeFileSync(join(root, 'pane'), `${pid}\n`)
   started(service(pid))
   const restarted = await run('restart', '--url', url, '--timeout', '10', '--stop-timeout', '5')
-  expect(restarted).toMatchObject({ code: 0, stdout: expect.stringContaining('dsh-superagent stopped.') })
-  expect(restarted.stdout).not.toContain('Automatic recovery is paused')
+  expect(restarted).toMatchObject({ code: 0, stdout: expect.stringContaining('dsh-superagent 已停止。') })
+  expect(restarted.stdout).not.toContain('自动恢复会保持暂停')
   expect(existsSync(join(control('superagent'), 'manually-stopped'))).toBe(false)
   expect(readFileSync(join(control('superagent'), 'service.pid'), 'utf8')).toBe(`${pid}\n`)
-  // A service that does not stop in time is left running, and the next check may restart it.
+  // 未能及时停止的服务保持运行，下一次检查可能会重启它。
   rmSync(join(root, 'launched'))
   processes(service(sleeper(true)))
   expect(await run('restart', '--url', url, '--timeout', '10', '--stop-timeout', '1'))
-    .toMatchObject({ code: 1, stderr: expect.stringContaining('Graceful stop timed out') })
+    .toMatchObject({ code: 1, stderr: expect.stringContaining('优雅停止超时') })
   expect(await status('superagent')).toMatchObject({ manually_stopped: false })
 }, 20_000)
 it('refuses a second control operation while one holds the profile\'s lock', async () => {
@@ -194,12 +194,12 @@ time.sleep(30)`], { stdio: 'ignore' })
   sleepers.push(holder)
   while (!existsSync(held)) await new Promise(resolve => setTimeout(resolve, 50))
   expect(await run('status')).toMatchObject({ code: 1,
-    stderr: expect.stringContaining('Another dsh-superagent control operation is in progress') })
+    stderr: expect.stringContaining('另一个 dsh-superagent 控制操作正在进行') })
 }, 20_000)
 it('refuses to start a service while no process runs it but something answers at its URL', async () => {
   const url = await answering(READY, true)
   expect(await run('start', '--url', url, '--timeout', '5'))
-    .toMatchObject({ code: 1, stderr: expect.stringContaining('An existing orchestrator answers at this URL') })
+    .toMatchObject({ code: 1, stderr: expect.stringContaining('该 URL 上已有编排器在响应') })
   expect(readFileSync(join(root, 'tmux.log'),
     'utf8').split('---\n').filter(Boolean).map(call => call.split('\n')[0])).toEqual(['has-session'])
 }, 20_000)
@@ -220,7 +220,7 @@ it('exits 1 when the started service does not answer in time, and leaves its pro
   writeFileSync(join(root, 'pane'), `${pid}\n`)
   started(service(pid))
   expect(await run('start', '--url', 'http://127.0.0.1:9', '--timeout', '2'))
-    .toMatchObject({ code: 1, stderr: expect.stringContaining('Startup health check timed out') })
+    .toMatchObject({ code: 1, stderr: expect.stringContaining('启动健康检查超时') })
   expect(() => process.kill(pid, 0)).not.toThrow()
 }, 20_000)
 it('does not signal a process that took the recorded service PID, and keeps a stop that timed out', async () => {
@@ -230,9 +230,9 @@ it('does not signal a process that took the recorded service PID, and keeps a st
   writeFileSync(join(control('superagent'), 'service.pid'), `${other}\n`)
   expect(await run('stop', '--stop-timeout', '1')).toMatchObject({ code: 0 })
   expect(() => process.kill(other, 0)).not.toThrow()
-  // A service that does not stop in time keeps the stop, so recovery does not start it again.
+  // 未能及时停止的服务保持停止状态，因此恢复流程不会再次启动它。
   rmSync(join(control('superagent'), 'manually-stopped'))
   processes(service(sleeper(true)))
-  expect(await run('stop', '--stop-timeout', '1')).toMatchObject({ code: 1, stderr: expect.stringContaining('Graceful stop timed out') })
+  expect(await run('stop', '--stop-timeout', '1')).toMatchObject({ code: 1, stderr: expect.stringContaining('优雅停止超时') })
   expect(existsSync(join(control('superagent'), 'manually-stopped'))).toBe(true)
 }, 20_000)

@@ -18,7 +18,7 @@ export class Intake extends EnginePart {
   receive(received: Trigger): ReceiveResult {
     // 把 source 时间戳（例如 GitHub 的整秒时间）规范化为标准 ISO 形式。
     const trigger = { ...received, at: isoTime(received.at) }
-    if (!trigger.threads.length) throw new Error('A trigger must belong to at least one thread')
+    if (!trigger.threads.length) throw new Error('一个 Trigger 至少属于一个 Thread')
     if (this.repo.triggers.get(trigger.id)) return 'duplicate'
     const at = this.now()
     const filter = this.options.scope.scope(trigger)

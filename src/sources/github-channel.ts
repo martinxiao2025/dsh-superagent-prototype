@@ -19,7 +19,7 @@ export async function sendGithub(host: Pick<SourceContext, 'commands'>, message:
   const { commands } = host
   const { repository, github } = commands.deployment
   const number = Number(message.channel.address.number)
-  if (!number) throw new Error('Missing GitHub reply target')
+  if (!number) throw new Error('缺少 GitHub 回复目标')
   try {
     // 保留的 trigger URL 也会为在感知 thread 的投递之前排队的回复路由。
     const address = githubAddress(message.channel.address.url ?? '', repository)

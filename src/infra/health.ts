@@ -16,7 +16,7 @@ export class HealthBoard {
   private readonly entries: Record<string, Health> = {}
   private readonly claimed = new Set<string>()
   claim(name: string, initial?: Health): HealthEntry {
-    if (this.claimed.has(name)) throw new Error(`The health entry ${name} is reported by another part`)
+    if (this.claimed.has(name)) throw new Error(`健康条目 ${name} 已由其他部分报告`)
     this.claimed.add(name)
     if (initial) this.entries[name] = initial
     let held = true

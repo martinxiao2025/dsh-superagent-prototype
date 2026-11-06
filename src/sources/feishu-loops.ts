@@ -20,7 +20,7 @@ export const runFeishu = (ctx: SourceContext, signal: AbortSignal): Promise<unkn
 const enabled = (ctx: SourceContext): FeishuConfig | undefined => ctx.config<FeishuConfig>(SOURCE)
 const bot = (ctx: SourceContext): FeishuBot => {
   const resolved = ctx.deployment.feishu
-  if (!resolved) throw new Error('The Feishu Source has no working bot CLI')
+  if (!resolved) throw new Error('飞书 Source 没有可用的机器人 CLI')
   return resolved
 }
 async function receive(ctx: SourceContext, trigger: Trigger): Promise<void> {
@@ -75,17 +75,17 @@ async function consume(ctx: SourceContext, signal: AbortSignal): Promise<void> {
   let chain = Promise.resolve(); let diagnostic = ''; let ready = false
   const stop = (): void => { child.stdin.end(); child.kill('SIGTERM') }
   signal.addEventListener('abort', stop, { once: true })
-  const timeout = setTimeout(() => { diagnostic = 'Feishu event consumer did not become ready within 45 seconds'; stop() }, 45_000)
+  const timeout = setTimeout(() => { diagnostic = '飞书事件消费者未在 45 秒内就绪'; stop() }, 45_000)
   stderr.on('line', (line: string) => {
     diagnostic = line.slice(0, 4000)
     if (line.startsWith('[event] ready')) {
       ready = true; clearTimeout(timeout)
-      ctx.report('feishu', { state: 'ready', detail: 'Listening for bot events', at: new Date().toISOString() })
+      ctx.report('feishu', { state: 'ready', detail: '正在监听机器人事件', at: new Date().toISOString() })
     } else if (/WARN|drop|error/.test(line)) ctx.report('feishu', { state: 'error', detail: diagnostic })
   })
   stdout.on('line', (line: string) => {
     chain = chain.then(async () => {
-      if (line.length > 1_048_576) throw new Error('Feishu event exceeds 1 MiB')
+      if (line.length > 1_048_576) throw new Error('飞书事件超过 1 MiB')
       const trigger = feishuTrigger(JSON.parse(line), bot(ctx).botId, bot(ctx).appId)
       // Source 被禁用时已读取的事件会被丢弃；消费者随后很快停止。
       if (!trigger || !enabled(ctx)) return
@@ -98,7 +98,7 @@ async function consume(ctx: SourceContext, signal: AbortSignal): Promise<void> {
   try {
     await new Promise<void>((resolve, reject) => {
       child.once('error', reject)
-      const exited = (code: number | null) => new Error(`Feishu event consumer exited (${code}, ready=${ready}): ${diagnostic}`)
+      const exited = (code: number | null) => new Error(`飞书事件消费者已退出（${code}，ready=${ready}）：${diagnostic}`)
       child.once('close', (code) => signal.aborted ? resolve() : reject(exited(code)))
     })
   } finally { clearTimeout(timeout); signal.removeEventListener('abort', stop); stdout.close(); stderr.close(); await chain }
@@ -152,10 +152,10 @@ async function backfillLoop(ctx: SourceContext, signal: AbortSignal): Promise<vo
       } catch (error) { if (!signal.aborted) errors.push(`${chatId}: ${String(error)}`) }
     }
     await pollThreads(ctx, signal, tally)
-    const skipped = tally.skipped ? `; ${tally.skipped} unreadable messages skipped` : ''
+    const skipped = tally.skipped ? `；跳过 ${tally.skipped} 条无法读取的消息` : ''
     if (!signal.aborted) ctx.report('history', errors.length
       ? { state: 'error', detail: errors.join('\n') }
-      : { state: 'ready', detail: `Configured groups and known direct chats recovered${skipped}`, at: new Date().toISOString() })
+      : { state: 'ready', detail: `已补收配置的群聊和已知私聊${skipped}`, at: new Date().toISOString() })
     await delay(60_000, undefined, { signal }).catch(() => {})
   }
 }
@@ -180,7 +180,7 @@ export async function backfillChat(ctx: SourceContext, chatId: string, direct: b
       const result = HistoryPageSchema.parse(await commands.lark(request))
       for (const message of validItems(HistoricalMessageSchema, result.items, tally)) {
         const outside = message.chat_id !== chatId || (kind === 'thread' && message.thread_id !== id)
-        if (outside) throw new Error('Feishu history returned a message outside the requested chat or thread')
+        if (outside) throw new Error('飞书历史返回了所请求群聊或话题之外的消息')
         if (message.deleted) continue
         const at = feishuTime(message.create_time)
         if (message.thread_id && !(Date.parse(topics[message.thread_id] ?? '') >= Date.parse(at))) topics[message.thread_id] = at
@@ -188,7 +188,7 @@ export async function backfillChat(ctx: SourceContext, chatId: string, direct: b
         if (trigger) await receive(ctx, trigger)
       }
       const stuck = result.has_more && (!result.page_token || pages.has(result.page_token))
-      if (stuck) throw new Error('Feishu history pagination did not advance')
+      if (stuck) throw new Error('飞书历史分页没有推进')
       page = result.has_more ? result.page_token : undefined
       if (page) pages.add(page)
     } while (page)
@@ -220,7 +220,7 @@ export async function pollThreads(ctx: SourceContext, signal?: AbortSignal, tall
 }
 async function pollThread(ctx: SourceContext, thread: Thread, signal?: AbortSignal, tally?: Tally): Promise<void> {
   const ref = threadRef(ctx, thread)
-  if (!ref) throw new Error('Subscribed thread has no retained source message')
+  if (!ref) throw new Error('已订阅的 Thread 没有保留的来源消息')
   const config = enabled(ctx)
   // Source 已被关闭；下一轮会再次轮询。
   if (!config) return
@@ -244,7 +244,7 @@ async function pollThread(ctx: SourceContext, thread: Thread, signal?: AbortSign
   while (resource) {
     if (signal?.aborted) return
     const result = await readFeishu(commands, ref, resource, pageSize, 'desc')
-    if (!('messages' in result)) throw new Error('Expected Feishu thread messages')
+    if (!('messages' in result)) throw new Error('期望返回飞书话题消息')
     if (tally && 'skipped' in result) tally.skipped += result.skipped ?? 0
     if ('thread_id' in result && result.thread_id && thread.meta.threadId !== result.thread_id) {
       ctx.threads.patch(thread.key, { threadId: result.thread_id })

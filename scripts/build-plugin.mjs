@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Assembles the agent-plugins package into `lib/plugin` from `plugin/` (the source of truth) and the bundled skills.
- * `tsdown` must run first: its first configuration cleans `lib/`.
+ * 从 `plugin/`（唯一事实源）与随包技能组装 agent-plugins 包到 `lib/plugin`。
+ * `tsdown` 必须先运行：它的第一份配置会清空 `lib/`。
  */
 import { cpSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
@@ -18,11 +18,11 @@ const fail = message => {
   console.error(`build-plugin: ${message}`)
   process.exit(1)
 }
-/** Reads a text file as UTF-8, refusing a BOM, as every file the plugin ships must be plain UTF-8. */
+/** 以 UTF-8 读取文本文件；遇到 BOM 直接拒绝，因为插件携带的每个文件都必须是纯 UTF-8。 */
 const read = path => {
   const bytes = readFileSync(path)
   if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
-    fail(`${relative(ROOT, path)} starts with a BOM; save it as UTF-8 without BOM`)
+    fail(`${relative(ROOT, path)} 以 BOM 开头，请保存为无 BOM 的 UTF-8`)
   }
   return bytes.toString('utf8')
 }
@@ -30,13 +30,13 @@ const write = (path, text) => {
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, text.replace(/\r\n/g, '\n'), 'utf8')
 }
-/** Copies a file, normalizing text files to UTF-8 without BOM and LF. */
+/** 复制文件，并把文本文件规范为无 BOM 的 UTF-8 与 LF 换行。 */
 const copy = (from, to) => {
-  if (!statSync(from).isFile()) fail(`${relative(ROOT, from)} is not a file`)
+  if (!statSync(from).isFile()) fail(`${relative(ROOT, from)} 不是文件`)
   if (TEXT.test(from)) write(to, read(from))
   else { mkdirSync(dirname(to), { recursive: true }); cpSync(from, to) }
 }
-/** Copies a directory tree recursively. */
+/** 递归复制整棵目录树。 */
 const copyTree = (from, to) => {
   mkdirSync(to, { recursive: true })
   for (const name of readdirSync(from)) {
@@ -61,13 +61,13 @@ const skillSources = []
 const pluginSkills = join(SOURCE, 'skills')
 if (isDirectory(pluginSkills)) {
   for (const name of readdirSync(pluginSkills)) {
-    if (!isDirectory(join(pluginSkills, name))) fail(`plugin/skills/${name} is not a directory; skills live in direct subdirectories`)
+    if (!isDirectory(join(pluginSkills, name))) fail(`plugin/skills/${name} 不是目录；技能必须放在直接子目录里`)
     skillSources.push({ name, from: join(pluginSkills, name) })
   }
 }
 for (const name of BUNDLED_SKILLS) {
   const from = join(SKILLS, name)
-  if (!isDirectory(from)) fail(`skills/${name} is missing; the plugin bundles it`)
+  if (!isDirectory(from)) fail(`skills/${name} 缺失，但插件需要随包携带它`)
   if (skillSources.some(skill => skill.name === name)) continue
   skillSources.push({ name, from })
 }
@@ -79,6 +79,6 @@ const tree = directory => readdirSync(directory).sort().flatMap(name => {
     ? [`${name}/`, ...tree(path).map(line => `  ${line}`)]
     : [name]
 })
-console.log(`build-plugin: wrote ${relative(ROOT, OUT)}`)
+console.log(`build-plugin: 已写入 ${relative(ROOT, OUT)}`)
 for (const line of tree(OUT)) console.log(`  ${line}`)
-console.log(`build-plugin: ${skillSources.length} skill(s), version ${manifest.version}`)
+console.log(`build-plugin: ${skillSources.length} 个技能，版本 ${manifest.version}`)

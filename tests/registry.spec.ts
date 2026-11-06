@@ -36,7 +36,7 @@ describe('Source registry', () => {
     sources.register(probe)
     expect(sources.validate('probe', { enabled: true, config: {} })).toEqual({ enabled: true, config: { interval: 5 } })
     expect(() => sources.validate('probe', { enabled: true, config: { interval: 0 } })).toThrow()
-    expect(() => sources.validate('missing', { enabled: true, config: {} })).toThrow('not installed')
+    expect(() => sources.validate('missing', { enabled: true, config: {} })).toThrow('未安装')
   })
   it('sends, links and reads a kind\'s Threads through its own channel and context, and nothing for a kind without them', async () => {
     const sources = new SourceRegistry(() => SettingsSchema.parse({ sources: { probe: { enabled: true, config: { interval: 7 } } } }))
@@ -67,7 +67,7 @@ describe('Source registry', () => {
     expect(read).toEqual([['t1', 'thread', '2', 7]])
     expect(context.images('img_x')).toEqual([])
     await expect(context.image({} as Agent, commands, { id: 'm1', text: '' }, 'img_x', '',
-      new AbortController().signal)).rejects.toThrow('no images')
+      new AbortController().signal)).rejects.toThrow('不支持图片')
     // 没有 channel 或没有 context 的 kind 两者都没有。
     sources.register({ ...probe, kind: 'quiet' })
     expect(await sources.send(message('quiet'), commands)).toBe('gone')
@@ -79,7 +79,7 @@ describe('Source registry', () => {
     for (const name of ['runtime', 'reply']) board.claim(name)
     const sources = new SourceRegistry(() => SettingsSchema.parse({}), board)
     const unregister = sources.register(githubKind)
-    expect(() => sources.register({ ...probe, health: ['github'] })).toThrow('declares the health entry github')
+    expect(() => sources.register({ ...probe, health: ['github'] })).toThrow('声明了健康条目 github')
     for (const name of ['runtime', 'reply', 'sync:github']) expect(() => sources.register({ ...probe, health: ['probe', name] })).toThrow(name)
     expect(sources.kind('probe')).toBeUndefined()
     sources.register({ ...probe, health: ['probe'] })
@@ -87,7 +87,7 @@ describe('Source registry', () => {
     const first = context(githubKind)
     first.report('github', { state: 'ready', detail: 'ok' })
     expect(board.all.github).toEqual({ state: 'ready', detail: 'ok' })
-    expect(() => first.report('probe', { state: 'ready', detail: '' })).toThrow('has no health entry probe')
+    expect(() => first.report('probe', { state: 'ready', detail: '' })).toThrow('没有健康条目 probe')
     // 在其 kind 注销之后发送的报告（例如来自正在退出的 CLI 监听器）会被忽略，且不影响之后的注册。
     unregister()
     expect(() => first.report('github', { state: 'error', detail: 'WARN exiting' })).not.toThrow()
@@ -119,7 +119,7 @@ describe('Source registry', () => {
   it('refuses a second registration of one kind and forgets a kind after its disposer runs', () => {
     const sources = new SourceRegistry(() => SettingsSchema.parse({}))
     const dispose = sources.register(probe)
-    expect(() => sources.register(probe)).toThrow('already registered')
+    expect(() => sources.register(probe)).toThrow('已注册')
     dispose()
     expect(sources.instance('probe')).toBeUndefined()
   })

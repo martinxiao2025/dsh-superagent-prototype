@@ -34,15 +34,15 @@ it('skips and counts a topic message it cannot read, and reads the others', asyn
 })
 it('rejects unrelated paths, missing sources, cross-chat results, and incomplete pagination', async () => {
   const lark = vi.spyOn(commands, 'lark')
-  await expect(readFeishu(commands, event, 'feishu/other/thread', 20)).rejects.toThrow('source trigger')
-  await expect(readFeishu(commands, event, 'feishu/source/root/cursor', 20)).rejects.toThrow('Use feishu')
+  await expect(readFeishu(commands, event, 'feishu/other/thread', 20)).rejects.toThrow('需要一个飞书来源 Trigger')
+  await expect(readFeishu(commands, event, 'feishu/source/root/cursor', 20)).rejects.toThrow('使用 feishu/')
   expect(lark).not.toHaveBeenCalled()
   lark.mockResolvedValueOnce({ items: [] })
-  await expect(readFeishu(commands, event, 'feishu/source/message', 20)).rejects.toThrow('unavailable')
+  await expect(readFeishu(commands, event, 'feishu/source/message', 20)).rejects.toThrow('来源飞书消息不可用')
   lark.mockResolvedValueOnce({ items: [{ ...source, chat_id: 'oc_elsewhere' }] })
-  await expect(readFeishu(commands, event, 'feishu/source/root', 20)).rejects.toThrow('chat does not match')
+  await expect(readFeishu(commands, event, 'feishu/source/root', 20)).rejects.toThrow('飞书来源群聊与已接受的 Trigger 不一致')
   lark.mockResolvedValueOnce({ items: [source] }).mockResolvedValueOnce({ thread_id: 'omt_thread', has_more: true, messages: [] })
-  await expect(readFeishu(commands, event, 'feishu/source/thread', 20)).rejects.toThrow('did not advance')
+  await expect(readFeishu(commands, event, 'feishu/source/thread', 20)).rejects.toThrow('飞书话题分页没有推进')
 })
 it('reports absent parent/thread and deleted content explicitly', async () => {
   const lark = vi.spyOn(commands, 'lark').mockResolvedValue({ items: [{ message_id: 'om_source', chat_id: 'oc_chat' }] })
@@ -59,7 +59,7 @@ it('reads only the source message link and rejects absent, deleted or cross-chat
   expect(lark).toHaveBeenCalledWith(['im', '+messages-mget', '--message-ids', 'om_source', '--no-reactions'])
   for (const row of [{ ...linked, deleted: true }, { ...linked, chat_id: 'oc_elsewhere' }, { ...linked, message_app_link: undefined }, { ...linked, message_id: 'om_other' }]) {
     lark.mockResolvedValueOnce({ messages: [row] })
-    await expect(readFeishuLink(commands, event)).rejects.toThrow('unavailable')
+    await expect(readFeishuLink(commands, event)).rejects.toThrow('来源消息链接不可用')
   }
 })
 it('reads a topic page as messages a model reads: id, author, ISO time, text and the message each answers', async () => {

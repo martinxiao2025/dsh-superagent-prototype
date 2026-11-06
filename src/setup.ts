@@ -3,22 +3,22 @@ import { fill } from './infra/text.ts'
 
 export type SetupPlace = 'deployment' | 'github' | 'feishu'
 export const SETUP_PROBLEMS = {
-  foreignFile: ['deployment', '{file} was not written by dsh-superagent; move it, or choose another state directory.'],
-  gitTooOld: ['deployment', 'git does not read the github.com credential configuration dsh-superagent writes; dsh-superagent needs git 2.32 or later.'],
-  environmentFailed: ['deployment', 'Preparing the agent environment failed.'],
-  repositoryUnset: ['github', 'The GitHub Source names no repository.'],
-  agentCliUnset: ['github', 'The agent GitHub CLI is not set.'],
-  agentCliMissing: ['github', 'The agent GitHub CLI was not found.'],
-  agentCliSignedOut: ['github', 'The agent GitHub CLI cannot read its account.'],
-  agentCliNoAccount: ['github', 'The agent GitHub CLI did not report a GitHub account.'],
-  repositoryUnreadable: ['github', '@{account} cannot read {repository}.'],
-  repositoryUnreported: ['github', 'The agent GitHub CLI did not return {repository}.'],
-  repositoryReadOnly: ['github', '@{account} cannot push to {repository}.'],
-  feishuCliFailed: ['feishu', 'The bot lark-cli does not work.'],
-  feishuNoApp: ['feishu', 'auth status of the bot lark-cli did not report the app.'],
-  feishuBotNotReady: ['feishu', 'The bot identity of app {app} is {status}; configure the app secret with lark-cli.'],
-  feishuUserIdentity: ['feishu', 'The bot lark-cli allows user identities (strict mode {mode}); give the bot its own lark-cli configuration in strict mode bot, as docs/006-deployment.md describes.'],
-  feishuNoBot: ['feishu', 'The Feishu bot API did not return the bot\'s open_id.'],
+  foreignFile: ['deployment', '{file} 不是由 dsh-superagent 写入的；请移动它，或另选一个状态目录。'],
+  gitTooOld: ['deployment', 'git 不会读取 dsh-superagent 写入的 github.com 凭证配置；dsh-superagent 需要 git 2.32 或更高版本。'],
+  environmentFailed: ['deployment', '准备 agent 环境失败。'],
+  repositoryUnset: ['github', 'GitHub Source 没有指定仓库。'],
+  agentCliUnset: ['github', '未设置 agent 的 GitHub CLI。'],
+  agentCliMissing: ['github', '未找到 agent 的 GitHub CLI。'],
+  agentCliSignedOut: ['github', 'agent 的 GitHub CLI 无法读取其账号。'],
+  agentCliNoAccount: ['github', 'agent 的 GitHub CLI 没有返回 GitHub 账号。'],
+  repositoryUnreadable: ['github', '@{account} 无法读取 {repository}。'],
+  repositoryUnreported: ['github', 'agent 的 GitHub CLI 没有返回 {repository}。'],
+  repositoryReadOnly: ['github', '@{account} 无法推送 {repository}。'],
+  feishuCliFailed: ['feishu', '机器人 lark-cli 无法工作。'],
+  feishuNoApp: ['feishu', '机器人 lark-cli 的 auth status 没有返回应用信息。'],
+  feishuBotNotReady: ['feishu', '应用 {app} 的机器人身份状态为 {status}；请用 lark-cli 配置 app secret。'],
+  feishuUserIdentity: ['feishu', '机器人 lark-cli 允许用户身份（strict mode 为 {mode}）；请按 docs/006-deployment.md 的说明，在 strict mode bot 下为机器人提供它自己的 lark-cli 配置。'],
+  feishuNoBot: ['feishu', '飞书机器人 API 没有返回机器人的 open_id。'],
 } as const satisfies Record<string, readonly [SetupPlace, string]>
 export type SetupCode = keyof typeof SETUP_PROBLEMS
 export interface SetupProblem { place: SetupPlace; code: SetupCode; values: Record<string, string>; detail: string }
