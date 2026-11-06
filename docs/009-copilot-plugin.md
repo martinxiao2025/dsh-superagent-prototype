@@ -368,3 +368,60 @@ exit=1
 
 验证:`pnpm check` 退出 0;`pnpm test` 为 1179 通过、26 跳过(范围外)、0 失败。
 
+## 13. `vscode.lm` 可行性探针结论(2026-11-06)
+
+范围:Windows + VS Code Stable `1.145.2`(commit `c4453f8e…`),本机已安装 DeepSeek 提供方。探针是一个临时扩展(`publisher=dsh-probe`,仅 `onStartupFinished`,激活 3 秒后自动执行),以 `code --extensionDevelopmentPath` 在扩展开发宿主内真跑;原始 `result.json`/`probe.log` 的关键结论已摘录在本节,探针目录随后删除。
+
+### 13.1 模型可见性
+
+`vscode.lm.selectChatModels({})` 返回 10 个模型,关键项:
+
+| id | name | vendor | family | version | maxInputTokens |
+| --- | --- | --- | --- | --- | --- |
+| `deepseek-flash` | DeepSeek V4.1 Flash | `deepseek` | `deepseek` | v4.1 | 655360 |
+| `deepseek-v4-flash` | DeepSeek V4 Flash | `deepseek` | `deepseek` | v4 | 655360 |
+| `deepseek-v4-pro` | DeepSeek V4 Pro | `deepseek` | `deepseek` | v4 | 655360 |
+| `deepseek-v4-flash-vision-exp` | DeepSeek V4 Flash Vision Exp | `deepseek` | `deepseek` | v4 | 655360 |
+| `glm-5.3` | GLM-5.3 | `glm` | `glm` | 5.3 | 868928 |
+| `glm-4.6v-flash` | GLM-4.6V-Flash | `glm` | `glm` | 4.6v | 98304 |
+| `glm-5.3-flash` | GLM-5.3-Flash | `glm` | `glm` | 5.3 | 868928 |
+| `gpt-4o-mini` | GPT-4o mini | `copilot` | `gpt-4o-mini` | gpt-4o-mini-2024-07-18 | 12078 |
+| `auto` | Auto | `copilot` | `search-agent` | copilot-search-a | 243790 |
+| `auto` | Auto | `copilotcli` | — | — | 0 |
+
+过滤语义(直接影响实现):
+
+| 过滤 | 命中数 | 结论 |
+| --- | --- | --- |
+| `{vendor:'copilot'}` | 7 | vendor 过滤有效;另含 `copilot-utility`、`copilot-utility-small`、`copilot-dictation-cleanup-*`、`gpt-5.6-luna` 等宿主内部模型 |
+| `{family:'deepseek'}` | 4 | family 过滤有效 |
+| `{family:'deepseek-flash'}` | 0 | `deepseek-flash` 是 **id**,不是 family |
+| `{name:'DeepSeek V4.1 Flash'}` | 10 | `name` 不是有效过滤键,返回全集 |
+
+因此扩展不能靠 `selectChatModels({family:'deepseek-flash'})` 选模型,只能取全集后按 **id → family → name** 顺序自行匹配;`extension/dsh-lm-bridge` 即按此实现,优先 `deepseek-flash`。
+
+### 13.2 无界面发送与返回
+
+两次固定提示均无需人工点击、无授权弹窗,直接返回:
+
+| 提示 | 模型 | 返回 | 耗时 | `response.usage` |
+| --- | --- | --- | --- | --- |
+| `只回复两个字符：OK` | `auto`(探针首次选中) | `OK` | 9670 ms | `null` |
+| `工单已修复，请确认。` | `auto` | 完整中文确认文本 | 4765 ms | `null` |
+
+正式桥扩展(按 id 选中 `deepseek-flash`)的真实回合:
+
+| 提示 | 模型 | 返回 | 耗时 | 用量 |
+| --- | --- | --- | --- | --- |
+| `只回复两个字符：OK` | `deepseek-flash` | `OK` | 2879 ms | input 4 / output 1(估算) |
+| 同上 | `deepseek-flash` | `OK` | 1589 ms | input 5 / output 1(估算) |
+
+结论:1.145.2 下 `sendRequest` 可在扩展激活后无界面驱动并拿到完整文本;`response.usage` 在该版本恒为 `null`,用量只能用 `model.countTokens` 估算并标注 `estimated`,不能当作服务端计费依据。
+
+### 13.3 对宿主改造的影响
+
+- 路径 ① 成立:`vscode.lm` 只在扩展宿主可用,桥以 `127.0.0.1` + 随机端口 + 一次性令牌暴露回合接口;`VsCodeLmHost` 据此实现 `AgentHost`,与 `CopilotCliHost` 并存且为主用路线。
+- 扩展开发宿主日志出现过 `Error: Chat model provider for vendor deepseek is already registered.`(DeepSeek BYOK 扩展重复注册);不影响选模型与发送。
+- 探针目录 `experiments/vscode-lm-probe/` 在结论摘录后已删除,正式实现见 `extension/dsh-lm-bridge`、`src/executor/bridge.ts`、`src/executor/vscode-lm.ts`。
+
+
