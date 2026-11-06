@@ -1,0 +1,6 @@
+node_modules/
+lib/
+.artifacts/
+.env
+coverage/
+.screenshots/
