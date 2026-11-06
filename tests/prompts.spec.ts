@@ -40,7 +40,7 @@ it('saves team sections and skills as versions that survive a restart, with hist
     expect(prompts.history(0, 1)).toMatchObject({ revisions: [{ revision: 2 }], next_offset: 1 })
     expect(prompts.history(2, 1).next_offset).toBeNull()
     expect(prompts.history(1, 1).revisions[0]).toMatchObject({ revision: 1, changed: ['scope', 'delivery', 'skill/release'] })
-    expect(() => prompts.save(config, 1, 'panel')).toThrow('version changed')
+    expect(() => prompts.save(config, 1, 'panel')).toThrow('提示词版本已变更为 2；保存前请先对比最新版本')
   } finally { store.close(); rmSync(dir, { recursive: true, force: true }) }
 })
 
@@ -82,7 +82,7 @@ it.each(['orchestrator', 'worker'] as const)('ends the %s prompt with the fixed 
     expect(promptParts(defaultPrompts(), role).at(-1)).toEqual({ name: 'runtime/handoff', kind: 'fixed', key: `runtime/handoff/${role}`,
       text: handoffPolicy(role) })
     expect(preview[role]).toBe(prompts.compose(defaultPrompts(), role))
-    expect(preview[role]).toContain(`${handoffPolicy(role)}\n\nExecution environment`)
+    expect(preview[role]).toContain(`${handoffPolicy(role)}\n\n执行环境（`)
     if (role === 'worker') expect(preview[role].endsWith(ENVIRONMENT_LINE)).toBe(true)
     // 主 Session 的 Policy 部分之后没有其他内容，因此 Policy 变更会使其 prompt 的其余部分保持原样。
     else expect(preview[role].endsWith(`${ENVIRONMENT_LINE}\n\n${policySection(store.settings()).text}`)).toBe(true)
@@ -108,7 +108,7 @@ it('lists a ticket\'s execution environment in its prompt, and says setup is inc
     expect(promptsOf(store).compose(defaultPrompts(), 'worker', ticket).endsWith('- DSH_SUPERAGENT_DIR = "/srv/work/fix-1": This ticket\'s directory.')).toBe(true)
     expect(promptParts(defaultPrompts(), 'worker', 'env').at(-1)).toEqual({ name: 'runtime/environment', kind: 'generated', key: 'runtime/environment',
       text: 'env' })
-    expect(new Prompts(store, () => 100000, () => undefined, () => false).compose(defaultPrompts(), 'worker')).toContain('dsh-superagent is waiting for setup')
+    expect(new Prompts(store, () => 100000, () => undefined, () => false).compose(defaultPrompts(), 'worker')).toContain('执行环境：dsh-superagent 正在等待 setup')
   })
 })
 
@@ -238,10 +238,10 @@ describe('overrides of built-in parts', () => {
     })
   })
   it('keeps the environment heading as it was, naming the prepare command', () => {
-    expect(composePrompt(defaultPrompts(), 'worker', 'x')).not.toContain('The prepare command')
+    expect(composePrompt(defaultPrompts(), 'worker', 'x')).not.toContain('工单目录的 prepare 命令')
     withStore(store => {
-      expect(promptsOf(store).compose(defaultPrompts(), 'worker')).toContain('an empty value means that part is not configured here). '
-        + `The prepare command of a ticket directory reads the same variables:\n${ENVIRONMENT_LINE}`)
+      expect(promptsOf(store).compose(defaultPrompts(), 'worker')).toContain('空值表示该部分在此处未配置）。'
+        + `工单目录的 prepare 命令读取同一组变量：\n${ENVIRONMENT_LINE}`)
     })
   })
 })

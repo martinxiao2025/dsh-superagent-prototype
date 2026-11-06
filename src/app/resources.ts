@@ -22,36 +22,36 @@ import type { TextCache } from './cache.ts'
 
 /** 通过 orchestrator_read 暴露的资源描述符，并标明哪些资源 worker session 也可为自身工单读取。 */
 export const RESOURCES: readonly { name: string; holds: string; executor?: true }[] = [
-  { name: 'tickets', holds: 'ticket cards, newest first; a card\'s state is person/review after a ready report, person/blocked or person/failed after those reports, person/answer with a question, person/delivery when an input could not reach the worker, working or working/queued while it works, idle once the worker ended its turn without a report, else how the ticket ended' },
-  { name: 'triggers', holds: 'trigger cards with where each went, newest first' },
-  { name: 'threads', holds: 'subscribed threads, newest activity first, with their labels, tickets, current assessment and polling errors' },
-  { name: 'thread/<key>', holds: 'one thread: its label and link, its tickets and latest decisions, and its triggers, newest first', executor: true },
-  { name: 'decisions', holds: 'decisions, newest first' },
-  { name: 'decision/<id>', holds: 'one decision with its audit' },
-  { name: 'ticket/<id>', holds: 'a ticket\'s card, the trigger, decision and threads it is tied to, its latest assignments with the start of each '
-    + 'report, and its inputs, newest first', executor: true },
-  { name: 'ticket/<id>/assignment', holds: 'its assignment text', executor: true },
-  { name: 'ticket/<id>/assignments', holds: 'its assignments, newest first, with the start of each report', executor: true },
-  { name: 'ticket/<id>/inputs', holds: 'its inputs, newest first', executor: true },
-  { name: 'ticket/<id>/result', holds: 'its latest report', executor: true },
-  { name: 'ticket/<id>/report/<id>', holds: 'the report of one of its assignments', executor: true },
-  { name: 'ticket/<id>/transcript', holds: 'its Executor Session\'s messages, newest first', executor: true },
-  { name: 'ticket/<id>/message/<n>', holds: 'one message of that transcript', executor: true },
-  { name: 'ticket/<id>/input/<id>', holds: 'one input it was delivered', executor: true },
-  { name: 'trigger/<id>', holds: 'a trigger\'s text, where it went, the message it replies to and the messages around it on its thread',
+  { name: 'tickets', holds: '工单卡片，最新的在前；就绪汇报后卡片的 state 为 person/review，在上述汇报之后为 person/blocked 或 person/failed，有提问时为 person/answer，输入无法送达 worker 时为 person/delivery，工作期间为 working 或 working/queued，worker 结束回合却未汇报后为 idle，否则为工单结束的方式' },
+  { name: 'triggers', holds: 'Trigger 卡片，含各自去向，最新的在前' },
+  { name: 'threads', holds: '已订阅的 Thread，最新活动在前，含其标签、工单、当前评估与轮询错误' },
+  { name: 'thread/<key>', holds: '单个 Thread：其标签与链接、其工单与最新决策，以及其 Trigger，最新的在前', executor: true },
+  { name: 'decisions', holds: '决策，最新的在前' },
+  { name: 'decision/<id>', holds: '单个决策及其审计信息' },
+  { name: 'ticket/<id>', holds: '一个工单的卡片、它所关联的 Trigger、决策与 Thread、其最新 Assignment（含每份汇报的开头）'
+    + '，以及其输入，最新的在前', executor: true },
+  { name: 'ticket/<id>/assignment', holds: '其 Assignment 文本', executor: true },
+  { name: 'ticket/<id>/assignments', holds: '其 Assignment，最新的在前，含每份汇报的开头', executor: true },
+  { name: 'ticket/<id>/inputs', holds: '其输入，最新的在前', executor: true },
+  { name: 'ticket/<id>/result', holds: '其最新汇报', executor: true },
+  { name: 'ticket/<id>/report/<id>', holds: '其某个 Assignment 的汇报', executor: true },
+  { name: 'ticket/<id>/transcript', holds: '其 Executor Session 的消息，最新的在前', executor: true },
+  { name: 'ticket/<id>/message/<n>', holds: '该对话记录中的一条消息', executor: true },
+  { name: 'ticket/<id>/input/<id>', holds: '送达它的一条输入', executor: true },
+  { name: 'trigger/<id>', holds: '一个 Trigger 的文本、它的去向、它所回复的消息以及其 Thread 上前后相邻的消息',
     executor: true },
-  { name: 'settings', holds: 'settings by block, each with the revision a save names: the small blocks whole, the Policy and the Source '
-    + 'instances summarized' },
-  { name: 'settings/<block>', holds: 'one settings block whole, as orchestrator_settings_save takes it: policy, eval, executor, pause or '
+  { name: 'settings', holds: '按块划分的设置，每块带有一次保存所指的修订：小块给出全文，Policy 与 Source '
+    + '实例给出摘要' },
+  { name: 'settings/<block>', holds: '一个设置块的全文，与 orchestrator_settings_save 接受的形式一致：policy、eval、executor、pause 或 '
     + 'source:<id>' },
-  { name: 'prompts', holds: 'the prompt revision each Session reads, the skills, and the saved versions' },
-  { name: 'prompts/<revision>', holds: 'one prompt version by number, or current, the one the Session works under', executor: true },
-  { name: 'prompts/defaults', holds: 'the built-in prompt configuration, and the built-in parts by the key an override names' },
-  { name: 'prompt-preview/<id>', holds: 'a composed prompt that orchestrator_prompts_save previewed' },
-  { name: 'models', holds: 'model providers, the DSH default and each role\'s model' },
-  { name: 'models/<provider>', holds: 'one provider\'s models' },
-  { name: 'feishu/<trigger-id>/…', holds: 'a Feishu original, as the dsh-superagent-feishu skill describes', executor: true },
-  { name: 'github/…', holds: 'a GitHub original, as the dsh-superagent-github skill describes', executor: true },
+  { name: 'prompts', holds: '每个 Session 读取的提示词修订、技能，以及已保存的版本' },
+  { name: 'prompts/<revision>', holds: '按编号取一个提示词版本，或 current，即该 Session 当前使用的版本', executor: true },
+  { name: 'prompts/defaults', holds: '内置提示词配置，以及按覆盖项所指 key 索引的内置片段' },
+  { name: 'prompt-preview/<id>', holds: 'orchestrator_prompts_save 预览过的合成提示词' },
+  { name: 'models', holds: '模型 provider、DSH 默认模型与每个角色的模型' },
+  { name: 'models/<provider>', holds: '某个 provider 的模型' },
+  { name: 'feishu/<trigger-id>/…', holds: '飞书原文，如 dsh-superagent-feishu 技能所述', executor: true },
+  { name: 'github/…', holds: 'GitHub 原文，如 dsh-superagent-github 技能所述', executor: true },
 ]
 export const resourceGrammar = (executor: boolean): string => RESOURCES.filter(resource => !executor || resource.executor)
   .map(resource => `${resource.name}: ${resource.holds}`).join('; ')

@@ -61,11 +61,11 @@ declare module '@deepseek-ai/cordis' {
 const WORK_TOOLS = ['read', 'write', 'edit', 'read_image', 'glob', 'grep', 'bash', 'pwsh', 'job_output', 'job_list', 'job_kill', 'web_search',
   'web_fetch', 'skill', 'todo_write', 'subagent', 'list_subagent_models', 'send_message', 'list_agents', 'interrupt_agent']
 /** 主 Session 在将要等待时被告知的内容：它等待的东西会自己送达，而一个等待步骤会挡住下一步。 */
-const NO_WAIT = 'Reports, follow_up notices, new candidates and a background job\'s end with its output arrive by themselves as messages; '
-  + 'end the turn instead of waiting for them.'
+const NO_WAIT = '汇报、follow_up 通知、新候选，以及后台 job 的结束及其输出，都会自己以消息形式送达；'
+  + '结束本回合，不要等待它们。'
 /** `standard` 下的主 Session 在其命令将按 shell 默认值等待时被告知的内容。 */
-const DEFAULT_WAIT = 'This shell waits up to 60 seconds by default: pass timeoutMs of at most 30000, or run_in_background, '
-  + 'as a waiting step holds back new candidates.'
+const DEFAULT_WAIT = '该 shell 默认最多等待 60 秒：请传 timeoutMs（最多 30000），或使用 run_in_background，'
+  + '因为等待中的步骤会挡住新候选。'
 /** 命令位置上的 `sleep`：开头，; & | ( { ! ` 或换行之后，或某个关键字、某条执行它的命令之后。 */
 const SLEEP = /(?:^|[;&|({!`\n]|\b(?:do|then|else|elif|if|while|until|time|exec|nohup|command|env)\s)\s*(?:\S*\/)?sleep\b/
 /**
@@ -319,7 +319,7 @@ export class Sessions {
     for (const [name, content] of this.host.prompts.skills(version.config)) {
       const bundled = name === 'feishu' || name === 'github' ? bundledSkills[name] : undefined
       const body = version.config.skills[name] ?? ''
-      const description = bundled?.description ?? (body.replace(/\s+/g, ' ').slice(0, 120) || 'Custom dsh-superagent operational skill.')
+      const description = bundled?.description ?? (body.replace(/\s+/g, ' ').slice(0, 120) || '自定义 dsh-superagent 运维技能。')
       disposers.push(scope.skills.register({ name: `${SKILL_PREFIX}${name}`, description, content, source: 'runtime',
         ...(bundled ? { resourceBase: { kind: 'directory' as const, path: dirname(bundled.path) } } : {}) }))
     }

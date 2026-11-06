@@ -18,7 +18,7 @@ export const automatic = (input: TicketInput | undefined): boolean => input?.kin
  */
 const readBefore = (input: Extract<TicketInput, { kind: 'trigger' }>, until: string): boolean => input.readAt === undefined
   ? (input.deliveredAt && input.deliveredAt > input.at ? input.deliveredAt : input.at) <= until : !!input.readAt && input.readAt < until
-const STATUS_REQUEST = 'Report the current ticket status with orchestrator_report. This is a status-only request: do not resume implementation or perform external actions.'
+const STATUS_REQUEST = '用 orchestrator_report 汇报当前工单状态。这只是状态请求：不要恢复实现，也不要执行外部操作。'
 
 /**
  * 管理每个 ticket 的生命周期：为 accept 决策创建带 Mandate、订阅与首个 Assignment 的 ticket，绑定并附加 Thread，

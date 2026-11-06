@@ -23,7 +23,7 @@ export const tool = <S extends z.ZodType>(definition: Tool<S>): Tool => definiti
 
 /** 面向人的确认文本，无论投递到哪个渠道都受 `IM_WORDS` 限制。 */
 export const AcknowledgementSchema = z.string().trim().min(1)
-  .refine(text => wordCount(text) <= IM_WORDS, `An acknowledgement has at most ${IM_WORDS} words (Chinese uses word segmentation); write one short sentence.`)
+  .refine(text => wordCount(text) <= IM_WORDS, `确认最多 ${IM_WORDS} 个词（中文按分词计数）；请写一句简短的话。`)
 /**
  * 构建 `orchestrator_read` 工具，把允许的资源模式限定为主 Session 或 Executor Session
  * （后者只能读取自己的工单与已送达它的消息）。
@@ -34,10 +34,10 @@ export function readTool(description: string, executor: boolean,
     name: 'orchestrator_read',
     description,
     schema: z.object({
-      resource: z.string().min(1).describe(`The resource, one of: ${resourceGrammar(executor)}.`),
-      offset: z.number().int().min(0).default(0).describe('Copy next_offset from the previous page; it counts characters of a text and items of a list.'),
+      resource: z.string().min(1).describe(`资源，取以下之一：${resourceGrammar(executor)}。`),
+      offset: z.number().int().min(0).default(0).describe('原样复制上一页的 next_offset；它按文本的字符数与列表的条目数计数。'),
       limit: z.number().int().min(1).max(8000).optional()
-        .describe('Characters of a text, 4000 by default and 8000 at most, or items of a list, 20 by default and 50 at most.'),
+        .describe('文本的字符数，默认 4000、最多 8000；或列表的条目数，默认 20、最多 50。'),
     }).strict(),
     execute: async (args, signal) => read(args.resource, args.offset, args.limit, signal),
   })

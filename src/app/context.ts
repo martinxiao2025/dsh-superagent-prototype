@@ -23,7 +23,7 @@ export const mainAdmissionPolicy = promptFile('admission')
 const handoff = { shared: promptFile('handoff'), orchestrator: promptFile('handoff-orchestrator'), worker: promptFile('handoff-worker') }
 export const handoffPolicy = (role: 'orchestrator' | 'worker'): string => `${handoff.shared}\n${handoff[role]}`
 
-export const autoMergeThreshold = (lines: number): string => `it changes fewer than ${lines} lines (additions plus deletions);`
+export const autoMergeThreshold = (lines: number): string => `变更行数少于 ${lines} 行（新增与删除合计）；`
 
 /** 保留消息内容，同时省略流式分块、用量统计与推理块。 */
 export function transcriptEntry(event: SessionEvent) {

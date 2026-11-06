@@ -18,7 +18,7 @@ export interface WorkerReport {
   /** 该报告所回答的人的问题，worker 因此接手了它；由此授权主 Session 发送回答回复。 */
   answers?: string
 }
-const RECOVERY_NOTE = 'The host restarted during this ticket. Inspect the current worktree, git history and GitHub state before continuing. Do not repeat an already completed external operation. Finish the original assignment and report its status.'
+const RECOVERY_NOTE = '宿主在该工单期间重启过。继续之前，请检查当前 worktree、git 历史与 GitHub 状态。不要重复已完成的外部操作。完成原 Assignment，并汇报其状态。'
 
 /**
  * Assignments 记录 Executor 及其 worker 就运行 ticket 的 Assignment 所报告的内容：某个 Assignment 已启动、Input 抵达

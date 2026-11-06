@@ -713,7 +713,7 @@ describe('interrupted assignments', () => {
     const ticket = h.repo.tickets.get(interrupted)!
     expect(ticket.assignments).toEqual([expect.objectContaining({ id: first.id, state: 'ended', endedReason: 'hostRestarted' }),
       expect.objectContaining({ state: 'pending' })])
-    expect(ticket.inputs).toEqual([expect.objectContaining({ kind: 'text', text: expect.stringContaining('The host restarted') })])
+    expect(ticket.inputs).toEqual([expect.objectContaining({ kind: 'text', text: expect.stringContaining('宿主在该工单期间重启过') })])
     expect(ticket.undelivered).toEqual([ticket.inputs[0]!.id])
     expect(h.executor.start).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: interrupted }), ticket.assignments[1])
     // 等待中的 worker 保留其 Session，并取得等待它的内容。
@@ -1123,7 +1123,7 @@ describe('ticket commands', () => {
     expect(h.repo.tickets.get(ticketId)!.inputs).toEqual([])
     h.engine.report(ticketId, { state: 'waiting', summary: 'idle' })
     expect(h.engine.requestStatus(ticketId)).toBe(true)
-    expect(h.repo.tickets.get(ticketId)!.inputs).toEqual([expect.objectContaining({ kind: 'text', text: expect.stringContaining('status-only') })])
+    expect(h.repo.tickets.get(ticketId)!.inputs).toEqual([expect.objectContaining({ kind: 'text', text: expect.stringContaining('这只是状态请求') })])
     h.engine.report(ticketId, { state: 'failed', summary: 'broke' })
     const retried = h.engine.retryTicket(ticketId)
     expect(retried.assignments).toEqual([expect.objectContaining({ state: 'ended', endedReason: 'retried' }), expect.objectContaining({ state: 'pending' })])

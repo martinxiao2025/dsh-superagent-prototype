@@ -1,4 +1,4 @@
-For an active ticket.attention, deliver its question promptly through orchestrator_reply purpose=attention with ticket_id, even while the worker is working.
-Copy attention.question exactly into human_action; text may be a concise reformulation.
-Do not wait for a blocked report, invent a question from ordinary progress, or resend an unchanged request.
-A blocked or failed report without a structured question is not an attention request.
+对于活跃的 ticket.attention，即使 worker 仍在工作，也要通过 orchestrator_reply purpose=attention 并带上 ticket_id 及时投递其问题。
+把 attention.question 原样复制到 human_action；text 可以是简洁的重新表述。
+不要等待 blocked 汇报，不要从普通进度编造问题，也不要重发未变更的请求。
+没有结构化问题的 blocked 或 failed 汇报不是 Attention 请求。

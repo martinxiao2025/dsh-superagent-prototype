@@ -89,23 +89,22 @@ export const sourceTrigger = (host: { store: Pick<Store, 'triggers'> }, ticket: 
  * （`strength === 'inferred'`），把授权限制为规则范围内的小型内部改动；显式请求返回 `''`。
  */
 export function mandateInstructions(mandate: Pick<Mandate, 'strength'>): string {
-  return mandate.strength === 'inferred' ? 'This ticket has limited proactive authorization. Independently verify that it is a small change '
-    + 'internal to one module within the accepted rule scope. If it requires public-interface or behavior changes, new interaction, product '
-    + 'decisions or clarification, stop and report dropped; do not expand scope.' : ''
+  return mandate.strength === 'inferred' ? '该工单只有有限的主动授权。请独立核实它是在已接受规则范围内、单个模块内部的小型改动。'
+    + '若它需要公开接口或行为变更、新的交互、产品决策或澄清，请停下来并汇报 dropped；不要扩大范围。' : ''
 }
 /** 构建新接受工单的 Execution 元数据：worktree 名称、工作区目录与 assignment 文本。 */
 export function ticketExecution(ticket: Ticket, outcome: Extract<AssessmentOutcome, { kind: 'accept' }>, settings: Settings,
   stateDir: string): Execution {
   const name = ticketWorktreeName(outcome.name ?? '', ticket.id)
   const source = ticket.origin.triggerId
-  const note = outcome.note ? `\nRouting note (not the source request): ${outcome.note}` : ''
+  const note = outcome.note ? `\n路由说明（不是来源请求）：${outcome.note}` : ''
   const ruleIds = ticket.mandate.basis.rules
   const rules = settings.policy.rules.filter(rule => ruleIds?.includes(rule.id))
     .map(rule => `\n- ${rule.name} (${rule.id}): ${rule.instruction}`).join('')
-  const precedence = rules ? `\nMatched rules; their procedure and communication instructions take precedence over the default acknowledgement and messaging policy for this ticket:${rules}` : ''
+  const precedence = rules ? `\n匹配到的规则；它们的过程与沟通指令优先于该工单默认的确认与消息发送 Policy：${rules}` : ''
   // 来源 trigger 会与 assignment 一同投递，因此 `assignment` 中省略 trigger 文本。
   const assignment = ticket.mandate.strength === 'inferred' && ruleIds
-    ? `Proactively accepted under ${ruleIds.join(', ')}. Scope: ${outcome.scope}.${precedence}${note}`
+    ? `依据 ${ruleIds.join(', ')} 主动接受。范围：${outcome.scope}。${precedence}${note}`
     : note.trim()
   return { name, directory: join(executionRoot(settings, stateDir), name), assignment }
 }
@@ -129,22 +128,22 @@ export const batchLine = (trigger: Trigger) => ({ trigger_id: trigger.id, from: 
 /** 返回工单来源批次中的其他 trigger（不含主 `origin.triggerId`），按时间从旧到新。 */
 export const batchOf = (host: { store: Pick<Store, 'triggers'> }, ticket: Ticket): Trigger[] => ticket.origin.triggerIds
   .filter(id => id !== ticket.origin.triggerId).flatMap(id => host.store.triggers.get(id) ?? [])
-const RESUMED = 'This ticket ended earlier and the message that follows, on its thread, resumed it under the same mandate. If it asks for '
-  + 'more within the original scope, inspect the worktree, git history and PR state and continue; if it asks for work beyond that scope or '
-  + 'for another ticket, hand it back with orchestrator_trigger_handback and report dropped; if it needs nothing, such as thanks, '
-  + 'report dropped without a message. Report ready when the follow-up is done. Do not repeat completed work.'
-const RETRIED = 'A person retried this ticket. Continue the assignment from the current worktree, git history and PR state.'
+const RESUMED = '该工单此前已结束，其后在它的 Thread 上出现的消息已在同一 mandate 下恢复它。若它在原始范围内要求更多，'
+  + '请检查 worktree、git 历史与 PR 状态并继续；若它要求超出该范围的工作或另一个工单的工作，请用 orchestrator_trigger_handback '
+  + '交还，并汇报 dropped；若它不需要任何事，例如只是道谢，请不发消息地汇报 dropped。'
+  + '后续完成时汇报 ready。不要重复已完成的工作。'
+const RETRIED = '有人重试了该工单。请从当前 worktree、git 历史与 PR 状态继续该 Assignment。'
 /** 为 worker 格式化策略变更输入；在 `effect` 出现之前记录的输入退回为通用通知。 */
 function policyMessage(effect?: PolicyEffect): string {
-  if (!effect) return 'Policy change: the access or admission rules changed. Check that the remaining work stays within the assignment.'
-  return ['Policy change:',
+  if (!effect) return 'Policy 变更：访问或准入规则已改变。请检查剩余工作是否仍在该 Assignment 内。'
+  return ['Policy 变更：',
     ...(effect.rules ?? []).map(rule => rule.change === 'disabled'
-      ? `Rule ${rule.name} (${rule.id}), which this ticket was accepted under, no longer applies: finish only a change within it, or report dropped.`
-      : `Rule ${rule.name} (${rule.id}), which this ticket was accepted under, changed. Keep the remaining work within it as it reads now: ${rule.instruction}`),
-    ...effect.proactive === false ? ['Work inferred from a rule is no longer accepted, as the accept mode is no longer auto: finish only '
-      + 'what is in progress within the assignment, or report dropped, and take on nothing new.'] : [],
-    ...effect.requesterAllowed === false ? [`The sender this ticket is for, ${effect.requester ? `${effect.requester.id} on ${effect.requester.source}` : 'who '
-      + 'asked for it'}, may no longer start work here: finish the assignment within its scope, and take no new requests from them on it.`] : []].join('\n')
+      ? `该工单接受时所依据的规则 ${rule.name} (${rule.id}) 已不再适用：只完成其范围内的改动，或汇报 dropped。`
+      : `该工单接受时所依据的规则 ${rule.name} (${rule.id}) 已变更。请按它现在的表述，让剩余工作保持在其范围内：${rule.instruction}`),
+    ...effect.proactive === false ? ['由规则推断出的工作不再被接受，因为接受模式已不再是 auto：只完成该 Assignment 内正在进行的工作，'
+      + '或汇报 dropped，并且不承接任何新工作。'] : [],
+    ...effect.requesterAllowed === false ? [`${effect.requester ? `该工单所针对的发送者 ${effect.requester.id}（来源 ${effect.requester.source}）` : '该请求的发送者'}`
+      + '已不能再在此启动工作：请在其范围内完成该 Assignment，并且不再受理来自该发送者的新请求。'] : []].join('\n')
 }
 /** worker 会话读取工单输入全文所使用的资源路径。 */
 export const inputResource = (ticketId: string, inputId: string): string => `ticket/${ticketId}/input/${key(inputId)}`
@@ -159,7 +158,7 @@ export function inputMessage(input: TicketInput, trigger?: object): string | und
     ...input.context ? { context: true } : {} })
   if (input.kind === 'policy-changed') return policyMessage(input.effect)
   if (input.kind === 'resumed') return RESUMED
-  if (input.kind === 'note') return `Note from the orchestrator, for context only: ${input.text}`
+  if (input.kind === 'note') return `来自 orchestrator 的说明，仅供上下文参考：${input.text}`
   return input.kind === 'text' ? input.text : undefined
 }
 /**

@@ -16,22 +16,22 @@ import { AcknowledgementSchema } from './tools/tool.ts'
 import type { Effects } from './effects.ts'
 
 /** 短小写 kebab-case 英文工单 worktree 名称的 schema（1–4 个词，最多 32 个字符）。 */
-export const WorktreeNameSchema = z.string().max(32).regex(/^[a-z]+(?:-[a-z0-9]+){0,3}$/, 'Use 1–4 short English words in lowercase kebab-case, at most 32 characters').describe('Meaningful short English ticket name, e.g. fix-plan-color. Translate Chinese titles into English; no Chinese, pinyin or generic ticket names. 1–4 lowercase words in kebab-case, at most 32 characters.')
+export const WorktreeNameSchema = z.string().max(32).regex(/^[a-z]+(?:-[a-z0-9]+){0,3}$/, '请用 1–4 个简短英文词，全部小写，采用 kebab-case，最多 32 个字符').describe('有意义而简短的英文工单名，例如 fix-plan-color，与技术栈、工单标题或显示名无关。把中文标题译成英文；不得使用中文、拼音或泛泛的工单名。1–4 个小写英文词，采用 kebab-case，最多 32 个字符。')
 /** 主 Session 主动候选评估决策（`orchestrator_eval_decide`）的 schema。 */
 export const AssessmentSchema = z.object({
   decision: z.enum(['accept', 'ignore', 'unavailable']),
   rule_assessments: z.array(RuleAssessmentSchema)
     .refine(assessments => new Set(assessments.map(assessment => assessment.rule_id)).size === assessments.length,
-      'Duplicate rule assessment IDs').describe('One per enabled rule.'),
-  direction: AdmissionDirectionSchema.describe('Required for every decision.'),
+      'rule_id 重复的规则评估').describe('每条已启用规则一条。'),
+  direction: AdmissionDirectionSchema.describe('每个决定都必须提供。'),
   title: z.string().min(1).max(160),
   worktree_name: WorktreeNameSchema.optional(),
   scope: z.string().max(1500),
-  intent_evidence: z.string().trim().min(1).max(700).nullish().describe('For acceptance: the quotes that establish the three facts.'),
-  acknowledgement: AcknowledgementSchema.nullish().describe('For acceptance: one sentence in the source language, posted as a reply to the trigger; omit only when a matched rule asks for silence.'),
+  intent_evidence: z.string().trim().min(1).max(700).nullish().describe('接受时：确立这三个事实的原文引用。'),
+  acknowledgement: AcknowledgementSchema.nullish().describe('接受时：一句用 Source 语言写的话，作为对该 Trigger 的回复发出；仅在匹配的规则要求静默时省略。'),
   reason: z.string().min(1).max(500),
 }).strict().refine(value => value.decision !== 'accept' || !directionAllowed(value.direction) || !value.rule_assessments.some(rule => rule.matched)
-  || !!value.worktree_name, { message: 'Accepted work requires a short English worktree_name', path: ['worktree_name'] })
+  || !!value.worktree_name, { message: '接受的工作需要一个简短的英文 worktree_name', path: ['worktree_name'] })
 
 /** 初始 thread 窗口的字符上限：分别用于 trigger 本身、其最近的两条邻居、窗口内其他消息与 stub 预览。 */
 const TRIGGER_CHARS = 4000, NEAR_CHARS = 1200, WINDOW_CHARS = 400, STUB_CHARS = 50
@@ -65,18 +65,18 @@ export interface AssessorHost {
 
 /** 活跃评估期间有界上下文或仓库读取请求（`orchestrator_eval_read`）的 schema。 */
 export const EvalReadSchema = z.object({
-  trigger_id: z.string().min(1).describe('Original candidate ID returned by orchestrator_eval; every reference is scoped to this trigger.'),
+  trigger_id: z.string().min(1).describe('orchestrator_eval 返回的原始候选 ID；每个引用都限定在这个 Trigger 内。'),
   resource: z.enum(['message', 'root', 'parent', 'thread', 'file', 'directory', 'image']),
-  path: z.string().optional().describe('Repository-relative path, only for file/directory.'),
-  message_id: z.string().optional().describe('Only for message: omit for the trigger, or the id of a window message or stub.'),
-  cursor: z.string().optional().describe('Only for thread: omit on the first page, then the next_cursor of the window or the cursor of next_read. Never a thread or message ID.'),
-  image_id: z.string().optional().describe('Only for image: an image id the window or a read lists.'),
-  offset: z.number().int().min(0).default(0).describe('Text pagination: copy next_offset; keep the other arguments unchanged. Images use 0.'),
+  path: z.string().optional().describe('相对仓库的路径，仅用于 file/directory。'),
+  message_id: z.string().optional().describe('仅用于 message：省略则取该 Trigger，或给出窗口内某条消息或存根的 id。'),
+  cursor: z.string().optional().describe('仅用于 thread：首页省略，之后用窗口的 next_cursor 或 next_read 的 cursor。绝不要用 Thread 或消息 ID。'),
+  image_id: z.string().optional().describe('仅用于 image：窗口或某次读取列出的图片 id。'),
+  offset: z.number().int().min(0).default(0).describe('文本分页：原样复制 next_offset；其它参数保持不变。图片使用 0。'),
 }).strict().superRefine((read, ctx) => {
-  if ((read.resource === 'file' || read.resource === 'directory') !== (read.path !== undefined)) ctx.addIssue({ code: 'custom', message: 'path is required only for file/directory. To read the source/root/parent, use resource=message/root/parent without a path.' })
-  if (read.message_id !== undefined && read.resource !== 'message') ctx.addIssue({ code: 'custom', message: 'message_id is only for message; use returned image_id for images.' })
-  if (read.cursor !== undefined && read.resource !== 'thread') ctx.addIssue({ code: 'custom', message: 'cursor is only for thread. First page: {resource:"thread"}.' })
-  if ((read.resource === 'image') !== (read.image_id !== undefined)) ctx.addIssue({ code: 'custom', message: 'Images require image_id from a returned read reference. Read the thread or root first to discover their images.' })
+  if ((read.resource === 'file' || read.resource === 'directory') !== (read.path !== undefined)) ctx.addIssue({ code: 'custom', message: 'path 只与 file/directory 搭配时必需。要读取 source/root/parent，请使用 resource=message/root/parent 且不带 path。' })
+  if (read.message_id !== undefined && read.resource !== 'message') ctx.addIssue({ code: 'custom', message: 'message_id 只用于 message；图片请使用返回的 image_id。' })
+  if (read.cursor !== undefined && read.resource !== 'thread') ctx.addIssue({ code: 'custom', message: 'cursor 只用于 thread。第一页：{resource:"thread"}。' })
+  if ((read.resource === 'image') !== (read.image_id !== undefined)) ctx.addIssue({ code: 'custom', message: '图片需要来自某次返回的读取引用的 image_id。请先读取 thread 或 root，以发现其中的图片。' })
 })
 /** `MasterAssessor.read` 校验后的参数。 */
 export type EvalRead = z.infer<typeof EvalReadSchema>

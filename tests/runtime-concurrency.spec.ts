@@ -600,7 +600,7 @@ describe('a worker whose work runs in the background', () => {
     h.runtime.executor.resume()
     expect(h.agents.get(one.sessionId)!.cancel).toHaveBeenCalledWith({ kind: 'user' }, { keepInbox: true })
     await vi.waitFor(() => expect(h.jobs.service.kill).toHaveBeenCalledWith(job, one.sessionId, expect.any(String)))
-    expect(h.runtime.store.tickets.get(one.ticket.id)!.inputs).toEqual([expect.objectContaining({ kind: 'text', text: expect.stringContaining('host restarted') })])
+    expect(h.runtime.store.tickets.get(one.ticket.id)!.inputs).toEqual([expect.objectContaining({ kind: 'text', text: expect.stringContaining('宿主在该工单期间重启过') })])
   })
   it('stops a ticket whose worker Session was never created without a health error, and goes on past a failing kill', async () => {
     const settings = h.runtime.store.settings()
@@ -891,11 +891,11 @@ describe('the Executor\'s parts', () => {
     expect(execution).toEqual(expect.objectContaining({ name: 'fix-typo-ticket-01234' }))
     expect(execution).not.toHaveProperty('session')
     // 源 Trigger 随 assignment 一起传递，因此文本不会指向它。
-    expect(execution.assignment).toContain('Scope: the typo.')
+    expect(execution.assignment).toContain('范围：the typo。')
     expect(execution.assignment).not.toContain('trigger/tr1')
     expect(ticketExecution({ ...ticket, mandate: { ...ticket.mandate, strength: 'explicit' } } as Ticket,
       { kind: 'accept', title: 'Fix', scope: 'Fix', reason: 'r', name: 'fix-login', note: 'the login page' } as never, settings, '/state').assignment)
-      .toBe('Routing note (not the source request): the login page')
+      .toBe('路由说明（不是来源请求）：the login page')
     // worker 的 system prompt 中已包含推断 Mandate 设定的限制，因此 assignment 不会重复它们。
     expect(execution.assignment).not.toContain(mandateInstructions(ticket.mandate))
     expect(execution.assignment).toContain('- Copy fixes (copy): Fix typos only.')
@@ -917,14 +917,14 @@ describe('the Executor\'s parts', () => {
     const changed = inputMessage({ id: 'i3', kind: 'policy-changed', at: '', from: 'v1', to: 'v2', effect: { requesterAllowed: false,
       requester: { source: 'github', id: 'ci-bot' },
       rules: [{ id: 'copy', name: 'Copy fixes', change: 'changed', instruction: 'Fix typos only.' }, { id: 'visual', name: 'Visual', change: 'disabled' }] } })!
-    expect(changed).toContain('Rule Copy fixes (copy), which this ticket was accepted under, changed. Keep the remaining work within it as it reads now: Fix typos only.')
-    expect(changed).toContain('Rule Visual (visual), which this ticket was accepted under, no longer applies')
+    expect(changed).toContain('该工单接受时所依据的规则 Copy fixes (copy) 已变更。请按它现在的表述，让剩余工作保持在其范围内：Fix typos only.')
+    expect(changed).toContain('该工单接受时所依据的规则 Visual (visual) 已不再适用')
     // 会指明发送者，bot 按人对待。
-    expect(changed).toContain('The sender this ticket is for, ci-bot on github, may no longer start work here')
+    expect(changed).toContain('该工单所针对的发送者 ci-bot（来源 github）已不能再在此启动工作')
     expect(changed).not.toContain('person')
     expect(changed).not.toContain('v2')
     const mode = inputMessage({ id: 'i6', kind: 'policy-changed', at: '', from: 'v1', to: 'v2', effect: { proactive: false } })!
-    expect(mode).toContain('Work inferred from a rule is no longer accepted, as the accept mode is no longer auto')
+    expect(mode).toContain('由规则推断出的工作不再被接受，因为接受模式已不再是 auto')
     expect(mode).not.toContain('sender')
     expect(inputMessage({ id: 'i5', kind: 'resumed', at: '', triggerId: 'tr2' })).not.toContain('tr2')
     expect(inputMessage({ id: 'i4', kind: 'reopen', at: '' } as never)).toBeUndefined()

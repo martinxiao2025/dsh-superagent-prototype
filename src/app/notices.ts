@@ -59,8 +59,7 @@ export function eventNotice(event: DomainEvent, ticket: (id: string) => Ticket |
   if (event.type === 'thread.unsubscribed' && event.data.by === 'person') return subscriptionNotice(event.data.threadKey, at)
   if (event.type === 'thread.unsubscribed') {
     const { ticketId, threadKey: thread, reason } = event.data
-    const note = 'Its Executor found this thread unrelated after reading it; attach later triggers there to this ticket only when they '
-      + 'point at it explicitly.'
+    const note = '其 Executor 阅读后认为该 Thread 不相关；只有当后续 Trigger 明确指向该 Thread 时，才把它们关联到本工单。'
     return receiptNotice({ thread_unrelated: { ticket_id: ticketId, thread, reason }, at, note },
       `工单 ${ticketId} 不再关注 Thread ${thread}：${reason}`)
   }
@@ -70,14 +69,14 @@ export function eventNotice(event: DomainEvent, ticket: (id: string) => Ticket |
 /** 当工单的 worker 仅为上下文而关注相关 thread 时，构建后台通知。 */
 export const threadFollowedNotice = (ticketId: string, thread: string, reason: string): Notice =>
   receiptNotice({ thread_followed: { ticket_id: ticketId, thread, reason },
-    note: 'For context only: its messages reach this ticket and grant nothing.' },
+    note: '仅供上下文参考：其消息会送达本工单，但不授予任何权限。' },
     `工单 ${ticketId} 为获取上下文而关注 Thread ${thread}：${reason}`)
 
 /** 面向主 Session 的引导中继载荷：`id` 是保证投递幂等的 request ID，`text` 是消息正文。 */
 export interface Relay { id: string; text: string }
 /** 后续跟进对主 Session 的要求：除了真人要求的停止之外别无其他，因为该工单的 worker 会自行决定。 */
-const FOLLOWUP_NOTE = 'Its ticket\'s worker has it and decides; act only if the person asks to stop the work '
-  + '(orchestrator_route kind stop with this trigger_id).'
+const FOLLOWUP_NOTE = '该工单的 worker 已接手并自行决定；仅当此人要求停止该工作时才行动'
+  + '（使用 orchestrator_route，kind 为 stop，并带上该 trigger_id）。'
 /**
  * 为至少送达一个未结束工单的真人后续 trigger 构建引导中继（包括因该后续跟进而复活的已结束工单），
  * 其中 trigger 按 worker 读取的形式呈现，并附上所回复的消息与它送达的未结束工单；

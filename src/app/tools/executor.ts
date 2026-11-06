@@ -23,14 +23,14 @@ export interface ExecutorToolsHost {
 export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
   const ticketId = ticket.id
   return [
-    readTool('Read one page of a resource of this ticket that the resource parameter lists. Follow next_offset, and next_resource where a page names one.',
+    readTool('读取 resource 参数所列的、属于本工单的资源的一页。请跟随 next_offset，页面给出 next_resource 时也跟随它。',
       true, (resource, offset, limit, signal) => readResource(host.resources, resource, offset, limit, ticketId, signal)),
     tool({
       name: 'orchestrator_ack',
-      description: 'Acknowledge one original human request before substantial work, as the replies section says; it posts as a reply to that message.',
+      description: '按 replies 一节所述，在实质性工作之前确认一条原始的人为请求；它作为对该消息的回复发出。',
       schema: z.object({
         trigger_id: z.string(),
-        text: AcknowledgementSchema.describe(`At most ${IM_WORDS} words; Markdown is supported.`),
+        text: AcknowledgementSchema.describe(`最多 ${IM_WORDS} 个词；支持 Markdown。`),
       }).strict(),
       execute: async args => {
         const reply = host.engine.reply({ purpose: 'acknowledgement', ticketId, triggerId: args.trigger_id, text: args.text })
@@ -40,23 +40,23 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
     }),
     tool({
       name: 'orchestrator_thread_unrelated',
-      description: 'Stop following an attached thread that is not about this ticket, as the work section says; its own threads cannot be dropped.',
+      description: '按 work 一节所述，停止跟随一个不关于本工单的已附加 Thread；它自己的 Thread 不能被去掉。',
       schema: z.object({
-        thread: z.string().min(1).describe('The thread key, which trigger/<id> of one of its messages shows as thread, such as feishu:<chat>:<root> or github:<number>.'),
-        reason: z.string().trim().min(1).max(300).describe('One sentence on why the thread is not about this ticket.'),
+        thread: z.string().min(1).describe('Thread 键；它某条消息的 trigger/<id> 会以 thread 显示该键，例如 feishu:<chat>:<root> 或 github:<number>。'),
+        reason: z.string().trim().min(1).max(300).describe('一句话说明该 Thread 为何不关于本工单。'),
       }).strict(),
       execute: async args => { host.engine.markUnrelated(ticketId, args.thread, args.reason); return { removed: true, thread: args.thread } },
     }),
     tool({
       name: 'orchestrator_thread_follow',
-      description: 'Follow a related thread, such as an Issue or another PR, for context only.',
+      description: '仅作为上下文跟随一个相关的 Thread，例如某个 Issue 或另一个 PR。',
       schema: z.object({
-        thread: z.string().describe('Thread key, such as github:<number>.'),
-        reason: z.string().trim().min(1).max(300).describe('How it relates, in one sentence.'),
+        thread: z.string().describe('Thread 键，例如 github:<number>。'),
+        reason: z.string().trim().min(1).max(300).describe('用一句话说明它如何相关。'),
       }).strict(),
       execute: async args => host.store.atomic(() => {
         const at = args.thread.indexOf(':')
-        if (at < 1 || at === args.thread.length - 1) throw new Error('A thread key is <source>:<id>, such as github:<number>')
+        if (at < 1 || at === args.thread.length - 1) throw new Error('Thread 键的形式是 <source>:<id>，例如 github:<number>')
         const followed = host.engine.followForContext(ticketId, { source: args.thread.slice(0, at), id: args.thread.slice(at + 1) })
         if (followed) host.sessions.notify(...threadFollowedNotice(ticketId, args.thread, args.reason))
         return { followed, thread: args.thread }
@@ -64,27 +64,27 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
     }),
     tool({
       name: 'orchestrator_trigger_handback',
-      description: 'Hand back a message that asks for work beyond this ticket or for another one, for a fresh assessment; once per message. queued is false while another ticket still decides it, and for a message that was never this ticket\'s to decide, such as a bot\'s, which is assessed without it.',
+      description: '把要求本工单之外或另一张工单的工作的消息交回，以做一次新的评估；每条消息只交回一次。另一张工单仍在决定它时，queued 为 false；对于从来不该由本工单决定的消息，例如机器人的消息，queued 也为 false，那种消息会在没有这次交回的情况下照常被评估。',
       schema: z.object({
         trigger_id: z.string().min(1),
-        reason: z.string().trim().min(1).max(300).describe('One sentence on what it asks for beyond this ticket.'),
+        reason: z.string().trim().min(1).max(300).describe('一句话说明它要求了本工单之外的什么。'),
       }).strict(),
       execute: async args => ({ trigger_id: args.trigger_id, queued: host.engine.handback(ticketId, args.trigger_id, args.reason) }),
     }),
     tool({
       name: 'orchestrator_report',
-      description: 'Report progress, ready, blocked, failed or dropped, as the work and handoff sections say.',
+      description: '按 work 与 handoff 两节所述，汇报 progress、ready、blocked、failed 或 dropped。',
       schema: z.object({
         state: z.enum(['progress', 'ready', 'blocked', 'failed', 'dropped']),
         summary: z.string().min(1),
-        human_action: z.string().trim().min(1).max(1000).nullish().describe('One concrete question for a person, also with state=progress; omit to keep the pending one, null to clear it.'),
-        question_for_trigger_id: z.string().optional().describe('With human_action: the human message that raised the question, which is asked where that person wrote.'),
-        pr_number: z.number().int().positive().nullish().describe(`The ticket's PR: its source PR, or one by ${host.github.deployment.github.login} from a branch named after this ticket (DSH_SUPERAGENT_NAME).`),
-        reply_to_trigger_id: z.string().optional().describe('The explicit human question this report answers; never for ordinary progress.'),
+        human_action: z.string().trim().min(1).max(1000).nullish().describe('向人提出的一个具体问题，state=progress 时也可用；省略则保留待处理的问题，null 则清除它。'),
+        question_for_trigger_id: z.string().optional().describe('配合 human_action：提出该问题的人的消息；问题会在那个人写下它的地方提出。'),
+        pr_number: z.number().int().positive().nullish().describe(`该工单的 PR：它的 Source PR，或由 ${host.github.deployment.github.login} 从以本工单命名的分支（DSH_SUPERAGENT_NAME）创建的 PR。`),
+        reply_to_trigger_id: z.string().optional().describe('本次汇报所回答的显式的人的问题；普通进度绝不要用它。'),
       }).strict(),
       execute: async (args, signal) => {
         const current = host.store.tickets.get(ticketId)
-        if (!current || !liveTicket(current)) throw new Error('Ticket ended (PR was closed or work finished); do not resume it')
+        if (!current || !liveTicket(current)) throw new Error('工单已结束（PR 已关闭或工作已完成）；不要恢复它')
         const pull = args.pr_number != null ? await readPull(host.github, args.pr_number, signal) : undefined
         // 原子地认领 PR、记录报告并入队中继，这样 PR 认领被拒或报告无效都不会留下部分状态，而已记录的报告一定能送达主 Session。
         return host.store.atomic(() => {

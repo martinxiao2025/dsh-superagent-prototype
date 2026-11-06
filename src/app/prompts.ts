@@ -41,8 +41,8 @@ export interface PromptVersion { revision: number; previousRevision: number | nu
   legacy?: { config: unknown } }
 export const defaultPrompts = (): PromptConfig => ({ ...teamDefaults, skills: {} })
 
-const ENVIRONMENT_HEADING = 'Execution environment (from this installation\'s settings; it takes precedence over any repository or account named elsewhere in these instructions; an empty value means that part is not configured here). The prepare command of a ticket directory reads the same variables:'
-const POLICY_HEAD = '## Policy\nPolicy version {version}; accept mode {mode}. The accept mode and the rules decide proactive candidates only: an explicit request is routed as dispatch says, in any mode and whatever the rules.'
+const ENVIRONMENT_HEADING = '执行环境（来自本安装的设置；它优先于这些指令中其他任何位置提到的仓库或账号；空值表示该部分在此处未配置）。工单目录的 prepare 命令读取同一组变量：'
+const POLICY_HEAD = '## Policy\nPolicy 版本 {version}；accept 模式 {mode}。accept 模式与规则只决定主动候选：显式请求按 dispatch 所述路由，在任何模式下、无论规则如何。'
 type Role = 'orchestrator' | 'worker'
 /** 团队可覆盖的内置片段：读取它的角色、它的文本，以及模板覆盖必须保留的占位符。 */
 interface BuiltInPart { roles: readonly Role[]; text: string; placeholders?: readonly string[] }
@@ -82,7 +82,7 @@ const fill = (template: string, values: Record<string, string>): string =>
 /** 执行环境片段：带入变量的模板；setup 仍在等待时则说明正在等待。 */
 export function environmentSection(config: PromptConfig, variables: Variable[] | undefined): string {
   return variables ? fill(builtIn(config, 'runtime/environment'), { variables: environmentLines(variables) })
-    : 'Execution environment: dsh-superagent is waiting for setup; the management panel names what is missing.'
+    : '执行环境：dsh-superagent 正在等待 setup；管理面板会指出缺少什么。'
 }
 /**
  * 主 Session 的 Policy 片段：它据以判断主动候选的 Policy 版本与 accept 模式，以及设置中保存的每条已启用规则，
@@ -197,13 +197,13 @@ export class Prompts {
     const environment = environmentSection(config, this.environment()), policy = policySection(this.store.settings(), config)
     return { orchestrator: composePrompt(config, 'orchestrator', environment, policy), worker: composePrompt(config, 'worker', environment),
       parts: { orchestrator: promptParts(config, 'orchestrator', environment, policy), worker: promptParts(config, 'worker', environment) },
-      skills: Object.fromEntries(this.skills(config)), scope: 'Team sections, skills, and overrides of built-in parts, which follow their built-in text until overridden. Workers additionally inherit the host prompt and repository AGENTS.md. Prompt text changes what the agents are told, not what dsh-superagent allows: tool permissions, the gate and account wrappers stay.' }
+      skills: Object.fromEntries(this.skills(config)), scope: '团队片段、技能，以及内置片段的覆盖项，覆盖项在被覆盖之前沿用其内置文本。worker 还会继承宿主提示词与仓库的 AGENTS.md。提示词文本改变的是告知智能体的内容，而不是 dsh-superagent 允许的内容：工具权限、准入校验与账号包装保持不变。' }
   }
   save(value: unknown, baseRevision: number, source: SettingsOrigin): PromptVersion {
     const config = this.validate(value)
     return this.store.atomic(() => {
       const previous = this.current()
-      if (previous.revision !== baseRevision) throw new PromptConflict(`Prompt version changed to ${previous.revision}; compare the latest version before saving`)
+      if (previous.revision !== baseRevision) throw new PromptConflict(`提示词版本已变更为 ${previous.revision}；保存前请先对比最新版本`)
       // 在记录第一个自定义修订之前，先把内置默认值持久化为第 0 版。
       if (previous.revision === 0 && !this.versions.get(0)) this.versions.keep(previous)
       // 每个覆盖项编辑时所依据的内置文本，保留下来以展示升级对它的改动。

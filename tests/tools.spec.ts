@@ -114,9 +114,9 @@ it('answers every routing tool in one shape: the decision it recorded, why, and 
   expect(await route({ kind: 'attach', ticket_id: ticket.id, trigger_id: other.id })).toEqual({ trigger_id: other.id, kind: 'attach',
     reason: expect.any(String), ticket: card })
   const status = await run('orchestrator_ticket_request_status', { ticket_id: ticket.id })
-  expect(status).toEqual({ reason: 'The worker is not waiting; nothing was sent', ticket: card })
+  expect(status).toEqual({ reason: 'worker 并未在等待；未发送任何内容', ticket: card })
   await h.runTool(sessionId, 'orchestrator_report', { state: 'failed', summary: 'The build broke.' })
-  expect(await run('orchestrator_ticket_retry', { ticket_id: ticket.id })).toEqual({ reason: 'Started a new assignment', ticket: card })
+  expect(await run('orchestrator_ticket_retry', { ticket_id: ticket.id })).toEqual({ reason: '已开始新的 Assignment', ticket: card })
   const chatter = feishu('4', '@bot 谢谢')
   h.runtime.receive(chatter); await h.runtime.idle()
   expect(await route({ kind: 'ignore', trigger_id: chatter.id, reason: 'thanks' })).toEqual({ trigger_id: chatter.id, kind: 'ignore', decision: 'ignore',
@@ -154,11 +154,11 @@ it('routes several triggers in one call, in order, and answers a refused or fail
   ] }) as { results: Record<string, unknown>[] }
   expect(results).toEqual([
     { trigger_id: thanks.id, kind: 'ignore', decision: 'ignore', reason: 'Thanks only.' },
-    { trigger_id: request.id, kind: 'stop', refused: 'stop needs ticket_id' },
+    { trigger_id: request.id, kind: 'stop', refused: 'stop 需要 ticket_id' },
     expect.objectContaining({ trigger_id: request.id, kind: 'accept', decision: 'accept', ticket: expect.objectContaining({ title: 'Other' }) }),
     { trigger_id: other.id, kind: 'attach', refused: '未知工单' },
     // 意外失败没有记录任何内容，因此该条目可以再次发送。
-    { trigger_id: more.id, kind: 'attach', refused: 'Not recorded: database is locked; retry this item' },
+    { trigger_id: more.id, kind: 'attach', refused: '未记录：database is locked；请重试该条目' },
   ])
   expect(h.runtime.store.tickets.list()).toHaveLength(2)
 })
@@ -178,10 +178,10 @@ it('refuses alone an item that lacks a field its kind needs or breaks a field\'s
     { kind: 'ignore', trigger_id: e, reason: 'chat', ticket_id: null, title: null, note: null },
   ] }) as { results: Record<string, unknown>[] }
   expect(results).toEqual([
-    { trigger_id: a, kind: 'accept', refused: 'accept needs worktree_name' },
+    { trigger_id: a, kind: 'accept', refused: 'accept 需要 worktree_name' },
     { trigger_id: b, kind: 'accept', refused: expect.stringMatching(/^worktree_name: /) },
-    { trigger_id: c, kind: 'accept', refused: expect.stringMatching(new RegExp(`^note: .*${NOTE_WORDS} words`)) },
-    { trigger_id: d, kind: 'accept', refused: 'accept needs title' },
+    { trigger_id: c, kind: 'accept', refused: expect.stringMatching(new RegExp(`^note: .*${NOTE_WORDS} 个词`)) },
+    { trigger_id: d, kind: 'accept', refused: 'accept 需要 title' },
     { trigger_id: e, kind: 'ignore', decision: 'ignore', reason: 'chat' },
   ])
   expect(h.runtime.store.tickets.list()).toEqual([])
@@ -202,8 +202,8 @@ it('decides a candidate\'s batch with its card\'s trigger: a second accept keeps
   const ticketId = results[0]!.ticket!.ticket_id
   expect(results).toEqual([
     expect.objectContaining({ trigger_id: first.id, decision: 'accept' }),
-    expect.objectContaining({ trigger_id: second.id, decision: 'accept', reason: `Already accepted as ${ticketId}; title and acknowledgement unchanged` }),
-    { trigger_id: second.id, kind: 'ignore', refused: `Decided in this call with ${first.id}, whose Decision took its batch` },
+    expect.objectContaining({ trigger_id: second.id, decision: 'accept', reason: `已被接受为 ${ticketId}；标题与确认未改变` }),
+    { trigger_id: second.id, kind: 'ignore', refused: `本次调用中已用 ${first.id} 决定过，它的 Decision 带走了该批次` },
   ])
   expect(h.runtime.store.tickets.get(ticketId)!.title).toBe('Retitle')
 })
@@ -211,8 +211,8 @@ it('decides a candidate\'s batch with its card\'s trigger: a second accept keeps
 it('states each routing field\'s limit in its description, which the schema leaves to the item\'s check', () => {
   type Schema = { parameters: { properties: { decisions: { items: { properties: Record<string, { description?: string }> } } } } }
   const fields = (h.tools.get(h.runtime.masterId)!.get('orchestrator_route') as unknown as Schema).parameters.properties.decisions.items.properties
-  const limits: Record<string, string[]> = { title: ['200 characters'], worktree_name: ['kebab-case', '32 characters'],
-    acknowledgement: [`${IM_WORDS} words`], note: [`${NOTE_WORDS} words`, 'Never add implementation instructions'], reason: ['500 characters'] }
+  const limits: Record<string, string[]> = { title: ['200 个字符'], worktree_name: ['kebab-case', '32 个字符'],
+    acknowledgement: [`${IM_WORDS} 个词`], note: [`${NOTE_WORDS} 个词`, '绝不添加实现指令'], reason: ['500 个字符'] }
   for (const [field, phrases] of Object.entries(limits)) for (const phrase of phrases) expect(fields[field]!.description, field).toContain(phrase)
 })
 
@@ -259,7 +259,7 @@ it('checks an acknowledgement against the IM word limit, not a character count',
   const trigger = feishu('1', '@bot 修一下回归')
   h.runtime.receive(trigger); await h.runtime.idle()
   const accept = (acknowledgement: string) => h.route({ kind: 'accept', trigger_id: trigger.id, title: 'Fix', worktree_name: 'fix-regression', acknowledgement })
-  await expect(accept(words(IM_WORDS + 1))).rejects.toThrow(`at most ${IM_WORDS} words`)
+  await expect(accept(words(IM_WORDS + 1))).rejects.toThrow(`最多 ${IM_WORDS} 个词`)
   expect(await accept(words(IM_WORDS))).toMatchObject({ decision: 'accept', ticket: { title: 'Fix' } })
 })
 
@@ -267,7 +267,7 @@ it('saves a settings block by name, a Source\'s block with the Source\'s id', as
   const save = (args: Record<string, unknown>) => h.runTool(h.runtime.masterId, 'orchestrator_settings_save', args)
   const github = { config: h.runtime.store.settings().sources.github!.config, revision: h.runtime.store.blockRevision('source:github') }
   const off = { enabled: false, config: github.config }
-  await expect(save({ block: 'source', value: off, revision: github.revision })).rejects.toThrow('source names the Source')
+  await expect(save({ block: 'source', value: off, revision: github.revision })).rejects.toThrow('source 只与 block source 一起使用，用来指明 Source 实例')
   await expect(save({ block: 'source:github', value: off, revision: github.revision })).rejects.toThrow()
   expect(await save({ block: 'source', source: 'github', value: off, revision: github.revision })).toMatchObject({ saved: true })
   expect(h.runtime.store.settings().sources.github?.enabled).toBe(false)

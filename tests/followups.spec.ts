@@ -23,7 +23,7 @@ it('delivers a follow-up to the worker and tells the main Session with a card, w
     text: '顺便把标题也改了',
     replies_to: { trigger_id: ticket.origin.triggerId, preview: '@bot 修一下回归' },
     delivered_to: [{ ticket_id: ticket.id, title: ticket.title, state: 'working' }],
-      note: expect.stringContaining('worker has it and decides') }])
+      note: expect.stringContaining('该工单的 worker 已接手并自行决定') }])
   // 没有 candidate、没有 Eval、没有 Decision：主 Session 上没有任何等待，Thread 的队列也保持空闲。
   expect(h.candidates()).toEqual([])
   expect(h.runtime.store.threads.get(THREAD)).toMatchObject({ pending: [] })
@@ -170,10 +170,10 @@ it('lets a worker follow a related thread for context, which the main Session he
   expect(h.relays(h.runtime.masterId)).toEqual([])
   await expect(h.runTool(sessionId, 'orchestrator_thread_follow', { thread: 'github', reason: 'x' })).rejects.toThrow(/<source>:<id>/)
   expect(await h.runTool(h.runtime.masterId, 'orchestrator_ticket_note', { ticket_id: ticket.id, text: 'Ticket B renamed the setting.' }))
-    .toMatchObject({ reason: 'Noted for the worker' })
+    .toMatchObject({ reason: '已作为备注告知 worker' })
   await h.runtime.idle()
   expect(h.deliveries.mock.calls.map(([call]) => call).filter(call => call.sessionId === sessionId).map(call => call.text))
-    .toEqual([expect.stringContaining('Note from the orchestrator, for context only: Ticket B renamed the setting.')])
+    .toEqual([expect.stringContaining('来自 orchestrator 的说明，仅供上下文参考：Ticket B renamed the setting.')])
 })
 
 it('takes the message a follow-up answers from its Source kind, whichever kind it is', async () => {
@@ -271,7 +271,7 @@ it('keeps a listed member\'s request on a ticket\'s thread to that ticket, so it
   // worker 已收到并作出决定；主 Session 会得知此事，且无法为它开启第二个 ticket。
   expect(h.relays(sessionId)).toEqual([expect.objectContaining({ trigger_id: request.id })])
   expect(notices(h)).toEqual([expect.objectContaining({ trigger_id: request.id,
-    note: expect.stringContaining('orchestrator_route kind stop') })])
+    note: expect.stringContaining('使用 orchestrator_route，kind 为 stop') })])
   await expect(h.route({ kind: 'accept', trigger_id: request.id, title: '概览页按钮',
     worktree_name: 'overview-button', acknowledgement: '收到。' })).rejects.toThrow(/由该工单的 worker 决定它是否属于那里/)
   // worker 认为它属于其 ticket，并如此说明。
@@ -295,9 +295,9 @@ it('leaves a follow-up to its ticket\'s worker after the main Session drops the 
 })
 
 it('tells a worker it may hand back a message beyond its ticket or for another one, also when the message resumed it', async () => {
-  expect(inputMessage({ id: 'r', kind: 'resumed', triggerId: 't', at: '' })).toContain('hand it back with orchestrator_trigger_handback')
+  expect(inputMessage({ id: 'r', kind: 'resumed', triggerId: 't', at: '' })).toContain('请用 orchestrator_trigger_handback 交还')
   h = await startRuntime()
   const { sessionId } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
   expect((h.tools.get(sessionId)!.get('orchestrator_trigger_handback') as unknown as { description: string }).description)
-    .toContain('beyond this ticket or for another one')
+    .toContain('把要求本工单之外或另一张工单的工作的消息交回')
 })
