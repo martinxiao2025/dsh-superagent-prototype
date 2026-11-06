@@ -277,3 +277,14 @@ exit=1
 | `team-develop-agent` 残留 | 仍有 `C:\Users\61054\.copilot\plugin-data\team-develop-agent` 与 `%APPDATA%\Code\agentPlugins\file-c-3A-…-direct-team-develop-agent` | **未删除**,等用户确认后再清理(AGENTS §8.2);只清理该插件自身 |
 | 权限作用范围 | `chat.defaultConfiguration` 为用户级,仅影响新会话的模式与工具审批,不影响其它设置 | 无安全旁路:工具仍走 Policy/Mandate 复验,"Allow all" 只是免去客户端逐次确认 |
 
+### 11.7 质量自查与修复(四维度,2026-11-06)
+
+| 维度 | 发现 | 处理 |
+| --- | --- | --- |
+| 准确 | `worktree_name` 的描述只写"1–4 个小写英文词",未说明**第一段只能是小写字母**;A4 中模型用 `a4-verify` 被正则拒绝,只能靠报错试错 | 描述与校验错误文案都补"第一段只能是小写字母(不能含数字)";正则与规则不变,仅让模型第一次就能写对 |
+| 标准 | `orchestrator_prompts_save` 的 `baseRevision` 在描述里写"必需",schema 却是可选;缺参时抛普通 `Error`,既无 `code` 也没有参数路径 | 增加对象级 `refine`:`preview=false` 且缺 `baseRevision` 时在参数校验阶段拒绝,提示"先用 orchestrator_read prompts 读取当前修订";直接调用 `execute` 的兜底文案同步改写 |
+| 交互 | `orchestrator_reply` 的 `ticket_id` 没有描述,模型难以判断与 `trigger_id` 的分工 | 补描述:除 `answer` 外的回复用 `ticket_id`,`answer` 用 `trigger_id` 点名原始问题 |
+| 简洁 | 14 个工具无重复职责:`orchestrator_route` 已是一次多决策入口,`orchestrator_eval_*`(主动候选)与 `orchestrator_ticket_*`(工单生命周期)语义不同 | 不合并、不增删工具与参数;仅改文案与 schema 校验,对外契约(名称/参数/枚举/返回)不变 |
+
+验证:`pnpm check` 退出 0——1179 通过、26 跳过(范围外)、0 失败;`plugin/` 与 `lib/plugin/` 两处校验通过;`tests/mcp.spec.ts` 的 14 工具与 `tools/list` 契约断言未改。
+

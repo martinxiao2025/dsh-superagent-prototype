@@ -16,7 +16,7 @@ import { AcknowledgementSchema } from './tools/tool.ts'
 import type { Effects } from './effects.ts'
 
 /** 短小写 kebab-case 英文工单 worktree 名称的 schema（1–4 个词，最多 32 个字符）。 */
-export const WorktreeNameSchema = z.string().max(32).regex(/^[a-z]+(?:-[a-z0-9]+){0,3}$/, '请用 1–4 个简短英文词，全部小写，采用 kebab-case，最多 32 个字符').describe('有意义而简短的英文工单名，例如 fix-plan-color，与技术栈、工单标题或显示名无关。把中文标题译成英文；不得使用中文、拼音或泛泛的工单名。1–4 个小写英文词，采用 kebab-case，最多 32 个字符。')
+export const WorktreeNameSchema = z.string().max(32).regex(/^[a-z]+(?:-[a-z0-9]+){0,3}$/, '请用 1–4 个简短英文词，全部小写，采用 kebab-case，最多 32 个字符，且第一段只能是小写字母').describe('有意义而简短的英文工单名，例如 fix-plan-color，与技术栈、工单标题或显示名无关。把中文标题译成英文；不得使用中文、拼音或泛泛的工单名。1–4 个小写英文词，采用 kebab-case，最多 32 个字符；第一段只能是小写字母（不能含数字）。')
 /** 主 Session 主动候选评估决策（`orchestrator_eval_decide`）的 schema。 */
 export const AssessmentSchema = z.object({
   decision: z.enum(['accept', 'ignore', 'unavailable']),
