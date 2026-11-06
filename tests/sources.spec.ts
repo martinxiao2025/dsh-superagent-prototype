@@ -1026,7 +1026,9 @@ it('reports GitHub as failing only after the configured number of consecutive fa
   expect(githubKind.schema.parse({})).toEqual({ repository: '', cli: '', pollSeconds: 60, failuresBeforeError: 3, observeIssues: false,
     observePulls: false, observeComments: false, observeCi: false })
 })
-describe('feishu event consumer', () => {
+// The fake bot CLI is a POSIX shell script (`#!/bin/sh` with `sleep`), which is what the consumer starts on every
+// platform it supports; Windows cannot execute a shebang script, so this block is verified on POSIX only.
+describe.skipIf(process.platform === 'win32')('feishu event consumer', () => {
   let dir: string
   let controller: AbortController
   let running: Promise<unknown> | undefined

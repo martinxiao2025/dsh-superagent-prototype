@@ -6,7 +6,11 @@ import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, expect, it } from 'vitest'
+import { afterEach, beforeEach, expect, it as test } from 'vitest'
+
+// scripts/dsh-superagent is a POSIX shell service script that this suite runs through python3 with stubbed ps, tmux and
+// dsh binaries; none of those tools exist on Windows, so the suite runs on POSIX only.
+const it = test.skipIf(process.platform === 'win32')
 
 let root: string
 let server: Server | undefined

@@ -1,36 +1,63 @@
 import { execFile } from 'node:child_process'
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Config, executable, machineOf, resolveDeployment, resolveFeishuBot, type Machine, type Probe } from '../src/deployment.ts'
 import { gitEnv } from './fixtures/git.ts'
 
 const exec = promisify(execFile)
+type Answers = (args: string[]) => string
 let dir: string
 let path: string
-const program = (file: string, body = ''): string => { writeFileSync(file, `#!/bin/sh\n${body}\n`); chmodSync(file, 0o755); return file }
+/** Stand-ins for the CLIs, answered in-process so no platform needs a POSIX shell to run them. */
+const programs = new Map<string, Answers>()
+const program = (file: string, answers: Answers = () => { throw new Error(`${file} was run with no answers`) }): string => {
+  writeFileSync(file, '')
+  chmodSync(file, 0o755)
+  programs.set(file, answers)
+  return file
+}
 /** Fake gh CLI signed in as `login` with configurable push access to acme/widgets (including its former name acme/gadgets). */
-const gh = (file: string, login: string, push = true): string => program(file, `case "$*" in\n  "api user") echo '{"login":"${login}","id":7}' ;;\n  "api repos/acme/"*" --jq {name: .full_name, push: .permissions.push}") echo '{"name":"acme/widgets","push":${push}}' ;;\n  *) exit 1 ;;\nesac`)
-/** Fake lark-cli script body returning canned auth, strict-mode, and bot info responses. */
-const lark = (status: object, mode = 'bot', bot: object = { bot: { open_id: 'ou_bot', app_name: 'Widgets Bot' }, code: 0 }): string =>
-  `case "$*" in\n  "auth status") echo '${JSON.stringify(status)}' ;;\n  "config strict-mode") echo 'strict-mode: ${mode} (source: profile)' ;;\n  "api GET /open-apis/bot/v3/info --as bot --format ndjson") echo '${JSON.stringify(bot)}' ;;\nesac`
-const minimal = (overrides: Record<string, unknown> = {}) => ({ stateDir: join(dir, 'state'), ...overrides })
-const machine = (overrides: Partial<Machine> = {}): Machine => ({ ...machineOf(Config(minimal())), ...overrides })
-/** Runs commands like worker shells do, but locally: the stand-ins first on PATH, then the system's git. */
-const probe: Probe = async argv => (await exec(argv[0]!, argv.slice(1), { env: { PATH: path, HOME: dir } })).stdout
+const gh = (file: string, login: string, push = true): string => program(file, args => {
+  const line = args.join(' ')
+  if (line === 'api user') return JSON.stringify({ login, id: 7 })
+  if (line.startsWith('api repos/acme/') && line.endsWith('--jq {name: .full_name, push: .permissions.push}')) return JSON.stringify({ name: 'acme/widgets', push })
+  throw new Error(`unexpected gh arguments: ${line}`)
+})
+/** Fake lark-cli answers for auth status, strict-mode, and bot info. */
+const lark = (status: object, mode = 'bot', bot: object = { bot: { open_id: 'ou_bot', app_name: 'Widgets Bot' }, code: 0 }): Answers => args => {
+  const line = args.join(' ')
+  if (line === 'auth status') return JSON.stringify(status)
+  if (line === 'config strict-mode') return `strict-mode: ${mode} (source: profile)`
+  if (line === 'api GET /open-apis/bot/v3/info --as bot --format ndjson') return JSON.stringify(bot)
+  throw new Error(`unexpected lark-cli arguments: ${line}`)
+}
+// The configuration schema documents a POSIX absolute path; the setup cases below use a real directory instead.
+const minimal = (overrides: Record<string, unknown> = {}) => ({ stateDir: '/srv/state', ...overrides })
+const machine = (overrides: Partial<Machine> = {}): Machine => ({ ...machineOf(Config(minimal())), stateDir: join(dir, 'state'), ...overrides })
+/** Answers the CLI a worker shell would have started, after the `env` prefix the Feishu probe adds. */
+const probe: Probe = async argv => {
+  let at = 0
+  if (argv[0] === 'env') { at = 1; while (at < argv.length && argv[at]!.includes('=')) at++ }
+  const file = argv[at]!
+  const answers = programs.get(file)
+  if (!answers) throw new Error(`${file} is not an executable file`)
+  return answers(argv.slice(at + 1))
+}
 const setupError = (place: string, code: string, values: Record<string, unknown> = {}) => expect.objectContaining({ place, code, values: expect.objectContaining(values) })
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'deployment-'))
   mkdirSync(join(dir, 'bin')); mkdirSync(join(dir, 'state', 'worker-bin'), { recursive: true }); mkdirSync(join(dir, 'widgets', 'src'), { recursive: true })
-  path = [join(dir, 'state-link', 'worker-bin'), `${join(dir, 'state', 'worker-bin')}/`, join(dir, 'bin'), '/usr/bin', '/bin'].join(':')
+  path = [join(dir, 'state-link', 'worker-bin'), join(dir, 'state', 'worker-bin'), join(dir, 'bin'),
+    ...(process.platform === 'win32' ? [] : ['/usr/bin', '/bin'])].join(delimiter)
   gh(join(dir, 'bin', 'gh'), 'Agent-Bot')
   program(join(dir, 'bin', 'lark-cli'), lark({ appId: 'cli_bot', brand: 'lark', identities: { bot: { status: 'ready' } } }))
   // Stale worker shims with the same binary name must be skipped regardless of PATH normalization or symlinks.
   program(join(dir, 'state', 'worker-bin', 'gh'))
-  symlinkSync(join(dir, 'state'), join(dir, 'state-link'))
+  symlinkSync(join(dir, 'state'), join(dir, 'state-link'), process.platform === 'win32' ? 'junction' : 'dir')
   await exec('git', ['init', '-q', join(dir, 'widgets')], { env: gitEnv() })
   await exec('git', ['-C', join(dir, 'widgets'), 'remote', 'add', 'origin', 'git@github.com:acme/widgets.git'], { env: gitEnv() })
 })
@@ -42,11 +69,11 @@ vi.setConfig({ testTimeout: 30_000 })
 describe('configuration schema', () => {
   it('requires only the state directory and reads the editable fields through references', () => {
     expect(() => Config({})).toThrow('stateDir')
-    const read = machineOf(Config({ stateDir: join(dir, 'state') }))
+    const read = machineOf(Config({ stateDir: '/srv/state' }))
     // Limits are volatile references that the loader updates in place and callers read when used.
     expect({ ...read, promptMaxChars: read.promptMaxChars.get(), admissionContextMaxPages: read.admissionContextMaxPages.get(),
       admissionContextTimeoutMs: read.admissionContextTimeoutMs.get() })
-      .toEqual({ stateDir: join(dir, 'state'), promptMaxChars: 100000, admissionContextMaxPages: 10, admissionContextTimeoutMs: 15000,
+      .toEqual({ stateDir: '/srv/state', promptMaxChars: 100000, admissionContextMaxPages: 10, admissionContextTimeoutMs: 15000,
         mcpEnabled: true, mcpPort: 3083 })
     expect(() => Config(minimal({ stateDir: 'relative/dir' }))).toThrow()
     expect(() => Config(minimal({ stateDir: '~/dir' }))).toThrow()
@@ -74,14 +101,16 @@ describe('setup', () => {
     await needs('github', 'agentCliUnset', {}, { repository })
     await needs('github', 'agentCliMissing', { output: `${join(dir, 'missing')} is not an executable file` }, { repository, cli: join(dir, 'missing') })
     await needs('github', 'agentCliMissing', { output: 'bin/gh must be a command name or an absolute path' }, { repository, cli: 'bin/gh' })
-    await needs('github', 'agentCliSignedOut', {}, { repository, cli: program(join(dir, 'bin', 'gh-broken'), 'exit 1') })
+    await needs('github', 'agentCliSignedOut', {}, { repository, cli: program(join(dir, 'bin', 'gh-broken'), () => { throw new Error('not signed in') }) })
     await needs('github', 'repositoryReadOnly', { account: 'Agent-Bot', repository: 'acme/widgets' }, { repository, cli: gh(join(dir, 'bin', 'gh-reader'), 'Agent-Bot', false) })
     // Signed in, but the account cannot read the repository, or the CLI names no account.
-    const unreadable = program(join(dir, 'bin', 'gh-outsider'),
-      `case "$*" in\n  "api user") echo '{"login":"Agent-Bot","id":7}' ;;\n  *) echo 'HTTP 404' >&2; exit 1 ;;\nesac`)
+    const unreadable = program(join(dir, 'bin', 'gh-outsider'), args => {
+      if (args.join(' ') === 'api user') return JSON.stringify({ login: 'Agent-Bot', id: 7 })
+      throw new Error('HTTP 404')
+    })
     const output = expect.stringContaining('HTTP 404') as unknown
     await needs('github', 'repositoryUnreadable', { account: 'Agent-Bot', repository: 'acme/widgets', output }, { repository, cli: unreadable })
-    await needs('github', 'agentCliNoAccount', {}, { repository, cli: program(join(dir, 'bin', 'gh-anonymous'), `echo '{}'`) })
+    await needs('github', 'agentCliNoAccount', {}, { repository, cli: program(join(dir, 'bin', 'gh-anonymous'), () => '{}') })
     expect(() => executable('nothing-here', join(dir, 'bin'))).toThrow('nothing-here is not an executable file on PATH')
   })
   it('reads the Feishu bot from a bot-only lark-cli, or finds none when the Feishu Source names no CLI', async () => {
@@ -96,7 +125,7 @@ describe('setup', () => {
     await refuses('feishuUserIdentity', { mode: 'off' })
     program(join(dir, 'bin', 'lark-cli'), lark({ appId: 'cli_bot', identities: { bot: { status: 'ready' } } }, 'bot', { code: 0, data: {} }))
     await refuses('feishuNoBot')
-    program(join(dir, 'bin', 'lark-cli'), 'echo "not configured" >&2; exit 1')
+    program(join(dir, 'bin', 'lark-cli'), () => { throw new Error('not configured') })
     await refuses('feishuCliFailed', { output: expect.stringContaining('not configured') })
   })
 })
