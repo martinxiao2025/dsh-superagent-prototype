@@ -17,7 +17,7 @@
 | 管理 API 要求 `x-orchestrator-request: 1` 且同源 | `src/app/http.ts` 的 `sameOrigin()` |
 | 端口失败若走 `SetupError`，`Setup.run()` 返回 `false` 后 `Runtime.initialize()` 直接 `return`，整个编排停摆 | `src/app/setup.ts`、`src/app/runtime.ts` 的 `initialize()` |
 | `lib/` 被 `.gitignore` 忽略，且 tsdown 第一份配置 `clean: true` 会清空它 | `.gitignore`、`tsdown.config.ts` |
-| 现有编号文档为 `000`–`008`，编号连续且只能链接更早文档 | `tests/docs.spec.ts` |
+| 现有编号文档为 `000`–`010`，编号连续且只能链接更早文档 | `tests/docs.spec.ts` |
 | `docs/007-architecture.md` 的模块表必须覆盖 `src` 全部文件、测试表必须覆盖全部 `*.spec.ts(x)` | `tests/docs.spec.ts` |
 | 每个 `class` 声明前必须有 JSDoc | `tests/class-docs.spec.ts` |
 | `skills/` 下的技能会被加载进 DSH 会话，且测试断言内置技能恰为 `dsh-superagent-feishu`、`dsh-superagent-github` | `src/app/skill-files.ts`、`tests/tools.spec.ts` |
@@ -38,7 +38,7 @@
 | `00` §3.3「三个技能都放 `plugin/skills/`」 | `skills/` 会被 `skill-files.ts` 加载，且内置技能数被测试锁定为 2 | 主技能只放 `plugin/skills/`；另两个在构建时从 `skills/` 拷入 `lib/plugin/skills/` |
 | `00` §3.4「产物到 `lib/plugin/`」被当作唯一来源 | `lib/` 被 gitignore 且 `clean: true` | `plugin/` 是唯一源，`lib/plugin/` 只是构建产物；`build` 必须在 `tsdown` 之后执行 |
 | `00` §3.1 `homepage` 含 `<org>` 占位符 | 官方 schema 只校验字符串，占位符能通过但不可用 | 不写 `homepage`/`repository`，等真实地址 |
-| `00` §7 要求新增 `docs/009-copilot-plugin.md` | 现有编号 `000`–`008` 连续 | 新文档固定 `009`，只能链接 `000`–`008` |
+| `00` §7 要求新增 `docs/009-copilot-plugin.md` | 现有编号 `000`–`010` 连续 | 阶段一新增 `009`，其后补 `010`；新编号只能续到下一个，且只能链接更早编号 |
 | 计划 T0.1 记录 pnpm `10.33.0` | 本机已是 `11.7.0` | 已修订为 11.7.0；换机再按需 corepack |
 | `01` 的 `pnpm plugin:build` / `pnpm plugin:check` | 迁移时 `package.json` 已有这两个脚本（批次 1 落地） | 直接用 `pnpm plugin:build` / `pnpm plugin:check` |
 | 计划把实施落点写成 `d:\dsh-superagent-prototype` | 用户 2026-11-06 硬性更正：新项目就在 `d:\superagent-plugin` | 已把原型源码/配置/测试导入本根；后续只在本根开发、提交，原型只读 |
@@ -57,7 +57,7 @@
 | 冲突点 | 处理 | 遗留 |
 | --- | --- | --- |
 | 根目录已有 `AGENTS.md`（本文件），原型根也有一份未跟踪的同名开发指南 | **保留本文件**；原型那份不导入，其项目约定已由本文件 §2–§6 覆盖 | 如需逐字保留原型指南，另存 `docs/` 并说明，当前不做 |
-| 根目录已有 `docs/00-…`、`docs/01-…`（两位编号），原型 `docs/000`–`008`（三位编号） | 两套并存；`tests/docs.spec.ts` 只匹配三位编号，不受影响；阶段一新增文档仍为 `docs/009-copilot-plugin.md` | 文档导航需人工区分「计划文档 00/01」与「设计文档 000–008」 |
+| 根目录已有 `docs/00-…`、`docs/01-…`（两位编号），原型 `docs/000`–`008`（三位编号） | 两套并存；`tests/docs.spec.ts` 只匹配三位编号，不受影响；阶段一新增 `docs/009-copilot-plugin.md`，真实运行验证记录为 `docs/010-runtime-verification.md` | 文档导航需人工区分「计划文档 00/01」与「设计文档 000–010」 |
 | 原型 `.git` 含历史 | **不导入**；本根新建仓库，原型保留原历史只读 | 原型分支 `feat/phase1-agent-plugins` 与已做的批次 1 改动不再作为交付物，以本根为准 |
 | 原型 `.zcode/`、`node_modules/`、`lib/` | **不导入**（本地工具、依赖与生成物） | 本根需重新 `pnpm install` 与 `pnpm build` |
 | 根目录原有 `.screenshots/` | 原样保留，不读不写不提交 | 无 |
@@ -76,7 +76,7 @@
 | `src/infra/` | CLI 传输、环境、路径、HealthBoard | 可改；不得承载领域规则 |
 | `prompts/` | 内置提示词，**每行一句** | 可改；评估指令只在 `prompts/admission.md` |
 | `skills/` | DSH 内置技能（feishu、github） | 可改；**不得新增**会被加载的第三个内置技能 |
-| `docs/` | 设计文档 `000`–`008` + 计划文档 `00`/`01` | 可改；新增编号只能续到 `009`，且只能链接更早编号 |
+| `docs/` | 设计文档 `000`–`010` + 计划文档 `00`/`01` | 可改；新增编号只能续到 `010` 之后的下一个，且只能链接更早编号 |
 | `locale/` | 面板双语文案 `en.json` / `zh.json` | 可改；键必须成对 |
 | `tests/` | vitest 测试与共享夹具 | 可改；**禁止**为通过验证而删测试或放宽断言 |
 | `scripts/dsh-superagent` | 部署后的服务管理脚本 | 可改；改动需 `tests/service-script.spec.ts` 通过 |
@@ -128,7 +128,7 @@ Get-ChildItem -Recurse -File src,tests,scripts,plugin,docs -Include *.ts,*.tsx,*
 
 ### 4.3 文档与文案
 
-- 新增编号文档：`docs/009-copilot-plugin.md` 是唯一允许的新编号；只能在 `000`–`008` 之后，且链接只能指向更早编号。
+- 新增编号文档：当前编号为 `000`–`010`；新文档只能续到 `011`，且链接只能指向更早编号。
 - 新增模块或测试后，必须同步 `docs/007-architecture.md` 的模块表与测试表（标题为 `## 模块`、`## 测试`），否则 `tests/docs.spec.ts` 失败。
 - 新增面板文案必须同时写 `src/client/locales.ts` 的中英文，键与占位符一致。
 - 新增运行时依赖必须同时更新 `AGENTS.md`（实施仓库根）与 `docs/007` 的依赖说明。

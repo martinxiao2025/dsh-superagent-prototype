@@ -551,3 +551,11 @@ npx -y @modelcontextprotocol/inspector --cli http://127.0.0.1:3083/mcp --method 
 | 4 | 2026-11-06 | `pnpm build`、`pnpm plugin:check` | `plugin/` 1 技能、`lib/plugin/` 3 技能均 valid；009、006、README、AGENTS 同步 | `781ab5d` |
 | A1/A2 | 2026-11-06 | 正例 + 4 负例 + 构建 | 全部符合预期；`lib/plugin/` 结构与方案 §3.4 一致；全仓跟踪文件 BOM 数为 0 | 本批 |
 | A3–A6 | 2026-11-06 | 见 `docs/009-copilot-plugin.md` §8 | A3 自动等价通过；A4/A6 待用户环境；A5 仅测试回归，真实触发未执行 | 本批 |
+| 中文化·文档与技能 | 2026-11-06 | 逐文件翻译后跑 `pnpm check` | `docs/000`–`009`、README、`plugin/skills/**` 与 `skills/**` 转简体中文；标识符、工具名、路径、协议值保持英文 | `c89721f`、`b084c0f` |
+| 中文化·代码注释 | 2026-11-06 | `pnpm check` | `src/**`、`scripts/**`、`tests/**` 的 174 个文件的 `//`、`/* */`、JSDoc 全部中文；逻辑与断言未改 | `92f3007` |
+| 中文化·面向人文案 | 2026-11-06 | `pnpm check` | `USER_ERRORS`、健康条目、CLI/脚本输出、`plugin.json`/`package.json` 描述等 81 个文件；`locale/en.json` 与英文语言包按设计保留 | `dcaff6e` |
+| 中文化·模型运行时资产 | 2026-11-06 | `pnpm check`、`tests/model-surface.spec.ts` | `prompts/**`、14 个主会话工具的描述与 schema 说明、executor 指令共 38 个文件；工具名、参数名、机器解析串未翻译 | `330df33` |
+| 真实运行验证 | 2026-11-06 | `copilot -p … --plugin-dir lib/plugin`、官方 MCP SDK 探针、`pnpm check` | 真实 Copilot CLI 1.0.103 两次会话跑通（读候选、建工单、审核门 `notReady`、备注）；协议层 14 工具、中文错误、提示词预览正常；修复 3 个文案问题（SKILL 资源名、默认规则漏译、zod 英文默认消息），记录见 `docs/010-runtime-verification.md` | `dab5a99` |
+| 进度登记 | 2026-11-06 | `pnpm check`、`git push origin feat/phase1-agent-plugins` | `AGENTS.md`、README、本表与 `docs/010` 对齐当前编号与状态；`pnpm check` 全绿；远端 `feat/phase1-agent-plugins` 与本地一致 | 本批 |
+
+未闭合项（截至本批）：VS Code Copilot Chat 冒烟（A4，本机未安装官方 Copilot 扩展）、真实 worker 执行（无 `dsh` 宿主与真实模型 worker）、双人 SoD（验证宿主只有一个允许发送者）、保活演练（A6，需 systemd/计划任务）、真实 GitHub/飞书事件（无凭据）。Windows 上跳过的测试仍为 26 项，均为 POSIX 专属被测对象（`#!/bin/sh` worker shim、服务管理脚本、飞书假 CLI 与权限位），已在测试文件内写明原因，不视为通过。

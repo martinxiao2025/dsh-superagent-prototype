@@ -72,7 +72,7 @@ scripts/dsh-superagent status
 ├── skills/         DSH 内置技能（dsh-superagent-github、dsh-superagent-feishu）
 ├── plugin/         插件源：plugin.json、mcp.json、skills/dsh-superagent/SKILL.md
 ├── locale/         面板双语文案 en.json / zh.json
-├── docs/           设计文档 000–009 与计划文档 00、01
+├── docs/           设计文档 000–010 与计划文档 00、01
 ├── examples/       示例 profile 配置
 ├── scripts/
 │   ├── build-plugin.mjs    组装 lib/plugin/
@@ -168,6 +168,7 @@ node scripts/validate-plugin.mjs [--dir <path>]   # 单独校验某个插件目�
 - [007 架构](docs/007-architecture.md)
 - [008 手册](docs/008-cookbook.md)
 - [009 Copilot 插件](docs/009-copilot-plugin.md)
+- [010 真实运行验证](docs/010-runtime-verification.md)
 
 ## 许可
 
