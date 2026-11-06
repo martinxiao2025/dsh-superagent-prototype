@@ -359,6 +359,8 @@ flowchart TB
 | `src/executor/copilot.ts` | `CopilotCliHost`：用 `copilot` CLI 的非交互模式运行真实回合，提示词经 stdin 送达，`parseTurnOutput` 解析文本与 JSONL 输出；Windows 上 `.cmd` 垫片无法以 `shell: false` 启动时记为健康错误，而不是抛出 |
 | `src/executor/bridge.ts` | 扩展桥协议：发现文件（`bridgeFilePath`、`readBridgeInfo`）、回合快照与分类，以及只连 `127.0.0.1` 的 `BridgeClient`；HTTP 状态与错误分类一一对应，供宿主区分“桥不可用”与“模型侧失败” |
 | `src/executor/vscode-lm.ts` | `VsCodeLmHost`：经扩展桥驱动 `vscode.lm` 回合，等发现文件、派发、轮询回收、取消与超时；把桥的分类映射为带固定前缀的错误，`TurnResult` 带上模型 id 与 token 用量 |
+| `src/executor/tool-server.ts` | 回合工具回调端点：只在 `127.0.0.1` 的随机端口监听，每个回合一个一次性令牌；扩展把模型的工具调用 POST 到这里，由 Runtime 执行并回传结果，工具失败以文本回给模型而不是当成传输失败 |
+| `src/executor/workspace-tools.ts` | worker 回合的工作区工具（`read_file`、`write_file`、`edit_file`、`list_files`、`search`、`run_command`）：全部限定在工单 worktree 内，越界拒绝，输出有上限，命令超时后终止整棵进程树 |
 | `src/infra/commands.ts` | `Commands`，CLI 传输：`run`；`api` 与 `pages`（限于配置的仓库并经过校验）；`lark`（以机器人身份）；`git`。`CliError` 携带命令输出报告的代码，例如 GitHub HTTP 状态；不输出任何内容的命令以其结束方式失败，绝不以其参数失败；`validItems` 跳过并统计列表中的畸形项 |
 | `src/infra/environment.ts` | 智能体的进程环境：命令 shim、git 配置与凭证助手、`runAsWorker`，以及环境与工单目录的检查 |
 | `src/infra/paths.ts` | 包的根目录，即打包文件所在位置 |
@@ -420,7 +422,9 @@ flowchart TB
 | `tests/assessment.spec.ts` | MasterAssessor 每次评估保留的内容，以及何时释放 |
 | `tests/background.spec.ts` | 等待 worker 的 shell 作业与子智能体：唤醒它的结束，以及停止的宿主 |
 | `tests/host.spec.ts` | 宿主抽象与 Copilot CLI 宿主：就绪与错误自检、正常回合与经 stdin 的提示词、非零退出码、超时、无法解析的输出、MCP 配置临时文件与清理、停止，以及测试替身 |
-| `tests/vscode-lm.spec.ts` | `VsCodeLmHost` 与桥协议：正常回合与模型/用量回收、鉴权失败、无可用模型、发现文件缺失、超时与取消（都会取消桥侧回合）、模型侧失败分类 |
+| `tests/vscode-lm.spec.ts` | `VsCodeLmHost` 与桥协议：正常回合与模型/用量回收、鉴权失败、无可用模型、发现文件缺失、超时与取消（都会取消桥侧回合）、模型侧失败分类，以及带工具回合的派发与工具回调 |
+| `tests/tool-server.spec.ts` | 回合工具回调端点：回环监听、令牌与未知回合拒绝、非 POST 路由与畸形请求体、工具失败以文本回传、超长结果截断，以及注销与停止后不再服务 |
+| `tests/workspace-tools.spec.ts` | worker 工作区工具：JSON Schema 与参数校验、带行号的读取与写入与定点编辑、歧义编辑拒绝、路径越界拒绝、列目录跳过依赖、正则搜索、命令退出码、输出截断与超时终止 |
 | `tests/bundle-patch.spec.ts` | bundle 的补丁，按 DeepSeek Harness 的读取方式读取，以及它定义执行器会话的智能体预设 |
 | `tests/effects.spec.ts` | 副作用队列：合并、限制、退避重试、健康与关闭 |
 | `tests/passes.spec.ts` | 轮次：一次一个，轮次期间请求的在轮次后合并运行，以及失败轮次报告运行时健康 |

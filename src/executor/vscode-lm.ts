@@ -1,6 +1,8 @@
 /** 通过 VS Code 扩展桥调用 `vscode.lm` 的宿主实现。Runtime 不直接依赖 VS Code。 */
+import { randomUUID } from 'node:crypto'
 import type { AgentHost, HostHealth, TurnHandle, TurnRequest, TurnResult } from './host.ts'
 import { BridgeClient, BridgeError, bridgeFilePath, readBridgeInfo, type BridgeErrorKind, type BridgeInfo, type BridgeTurn } from './bridge.ts'
+import { ToolServer } from './tool-server.ts'
 /** `VsCodeLmHost` 的选项。 */
 export interface VsCodeLmHostOptions {
   /** 发现文件路径；默认与扩展相同的规则。 */
@@ -15,11 +17,16 @@ export interface VsCodeLmHostOptions {
   readonly discoverMs?: number
   /** 诊断日志。 */
   readonly log?: (message: string, error?: unknown) => void
+  /** 单次工具调用的超时，默认 120 秒。 */
+  readonly toolTimeoutMs?: number
+  /** 回传模型的工具结果上限，默认 60000 字符。 */
+  readonly toolMaxChars?: number
 }
-/** 每个回执对应的桥侧回合。 */
+/** 每个回执对应的桥侧回合。`toolKey` 存在时表示该回合注册过工具回调。 */
 interface Turn {
   readonly turnId: string
   readonly client: BridgeClient
+  readonly toolKey?: string
 }
 /**
  * 通过扩展桥驱动模型回合。桥不可用、未授权、无可用模型与模型侧失败分别映射为
@@ -29,6 +36,7 @@ export class VsCodeLmHost implements AgentHost {
   private state: HostHealth = { state: 'idle', detail: '尚未启动', at: new Date().toISOString() }
   private client: BridgeClient | undefined
   private readonly turns = new Map<TurnHandle, Turn>()
+  private readonly tools: ToolServer
   private readonly file: string
   private readonly model: string | undefined
   private readonly timeoutMs: number
@@ -43,6 +51,7 @@ export class VsCodeLmHost implements AgentHost {
     this.pollMs = options.pollMs ?? 200
     this.discoverMs = options.discoverMs ?? 5000
     this.log = options.log ?? (() => {})
+    this.tools = new ToolServer({ timeoutMs: options.toolTimeoutMs, maxResultChars: options.toolMaxChars, log: this.log })
   }
   /** 等待发现文件出现并查询桥健康；失败只记录状态。 */
   async start(): Promise<void> {
@@ -75,10 +84,18 @@ export class VsCodeLmHost implements AgentHost {
     if (!client) throw new BridgeError('bridgeUnavailable', `找不到桥发现文件 ${this.file}；请确认 VS Code 扩展已启动`)
     const handle: TurnHandle = { sessionId: request.sessionId, startedAt: new Date().toISOString() }
     const model = request.model ?? this.model
-    const turnId = await client.start({ sessionId: request.sessionId, directory: request.directory, prompt: request.prompt,
-      ...(model ? { model } : {}), timeoutMs: this.timeoutMs })
-    this.turns.set(handle, { turnId, client })
-    return handle
+    const toolKey = request.callTool && request.tools?.length ? randomUUID() : undefined
+    const endpoint = toolKey && request.callTool ? await this.tools.register(toolKey, request.callTool) : undefined
+    try {
+      const turnId = await client.start({ sessionId: request.sessionId, directory: request.directory, prompt: request.prompt,
+        ...(model ? { model } : {}), timeoutMs: this.timeoutMs,
+        ...(endpoint && request.tools ? { tools: request.tools.map(tool => ({ ...tool })), toolBase: endpoint.base, toolToken: endpoint.token } : {}) })
+      this.turns.set(handle, { turnId, client, ...(toolKey ? { toolKey } : {}) })
+      return handle
+    } catch (error) {
+      if (toolKey) this.tools.unregister(toolKey)
+      throw error
+    }
   }
   /** 轮询直到回合结束、超时或被中止；失败一律带分类返回，不抛出。 */
   async collect(handle: TurnHandle, options: { signal?: AbortSignal } = {}): Promise<TurnResult> {
@@ -108,6 +125,7 @@ export class VsCodeLmHost implements AgentHost {
         }
         if (snapshot.state !== 'running') {
           return this.finish(handle, turn, { text: snapshot.text, model: snapshot.model ?? this.model, usage: snapshot.usage,
+            toolCalls: snapshot.toolCalls,
             ...(snapshot.error ? { error: failure(snapshot.error.kind, snapshot.error.message) } : {}) })
         }
         if (Date.now() >= deadline) {
@@ -117,21 +135,25 @@ export class VsCodeLmHost implements AgentHost {
       }
     } finally {
       options.signal?.removeEventListener('abort', abort)
+      if (turn.toolKey) this.tools.unregister(turn.toolKey)
       this.turns.delete(handle)
     }
   }
-  /** 取消所有在途回合并停止宿主。 */
+  /** 取消所有在途回合并停止宿主；工具回调端点也一并关闭。 */
   async stop(): Promise<void> {
     this.state = { state: 'stopped', detail: '已停止', at: new Date().toISOString() }
     await Promise.all([...this.turns.values()].map(turn => turn.client.cancel(turn.turnId).catch(() => undefined)))
     this.turns.clear()
     this.client = undefined
+    await this.tools.stop()
   }
   /** 交给调用方的结局；`error` 用固定前缀标明分类。 */
-  private finish(handle: TurnHandle, turn: Turn, outcome: { text?: string; model?: string; usage?: BridgeTurn['usage']; error?: string }): TurnResult {
+  private finish(handle: TurnHandle, turn: Turn,
+    outcome: { text?: string; model?: string; usage?: BridgeTurn['usage']; toolCalls?: number; error?: string }): TurnResult {
     return { sessionId: handle.sessionId, text: outcome.text ?? '', exitCode: outcome.error ? 1 : 0,
       startedAt: handle.startedAt, endedAt: new Date().toISOString(),
       ...(outcome.model ? { model: outcome.model } : {}),
+      ...(outcome.toolCalls !== undefined ? { toolCalls: outcome.toolCalls } : {}),
       ...(outcome.usage ? { usage: outcome.usage } : {}),
       ...(outcome.error ? { error: outcome.error } : {}) }
   }

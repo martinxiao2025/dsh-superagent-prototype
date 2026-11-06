@@ -24,6 +24,12 @@ const PREFERRED_MODEL = 'deepseek-flash'
 const MAX_BODY = 1024 * 1024
 /** 长轮询单次等待上限，避免客户端占住连接。 */
 const MAX_WAIT_MS = 30000
+/** 一个回合里允许的最大工具调用轮数；超过即判为模型侧失败，避免死循环。 */
+const MAX_TOOL_ROUNDS = 24
+/** 单次工具回调的超时；Runtime 侧另有自己的超时。 */
+const TOOL_TIMEOUT_MS = 120000
+/** 每个会话最多保留的历史条目数，超出后从最早的完整回合边界裁剪。 */
+const MAX_HISTORY = 60
 /** 发现文件路径的环境变量覆盖名。 */
 const DISCOVERY_ENV = 'DSH_LM_BRIDGE_FILE'
 
@@ -49,6 +55,8 @@ const state = {
   token: '',
   /** @type {Map<string, Turn>} */
   turns: new Map(),
+  /** @type {Map<string, HistoryEntry[]>} */
+  sessions: new Map(),
   /** @type {vscode.LanguageModelChat | undefined} */
   model: undefined,
   /** @type {Promise<vscode.LanguageModelChat> | undefined} */
@@ -211,6 +219,7 @@ function snapshot(turn) {
     text: turn.text,
     ...(turn.model ? { model: turn.model } : {}),
     ...(turn.endedAt === undefined ? {} : { elapsedMs: turn.endedAt - turn.startedAt }),
+    ...(turn.toolCalls === undefined ? {} : { toolCalls: turn.toolCalls }),
     ...(turn.usage ? { usage: turn.usage } : {}),
     ...(turn.error ? { error: turn.error } : {}),
   }
@@ -226,10 +235,112 @@ function wake(turn) {
 }
 
 /**
- * 执行一个回合：选模型、发请求、流式收集文本、记录用量并落在终态。
- * 本函数不抛出；所有失败写进回合快照。
+ * 取某个会话的历史；首次访问时创建。
+ * @param {string} sessionId 会话标识。
+ * @returns {HistoryEntry[]} 历史条目，按时间顺序。
+ */
+function historyOf(sessionId) {
+  let entries = state.sessions.get(sessionId)
+  if (!entries) {
+    entries = []
+    state.sessions.set(sessionId, entries)
+  }
+  return entries
+}
+
+/**
+ * 把历史裁剪到上限内，只在用户纯文本消息处切断，避免拆散工具调用与它的结果。
+ * @param {HistoryEntry[]} entries 历史条目。
+ */
+function trimHistory(entries) {
+  if (entries.length <= MAX_HISTORY) return
+  let cut = entries.length - MAX_HISTORY
+  while (cut < entries.length && !isTurnStart(entries[cut])) cut += 1
+  if (cut < entries.length) entries.splice(0, cut)
+}
+
+/**
+ * 判断一个条目是否是回合起点：用户消息，且不携带工具结果。
+ * @param {HistoryEntry} entry 历史条目。
+ * @returns {boolean} 是否为回合起点。
+ */
+function isTurnStart(entry) {
+  return entry.role === 'user' && !entry.parts.some(part => part.type === 'toolResult')
+}
+
+/**
+ * 把序列化的历史条目还原成 `vscode.lm` 的消息。
+ * @param {HistoryEntry} entry 历史条目。
+ * @returns {vscode.LanguageModelChatMessage} 消息。
+ */
+function toMessage(entry) {
+  const parts = entry.parts.map(part => {
+    if (part.type === 'text') return new vscode.LanguageModelTextPart(part.value)
+    if (part.type === 'toolCall') return new vscode.LanguageModelToolCallPart(part.callId, part.name, part.input)
+    return new vscode.LanguageModelToolResultPart(part.callId, [new vscode.LanguageModelTextPart(part.value)])
+  })
+  const role = entry.role === 'assistant' ? vscode.LanguageModelChatMessageRole.Assistant : vscode.LanguageModelChatMessageRole.User
+  return new vscode.LanguageModelChatMessage(role, parts)
+}
+
+/**
+ * 通过 Runtime 的工具回调端点执行一次工具调用。
+ * 传输层失败（端点不可达、鉴权失败）抛出 `BridgeFailure`，让整个回合失败并带上明确分类；
+ * 工具自身的失败以文本回给模型，由模型在同一回合内纠正。
+ * @param {{toolBase?: string, toolToken?: string}} request 派发参数。
+ * @param {{callId: string, name: string, input: unknown}} call 模型发起的调用。
+ * @returns {Promise<string>} 回传给模型的文本。
+ */
+async function callRuntimeTool(request, call) {
+  const base = typeof request.toolBase === 'string' ? request.toolBase : ''
+  if (base === '') throw new BridgeFailure('modelError', `模型调用了工具 ${call.name}，但本次派发没有工具回调地址`)
+  let response
+  try {
+    response = await fetch(`${base}/call`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${request.toolToken ?? ''}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ name: call.name, arguments: call.input }),
+      signal: AbortSignal.timeout(TOOL_TIMEOUT_MS),
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    throw new BridgeFailure('modelError', `工具 ${call.name} 的回调端点不可达：${message}`)
+  }
+  const body = await response.json().catch(() => undefined)
+  if (!response.ok) {
+    const detail = body && typeof body.error === 'string' ? body.error : `HTTP ${response.status}`
+    throw new BridgeFailure('modelError', `工具 ${call.name} 的回调被拒绝（${response.status}）：${detail}`)
+  }
+  if (body && typeof body.error === 'string') return `错误：${body.error}`
+  if (body && typeof body.result === 'string') return body.result
+  return JSON.stringify(body ?? null)
+}
+
+/**
+ * 收集一次请求的 parts，并压成可序列化的历史片段。
+ * @param {vscode.LanguageModelChatResponse} response 请求响应。
+ * @returns {Promise<SerializedPart[]>} 按序的片段。
+ */
+async function collectParts(response) {
+  const parts = []
+  const chunks = response.stream ?? response.text
+  for await (const chunk of chunks) {
+    if (typeof chunk === 'string') parts.push({ type: 'text', value: chunk })
+    else if (chunk instanceof vscode.LanguageModelTextPart) parts.push({ type: 'text', value: chunk.value })
+    else if (chunk instanceof vscode.LanguageModelToolCallPart) {
+      parts.push({ type: 'toolCall', callId: chunk.callId, name: chunk.name, input: chunk.input })
+    }
+  }
+  return parts
+}
+
+/**
+ * 执行一个回合：选模型、在会话历史上发送请求、执行模型要求的工具调用并把结果回传，
+ * 直到模型给出最终文本。本函数不抛出；所有失败写进回合快照。
  * @param {Turn} turn 回合状态。
- * @param {{prompt: string, model?: string, timeoutMs?: number}} request 派发参数。
+ * @param {{sessionId: string, prompt: string, model?: string, timeoutMs?: number,
+ *   tools?: Array<{name: string, description: string, inputSchema: object}>,
+ *   toolBase?: string, toolToken?: string}} request 派发参数。
  */
 async function runTurn(turn, request) {
   const source = new vscode.CancellationTokenSource()
@@ -240,25 +351,47 @@ async function runTurn(turn, request) {
     source.cancel()
   }, timeoutMs)
   const started = Date.now()
+  const history = historyOf(request.sessionId)
+  const promptEntry = { role: 'user', parts: [{ type: 'text', value: request.prompt }] }
+  let accepted = false
   try {
     const model = await resolveModel(request.model)
     turn.model = model.id
-    log(`turn ${turn.id} start model=${model.id} timeout=${timeoutMs}`)
-    const response = await model.sendRequest(
-      [vscode.LanguageModelChatMessage.User(request.prompt)],
-      { justification: 'dsh-superagent 的 worker 回合需要读取工单并给出修改结果' },
-      source.token,
-    )
+    const tools = Array.isArray(request.tools) && request.tools.length > 0
+      ? request.tools.map(tool => ({ name: tool.name, description: tool.description, inputSchema: tool.inputSchema }))
+      : []
+    log(`turn ${turn.id} start model=${model.id} tools=${tools.length} timeout=${timeoutMs}`)
+    history.push(promptEntry)
+    const options = {
+      justification: 'dsh-superagent 的 worker 回合需要读取工单、修改文件并回报结果',
+      ...(tools.length > 0 ? { tools } : {}),
+    }
     let text = ''
-    const chunks = response.stream ?? response.text
-    for await (const chunk of chunks) {
-      if (typeof chunk === 'string') text += chunk
-      else if (chunk instanceof vscode.LanguageModelTextPart) text += chunk.value
+    for (let round = 0; ; round += 1) {
+      const response = await model.sendRequest(history.map(toMessage), options, source.token)
+      accepted = true
+      const parts = await collectParts(response)
+      history.push({ role: 'assistant', parts })
+      const calls = parts.filter(part => part.type === 'toolCall')
+      text = parts.filter(part => part.type === 'text').map(part => part.value).join('')
+      if (calls.length === 0) break
+      if (round >= MAX_TOOL_ROUNDS) {
+        throw new BridgeFailure('modelError', `回合工具调用超过 ${MAX_TOOL_ROUNDS} 轮仍未结束，已中止`)
+      }
+      turn.toolCalls = (turn.toolCalls ?? 0) + calls.length
+      const results = []
+      for (const call of calls) {
+        if (source.token.isCancellationRequested) break
+        results.push({ type: 'toolResult', callId: call.callId, value: await callRuntimeTool(request, call) })
+      }
+      if (results.length === 0) break
+      history.push({ role: 'user', parts: results })
     }
     turn.text = text
-    turn.usage = response.usage
-      ? { inputTokens: response.usage.inputTokens, outputTokens: response.usage.outputTokens }
-      : await estimateUsage(model, request.prompt, text)
+    const transcript = history.map(entry => entry.parts
+      .map(part => part.type === 'text' ? part.value : part.type === 'toolCall' ? JSON.stringify(part.input ?? {}) : part.value)
+      .join('\n')).join('\n')
+    turn.usage = await estimateUsage(model, transcript, text)
     turn.state = source.token.isCancellationRequested && text === '' ? (turn.timedOut ? 'failed' : 'cancelled') : 'done'
     if (turn.state === 'failed') {
       turn.error = { kind: 'timeout', message: `回合超过配置的超时（${timeoutMs} 毫秒）` }
@@ -266,8 +399,11 @@ async function runTurn(turn, request) {
       turn.state = 'cancelled'
       turn.error = { kind: 'cancelled', message: '回合已被取消' }
     }
-    log(`turn ${turn.id} ${turn.state} elapsed=${Date.now() - started}ms tokens=${JSON.stringify(turn.usage ?? null)}`)
+    trimHistory(history)
+    log(`turn ${turn.id} ${turn.state} elapsed=${Date.now() - started}ms tools=${turn.toolCalls ?? 0} tokens=${JSON.stringify(turn.usage ?? null)}`)
   } catch (error) {
+    // 第一个请求就没被接受时，提示词并未进入会话，撤回以免下一回合重复。
+    if (!accepted && history[history.length - 1] === promptEntry) history.pop()
     const failure = classify(error, turn.timedOut === true)
     turn.state = failure.kind === 'cancelled' ? 'cancelled' : 'failed'
     turn.error = failure
@@ -421,7 +557,9 @@ async function handle(request, response) {
         waiters: new Set(),
       }
       state.turns.set(turn.id, turn)
-      void runTurn(turn, body)
+      // 没有会话标识时退化为按回合独立，避免不同工单共享一段历史。
+      const sessionId = typeof body.sessionId === 'string' && body.sessionId !== '' ? body.sessionId : turn.id
+      void runTurn(turn, { ...body, sessionId })
       sendJson(response, 202, { turnId: turn.id })
       return
     }

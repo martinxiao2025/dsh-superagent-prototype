@@ -9,6 +9,25 @@ export interface McpServerConfig {
   /** 回环 HTTP 端点，仅本机可访问。 */
   readonly url: string
 }
+/**
+ * 回合内模型可调用的一个工具。`inputSchema` 是 JSON Schema，直接交给模型；
+ * 语义与权限由调用方在 `callTool` 里保证，宿主不解释工具面。
+ */
+export interface TurnTool {
+  /** 工具名，回合内唯一。 */
+  readonly name: string
+  /** 给模型看的说明：何时调用、返回什么。 */
+  readonly description: string
+  /** 参数的 JSON Schema。 */
+  readonly inputSchema: Record<string, unknown>
+}
+/** 模型发起的一次工具调用。 */
+export interface ToolCall {
+  /** 模型给出的工具名。 */
+  readonly name: string
+  /** 模型给出的参数，未校验，由 `callTool` 的实现方解析。 */
+  readonly arguments: unknown
+}
 /** 交给宿主执行的一个回合。会话标识相同的连续回合共享同一段对话。 */
 export interface TurnRequest {
   /** 会话标识；同一工单的连续回合复用它。 */
@@ -21,6 +40,13 @@ export interface TurnRequest {
   readonly model?: string
   /** 本回合额外暴露的 MCP 服务器。 */
   readonly mcp?: readonly McpServerConfig[]
+  /** 本回合暴露给模型的工具；缺省表示回合没有工具，只做文本往返。 */
+  readonly tools?: readonly TurnTool[]
+  /**
+   * 模型调用工具时的回调。抛错会把错误文本回传给模型，让它在同一回合里自行纠正；
+   * 宿主不重试、不吞掉，也不把工具失败当成回合失败。
+   */
+  readonly callTool?: (call: ToolCall, signal?: AbortSignal) => Promise<unknown>
 }
 /** 派发一座回合后得到的回执，供 `collect` 取回结果。 */
 export interface TurnHandle {
@@ -49,6 +75,8 @@ export interface TurnResult {
   readonly error?: string
   /** 本回合实际使用的模型 id，宿主未报告时缺省。 */
   readonly model?: string
+  /** 本回合模型发起的工具调用数；宿主不支持工具或回合没有工具时缺省。 */
+  readonly toolCalls?: number
   /** 模型侧的 token 用量；`estimated` 为真时是本地计量而非服务端回报。 */
   readonly usage?: { readonly inputTokens?: number; readonly outputTokens?: number; readonly estimated?: boolean }
 }

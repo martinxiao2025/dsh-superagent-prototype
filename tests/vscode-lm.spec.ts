@@ -23,6 +23,8 @@ interface FakeOptions {
   readonly turn?: 'done' | 'running' | 'failed' | 'noModel'
   /** `done` 或 `failed` 的延迟毫秒数，默认 20。 */
   readonly afterMs?: number
+  /** 收到工具定义时，假桥回调 Runtime 的工具端点并把结果写进回合文本。 */
+  readonly echoTool?: boolean
 }
 
 /** 一个跑在回环地址上的假桥。 */
@@ -35,8 +37,21 @@ interface FakeBridge {
   readonly calls: string[]
   /** 已结束的回合 id。 */
   readonly cancelled: string[]
+  /** 派发时收到的请求体。 */
+  readonly dispatched: Array<Record<string, unknown>>
+  /** 工具回调端点返回的原始响应体。 */
+  readonly toolResults: Array<Record<string, unknown>>
   /** 关闭服务并删除临时目录。 */
   close(): Promise<void>
+}
+
+/** 读取请求体文本。 */
+function readAll(request: import('node:http').IncomingMessage): Promise<string> {
+  return new Promise(resolve => {
+    const chunks: Buffer[] = []
+    request.on('data', (chunk: Buffer) => chunks.push(chunk))
+    request.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+  })
 }
 
 /**
@@ -49,6 +64,8 @@ async function fakeBridge(options: FakeOptions = {}): Promise<FakeBridge> {
   const file = join(directory, 'lm-bridge.json')
   const calls: string[] = []
   const cancelled: string[] = []
+  const dispatched: Array<Record<string, unknown>> = []
+  const toolResults: Array<Record<string, unknown>> = []
   const turns = new Map<string, BridgeTurn>()
   const timers: NodeJS.Timeout[] = []
   let created = 0
@@ -77,13 +94,29 @@ async function fakeBridge(options: FakeOptions = {}): Promise<FakeBridge> {
       const turnId = String(created)
       const outcome = options.turn ?? 'done'
       turns.set(turnId, { state: 'running', text: '' })
-      const timer = setTimeout(() => {
-        if (outcome === 'done') turns.set(turnId, { state: 'done', text: '已修复', model: 'deepseek-flash',
-          usage: { inputTokens: 12, outputTokens: 5, estimated: true } })
-        else if (outcome === 'failed') turns.set(turnId, { state: 'failed', text: '', error: { kind: 'quota', message: '配额不足' } })
-      }, options.afterMs ?? 20)
-      timers.push(timer)
-      json(202, { turnId })
+      void (async () => {
+        const body = JSON.parse(await readAll(request)) as Record<string, unknown>
+        dispatched.push(body)
+        let text = '已修复'
+        const tools = Array.isArray(body.tools) ? body.tools as Array<{ name: string }> : []
+        if (options.echoTool && tools.length > 0 && typeof body.toolBase === 'string') {
+          const toolResponse = await fetch(`${body.toolBase}/call`, {
+            method: 'POST',
+            headers: { authorization: `Bearer ${String(body.toolToken)}`, 'content-type': 'application/json' },
+            body: JSON.stringify({ name: tools[0]!.name, arguments: { path: 'src/app.ts' } }),
+          })
+          const echoed = await toolResponse.json() as Record<string, unknown>
+          toolResults.push(echoed)
+          text = `工具返回：${String(echoed.result)}`
+        }
+        const timer = setTimeout(() => {
+          if (outcome === 'done') turns.set(turnId, { state: 'done', text, model: 'deepseek-flash', toolCalls: tools.length,
+            usage: { inputTokens: 12, outputTokens: 5, estimated: true } })
+          else if (outcome === 'failed') turns.set(turnId, { state: 'failed', text: '', error: { kind: 'quota', message: '配额不足' } })
+        }, options.afterMs ?? 20)
+        timers.push(timer)
+        json(202, { turnId })
+      })()
       return
     }
     const segments = url.pathname.split('/').filter(Boolean)
@@ -113,6 +146,8 @@ async function fakeBridge(options: FakeOptions = {}): Promise<FakeBridge> {
     port,
     calls,
     cancelled,
+    dispatched,
+    toolResults,
     close: async () => {
       for (const timer of timers) clearTimeout(timer)
       await new Promise<void>(resolve => { server.close(() => resolve()) })
@@ -233,6 +268,42 @@ describe('VsCodeLmHost', () => {
     const result = await host.collect(handle)
     expect(result.exitCode).toBe(1)
     expect(result.error).toContain('配额不足')
+  })
+
+  it('passes tools to the bridge and serves tool calls on a loopback endpoint', async () => {
+    const bridge = await fakeBridge({ echoTool: true })
+    bridges.push(bridge)
+    const host = new VsCodeLmHost({ file: bridge.file, discoverMs: 0, pollMs: 5 })
+    await host.start()
+    const seen: Array<{ name: string; arguments: unknown }> = []
+    const handle = await host.dispatch({
+      sessionId: 'ticket-1', directory: tmpdir(), prompt: '修好它',
+      tools: [{ name: 'read_file', description: '读取工作区文件', inputSchema: { type: 'object', properties: { path: { type: 'string' } } } }],
+      callTool: async call => { seen.push(call); return { content: 'export const a = 1' } },
+    })
+    const result = await host.collect(handle)
+    expect(seen).toEqual([{ name: 'read_file', arguments: { path: 'src/app.ts' } }])
+    expect(bridge.toolResults).toEqual([{ result: JSON.stringify({ content: 'export const a = 1' }) }])
+    expect(result.text).toBe(`工具返回：${JSON.stringify({ content: 'export const a = 1' })}`)
+    expect(result.toolCalls).toBe(1)
+    const sent = bridge.dispatched[0]!
+    expect(sent.tools).toHaveLength(1)
+    expect(typeof sent.toolBase).toBe('string')
+    expect(sent.toolBase).toContain('127.0.0.1')
+    expect(typeof sent.toolToken).toBe('string')
+    await host.stop()
+  })
+
+  it('does not send a tool endpoint when the turn has no tools', async () => {
+    const bridge = await fakeBridge()
+    bridges.push(bridge)
+    const host = new VsCodeLmHost({ file: bridge.file, discoverMs: 0, pollMs: 5 })
+    await host.start()
+    const handle = await host.dispatch({ sessionId: 's', directory: tmpdir(), prompt: 'p' })
+    await host.collect(handle)
+    expect(bridge.dispatched[0]!.toolBase).toBeUndefined()
+    expect(bridge.dispatched[0]!.tools).toBeUndefined()
+    await host.stop()
   })
 
   it('maps an HTTP 401 to unauthorized in the client', async () => {

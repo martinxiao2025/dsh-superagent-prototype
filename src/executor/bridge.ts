@@ -24,6 +24,8 @@ export interface BridgeTurn {
   readonly text: string
   readonly model?: string
   readonly elapsedMs?: number
+  /** 本回合模型实际发起的工具调用数；没有工具时缺省。 */
+  readonly toolCalls?: number
   readonly usage?: { readonly inputTokens?: number; readonly outputTokens?: number; readonly estimated?: boolean }
   readonly error?: { readonly kind: BridgeErrorKind; readonly message: string }
 }
@@ -34,6 +36,18 @@ export interface BridgeTurnRequest {
   readonly prompt: string
   readonly model?: string
   readonly timeoutMs?: number
+  /** 本回合暴露给模型的工具。 */
+  readonly tools?: readonly TurnToolRequest[]
+  /** 工具回调的基地址，形如 `http://127.0.0.1:<port>/turns/<id>`；扩展向它 `POST` 一次调用。 */
+  readonly toolBase?: string
+  /** 工具回调的令牌，只在本次派发中有效。 */
+  readonly toolToken?: string
+}
+/** 桥协议里的工具定义，与 `TurnTool` 同形。 */
+export interface TurnToolRequest {
+  readonly name: string
+  readonly description: string
+  readonly inputSchema: Record<string, unknown>
 }
 /** 桥客户端可见的错误；`kind` 直接决定 Runtime 侧如何归类。 */
 export class BridgeError extends Error {
