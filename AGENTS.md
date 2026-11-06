@@ -149,7 +149,7 @@ Get-ChildItem -Recurse -File src,tests,scripts,plugin,docs -Include *.ts,*.tsx,*
 ## 6. 安全规则
 
 1. **密钥与凭证**：不得把 token、cookie、私钥、`gh` 凭据、飞书 app secret、真实 session id 写入仓库、文档、测试夹具或提交信息。示例统一用占位符（`<org>`、`127.0.0.1`、`ou_bot`）。
-2. **不得为通过验证而降低标准**：禁止删除、跳过（`.skip`/`.todo`）、注释掉测试，禁止放宽断言、放宽 schema、改验收标准；失败就修代码或如实上报。
+2. **不得为通过验证而降低标准**：禁止删除、注释掉测试，禁止为让结果变绿而跳过测试，禁止放宽断言、放宽 schema、改验收标准；失败就修代码或如实上报。仅当被测对象本身在某个平台无法运行时（例如产品生成的 `#!/bin/sh` worker shim、`scripts/dsh-superagent` 服务脚本），才允许用 `skipIf(platform)` 限定，并且必须在测试文件内写明原因、在 `docs/009-copilot-plugin.md` 的验收记录里同步数量，不得把跳过当作通过。
 3. **Git 安全**：禁止 `git push --force`、`git push -f`、改写已推送历史（rebase/amend 公开提交）、修改远端地址；不得擅自 `git reset --hard`、`git clean -fd`、`git checkout -- .`。
 4. **破坏性操作先确认**：删除目录/文件、覆盖未提交改动、清空数据库、重置分支，必须先征得用户同意（见 §8）。
 5. **外部网络与依赖**：新增依赖必须说明理由、锁定精确版本（不用 `^`）、更新锁文件与文档；校验脚本必须离线可跑；不得引入需要联网的运行时行为。

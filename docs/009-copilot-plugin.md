@@ -53,6 +53,8 @@ pnpm check          # typecheck + test + build + plugin:check
 - 不引入 token/OAuth。任何能访问本机回环端口的进程都可以调用这些工具,这是阶段一接受的残余风险;信任边界是操作系统用户与权限,而不是网络。
 - 权限口径不变:MCP 调用等价于一次面板操作,不绕过 Policy、Mandate 复验或授权判定。
 - 每个 MCP 会话一个 `Server` 与一个 transport;`DELETE` 关闭会话,10 分钟无活动的会话被回收,`Runtime.stop()` 关闭全部连接与监听。
+- 所有 `POST`(含 `initialize` 与已建会话的调用)都由端点自己限读请求体,上限 4 MB;超限返回 HTTP 413 与 JSON-RPC 错误,不是断连。头部 10 秒、整个请求 30 秒超时,慢客户端不会长期占用连接。
+- 初始化失败只向客户端返回固定文案,原始错误写日志,避免把内部路径或实现细节暴露到端口上;工具自身的领域错误(`UserError` 的 `error` 与 `code`)仍原样返回,因为那是模型需要据以纠正的操作信息。
 
 ## 6. 安装与保活
 
@@ -71,6 +73,7 @@ pnpm check          # typecheck + test + build + plugin:check
 | 健康面板 `mcp` 为 `error` | 端口被占用或无权监听;换 `mcpPort` 或释放端口,重启后重试 |
 | 客户端收到 404 `Session not found` | 会话已被回收或守护进程重启;重新 initialize |
 | 客户端收到 400 `first request must be initialize` | 首帧不是 `initialize`;按 MCP 规范先握手 |
+| 客户端收到 413 `request body is too large` | 单次请求体超过 4 MB;缩小 payload,不要重试同一请求 |
 | 工具返回 `isError` 且带 `code` | 领域拒绝,原样展示 `error` 与 `code`;不要用改参或换工具绕过 |
 | 读图片被拒 | MCP 侧没有 DSH 主会话的附件通道;改用线程文本,或提示用户到 DSH 会话读图 |
 | `plugin:check` 报版本不一致 | `plugin.json` 的 `version` 必须等于 `package.json`;构建会注入,源文件需同步 |
@@ -83,7 +86,7 @@ pnpm check          # typecheck + test + build + plugin:check
 | A2 | 构建打包 | 通过 | `pnpm build` 退出 0;`lib/plugin/` 含 `plugin.json`、`mcp.json`、3 个技能目录,无 BOM |
 | A3 | MCP 连通 | 自动等价验证通过 | `tests/mcp.spec.ts`:真实 Streamable HTTP 握手、14 个工具、`orchestrator_read`、`orchestrator_route` 建票;inspector GUI 未手工执行 |
 | A4 | Copilot 冒烟 | 未执行 | 需要 VS Code Copilot 与用户账号,待用户配合 |
-| A5 | 回归 | 部分通过 | 全量 1159 通过、42 失败,失败集中在 8 个文件,均为 Windows 环境性(`sh`/`sleep`/`env` 缺失、symlink EPERM、POSIX 权限位、路径分隔符),非本阶段引入;真实 GitHub/飞书触发未执行 |
+| A5 | 回归 | 通过(Windows) | 全量 1177 通过、26 跳过、0 失败。跳过的 3 类在测试文件内写明原因:worker shim 执行、`scripts/dsh-superagent` 服务脚本、飞书消费者假 CLI 都以 `#!/bin/sh` 脚本为被测对象,Windows 无法执行;另 1 项 POSIX 权限位断言。此前 42 项失败中的 16 项已改为跨平台实现并真实通过。真实 GitHub/飞书触发仍未执行 |
 | A6 | 保活演练 | 未执行 | 需要 systemd/计划任务与真实部署,待用户环境 |
 
 未闭合项如实保留,不以自动化结果替代人工验收。
