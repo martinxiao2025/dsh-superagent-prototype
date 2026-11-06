@@ -82,11 +82,39 @@ pnpm check          # typecheck + test + build + plugin:check
 
 | # | 验收项 | 结果 | 依据 |
 | --- | --- | --- | --- |
-| A1 | 规范合规 | 通过 | `node scripts/validate-plugin.mjs` 与 `--dir lib/plugin` 均退出 0;4 类负例(大写名称、schema 版本不一致、嵌套技能目录、未知字段)均退出 1 |
+| A1 | 规范合规 | 作者侧校验通过 | `node scripts/validate-plugin.mjs` 与 `--dir lib/plugin` 均退出 0;4 类负例(大写名称、schema 版本不一致、嵌套技能目录、未知字段)均退出 1。注意:该脚本是作者侧门禁,比规范对客户端的最低要求更严格(未知顶层字段直接失败、`mcpServers` 不得为空、MCP 仅允许回环 HTTP),不能据此宣称客户端一致性 |
 | A2 | 构建打包 | 通过 | `pnpm build` 退出 0;`lib/plugin/` 含 `plugin.json`、`mcp.json`、3 个技能目录,无 BOM |
-| A3 | MCP 连通 | 自动等价验证通过 | `tests/mcp.spec.ts`:真实 Streamable HTTP 握手、14 个工具、`orchestrator_read`、`orchestrator_route` 建票;inspector GUI 未手工执行 |
+| A3 | MCP 连通 | 自动等价验证通过 | `tests/mcp.spec.ts`:真实 Streamable HTTP 握手、14 个工具、`orchestrator_read`、`orchestrator_route` 建票。inspector CLI/GUI 未执行:本地没有可独立启动的 MCP 守护进程(需要 DSH 宿主),以官方 SDK 客户端的真实 HTTP 链路作等价验证,不宣称已跑 inspector |
 | A4 | Copilot 冒烟 | 未执行 | 需要 VS Code Copilot 与用户账号,待用户配合 |
 | A5 | 回归 | 通过(Windows) | 全量 1179 通过、26 跳过、0 失败。跳过的 3 类在测试文件内写明原因:worker shim 执行、`scripts/dsh-superagent` 服务脚本、飞书消费者假 CLI 都以 `#!/bin/sh` 脚本为被测对象,Windows 无法执行;另 1 项 POSIX 权限位断言。此前 42 项失败中的 16 项已改为跨平台实现并真实通过。真实 GitHub/飞书触发仍未执行 |
 | A6 | 保活演练 | 未执行 | 需要 systemd/计划任务与真实部署,待用户环境 |
 
 未闭合项如实保留,不以自动化结果替代人工验收。
+
+## 9. Agent Plugins 1.0.0 符合性核对(2026-11-06)
+
+**规范来源**:<https://agent-plugins.org/specification> 与 <https://agent-plugins.org/plugin-authors/*> 实抓;**站点发布版本 1.0.0(Status: Published)**。规范仓库 `main` 另有 `spec/1.1.0.md`(Status: Working Draft),站点未发布,本次不作为依据。技能格式按 Agent Skills 规范核对(Agent Plugins §7.1 明确引用该规范为唯一事实源)。
+
+**Schema 来源**:官方 `https://agent-plugins.org/schemas/1.0.0/{plugin,mcp}.schema.json` 实下载;与本地 `scripts/schemas/agent-plugins-1.0.0/` 两份的 SHA256 完全一致(`plugin` `0A4AAD95…B3AB883`,`mcp` `6539175B…6D3ACB`),校验过程仍离线。
+
+| 条款 | 要求摘要 | 仓库现状 | 结论 | 证据 |
+| --- | --- | --- | --- | --- |
+| §4.1(1)(2) | 插件是单一根目录;根下必需 `plugin.json` | `plugin/` 与构建产物 `lib/plugin/` 各有一份 | 符合 | `plugin/plugin.json`、`lib/plugin/plugin.json` |
+| §4.1(3)(4) | 包内路径必须留在插件根内;插件相对路径以 `./` 开头 | 包内无 `../` 或绝对文件路径;`mcp.json` 无 `command`/`cwd` | 符合 | `plugin/mcp.json` |
+| §4.2 | 固定位置:`plugin.json`、`skills/`、`mcp.json`、反向域名扩展目录 | 前三者齐全;未使用扩展目录(可选) | 符合 | `plugin/` 顶层仅 `plugin.json`、`mcp.json`、`skills/` |
+| §5.1 | `$schema` 与 `name` 必填;`$schema` 选择完整契约 | 两者均有,`$schema` 指向 1.0.0 | 符合 | `plugin/plugin.json` |
+| §5.2 | 顶层字段封闭,只允许 10 个;未知字段由客户端报告后忽略,其余违规致命 | 仅用 `$schema`/`name`/`version`/`description`/`license`/`keywords`,无未知字段。校验脚本对未知字段直接失败,属作者侧更严格 | 包符合;脚本行为严于客户端 | `scripts/validate-plugin.mjs`;负例 `unknown` 退出 1 |
+| §5.3 | `name` 1–64 字符,小写字母/数字/连字符/点,首尾字母数字,禁 `--` 与 `..` | `dsh-superagent` 满足 | 符合 | `plugin/plugin.json` |
+| §5.4 | `version` 可选,SemVer 推荐 | `0.1.0`,与 `package.json` 一致 | 符合 | 两文件 `version` |
+| §5.5 | `author`/`homepage`/`repository`/`license`/`keywords` 类型必须正确;元数据不校验语法 | `license` 为字符串、`keywords` 为字符串数组;未写 `homepage`/`repository` | 符合 | `plugin/plugin.json` |
+| §6.1/§6.2 | 固定位置发现;单个组件失效不拖累其它组件 | 组件齐全;本仓库是插件作者,不实现客户端隔离逻辑 | 不适用(客户端行为) | — |
+| §7.1 | 技能只在 `skills/` 一级子目录,`SKILL.md` 必须是常规文件;禁止递归发现;无效技能单独跳过 | `plugin/skills/dsh-superagent/`;构建后 3 个一级技能;无嵌套技能 | 符合 | `plugin/skills/`、`lib/plugin/skills/`;负例 `nested` 退出 1 |
+| §7.2.1 | `mcp.json` 固定在根,只允许 `$schema` 与 `mcpServers`;服务器键名自定义 | 仅这两个顶层字段;键名 `dsh-superagent` | 符合 | `plugin/mcp.json` |
+| §7.2.2 | `stdio` 需 `type`+`command`;`streamable-http` 需 `type`+`url`;`sse` 已弃用;非回环必须 HTTPS,回环可用 HTTP;URL 绝对、无用户信息与片段 | 使用 `streamable-http` + `http://127.0.0.1:3083/mcp`;无 headers、无凭据;未用 stdio(可选) | 符合 | `plugin/mcp.json` |
+| §9.1/§9.2 | 只定义 `PLUGIN_ROOT`、`PLUGIN_DATA`;展开仅用于 `args`/`env` 值/`cwd`,单次不递归;不得覆盖保留变量 | 包内未使用任何 `${...}` 占位符,也不存在规范外变量 | 符合(未使用) | 全仓检索 `\$\{[^}]+\}` 无命中 |
+| §10.1/§10.2 | 用 `$schema` 选择规则;版本不匹配时只使 MCP 配置失效,其余组件继续 | `plugin.json` 与 `mcp.json` 均为 1.0.0,与已发布 schema 一致;构建脚本强制两者相等 | 符合 | `scripts/build-plugin.mjs`、`scripts/validate-plugin.mjs` |
+| §11 | 客户端一致性要求 | 本仓库不实现 Agent Plugins 客户端 | 不适用 | — |
+| Agent Skills §Frontmatter | `name`/`description` 必填;`name` 1–64、小写字母数字连字符、无 `--`、与目录同名;`description` 1–1024;可选字段类型固定 | 3 个 `SKILL.md` 均只有合规的 `name`/`description`,目录同名 | 符合 | `plugin/skills/dsh-superagent/SKILL.md`、`lib/plugin/skills/*/SKILL.md` |
+| 扩展命名空间 | `extensions` 与同名顶层目录均可选;未实现该命名空间的客户端应忽略 | 未使用 | 符合(未使用) | `plugin/` 顶层目录清单 |
+
+**结论**:插件的包结构、清单、MCP 配置、技能发现与 frontmatter 均符合 Agent Plugins 1.0.0 与 Agent Skills 规范;未发现需要改代码或改包结构的不符项。校验脚本比规范对客户端的最低行为更严格,已在 A1 与本表中注明,不据此宣称客户端一致性。A4/A6 与真实触发仍为环境阻塞,未标为通过。

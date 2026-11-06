@@ -2,6 +2,8 @@
 /**
  * 离线校验 agent-plugins 包：两份清单对照随仓库携带的 1.0.0 schema、版本、回环 MCP URL、
  * 技能目录结构，以及无 BOM 的 UTF-8。失败时退出码 1，并打印出错文件与原因。
+ * 这是作者侧门禁，比规范对客户端的最低行为更严格（未知顶层字段、空 `mcpServers`、非回环 URL
+ * 都直接失败），因此通过本脚本不等于通过客户端一致性验证。
  */
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'

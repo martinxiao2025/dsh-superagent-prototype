@@ -502,6 +502,8 @@ npx -y @modelcontextprotocol/inspector --cli http://127.0.0.1:3083/mcp --method 
 | A5 | 回归 | `pnpm test` + 一轮真实触发 + 面板核对 | 面板、主会话评估、监听行为不变 | 实施 |
 | A6 | 保活演练 | kill 进程 → 调度器拉起 → 客户端重连 | 自动恢复，工具可用 | 用户 + 实施 |
 
+状态（2026-11-06）：A1/A2 通过；A3 以官方 SDK 客户端走真实 HTTP 链路作**等价验证**，inspector CLI/UI 未执行（本地没有可独立启动的 MCP 宿主进程）；A4/A6 未执行；A5 仅完成测试回归，真实 GitHub/飞书触发未执行。A3/A4/A6 均不标为“通过”。
+
 ## 8. 风险登记
 
 | # | 风险 | 触发信号 | 缓解 | 验证 |
@@ -559,6 +561,7 @@ npx -y @modelcontextprotocol/inspector --cli http://127.0.0.1:3083/mcp --method 
 | 真实运行验证 | 2026-11-06 | `copilot -p … --plugin-dir lib/plugin`、官方 MCP SDK 探针、`pnpm check` | 真实 Copilot CLI 1.0.103 两次会话跑通（读候选、建工单、审核门 `notReady`、备注）；协议层 14 工具、中文错误、提示词预览正常；修复 3 个文案问题（SKILL 资源名、默认规则漏译、zod 英文默认消息），记录见 `docs/010-runtime-verification.md` | `dab5a99` |
 | 进度登记 | 2026-11-06 | `pnpm check`、`git push origin feat/phase1-agent-plugins` | `AGENTS.md`、README、本表与 `docs/010` 对齐当前编号与状态；`pnpm check` 全绿；远端 `feat/phase1-agent-plugins` 与本地一致 | 本批 |
 | 全量核对与修复 | 2026-11-06 | `pnpm install --frozen-lockfile`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`pnpm plugin:check` | 安装 314 个包退出 0；typecheck 退出 0；全量 1179 通过 / 26 跳过 / 0 失败；`lib/plugin` 3 个技能；两处插件校验通过。核对发现并修复 1 个 Windows 跨盘符缺陷：`promptFile` 收到绝对路径时被 `join` 拼坏（包根在 D:、临时目录在 C:）；`tests/mcp.spec.ts` 增补「参数拒绝后继续服务」与「过期 revision 被拒」两例；T2.2/T2.3/T2.4/T3.1 与 `docs/007` 测试表按代码事实更正。本机 node v24.2.0 仅作环境记录，门槛以 `engines` 为准 | 本批 |
+| Agent Plugins 1.0.0 合规核对 | 2026-11-06 | 实抓 `agent-plugins.org/specification` 与作者指南；下载官方两份 schema 比对 SHA256；`node scripts/validate-plugin.mjs`（正例 2 处 + 4 类负例） | 站点发布版 1.0.0；仓库 `main` 的 1.1.0 为 Working Draft 不作依据。官方 schema 与本地两份 SHA256 完全一致（`plugin` `0A4AAD95…`、`mcp` `6539175B…`；工作区 CRLF 由 `core.autocrlf` 产生，归一后与仓库内容一致）。逐条核对 §4–§11 与 Agent Skills frontmatter，包结构/清单/MCP/技能均符合，无不符项；校验脚本属作者侧门禁、严于客户端下限，已在 `docs/009` §9 注明。A3 仍为 SDK 真实 HTTP 等价验证，inspector 未执行；A4/A6/真实触发仍阻塞 | 本批 |
 
 未闭合项（截至本批）：VS Code Copilot Chat 冒烟（A4，本机未安装官方 Copilot 扩展）、真实 worker 执行（无 `dsh` 宿主与真实模型 worker）、双人 SoD（验证宿主只有一个允许发送者）、保活演练（A6，需 systemd/计划任务）、真实 GitHub/飞书事件（无凭据）。Windows 上跳过的测试仍为 26 项，均为 POSIX 专属被测对象（`#!/bin/sh` worker shim、服务管理脚本、飞书假 CLI 与权限位），已在测试文件内写明原因，不视为通过。
 
