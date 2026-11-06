@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """管理本地 dsh-superagent 服务（一个 DSH profile，默认 `superagent`），不影响其他 tmux 会话。
 
+**仅 POSIX（范围内不支持）**：依赖 tmux、`ps` 与 `fcntl`，本项目只支持 Windows，Windows 上请用
+等价的 `scripts/dsh-superagent-windows.ps1 -Action start|stop|status|drill`。这里保留脚本原样，
+不作为跨平台承诺，也不在 Windows 上执行或验证。
+
 服务正常运行时，`status`、`start`、`restart` 退出 0；服务已停止、存在重复实例、不可达或报告
 runtime 错误时退出 1，这类问题 `restart` 可能修复；服务在跑但某个组件（例如 Source）报错时退出 2；
 服务在跑但在等待 setup 时退出 3。重启既不能修复 2 也不能修复 3：这两种情况需要人来处理。

@@ -15,6 +15,15 @@ dsh-superagent 是面向**单个 GitHub 仓库**的主动式编码代理，以 [
 1. 符合 agent-plugins-spec 1.0.0 的插件包 [`plugin/`](plugin)（清单、MCP 声明、主技能）；
 2. 只绑定 `127.0.0.1` 的 MCP Streamable HTTP 端点，把 DSH 主会话的 14 个工具原样暴露给 VS Code Copilot 等 agent-plugins 客户端。
 
+## 支持的运行环境
+
+**本项目只支持并验证 Windows + VS Code Stable 的官方 Copilot / Copilot Chat。** 其它环境不在支持与验证范围内，也不作为未完成任务：
+
+- Linux、macOS、WSL 及其它编辑器/宿主不在支持范围；VS Code Insiders 已卸载，不纳入；Copilot CLI 只作前置证据，不计入验收。
+- POSIX 专属对象为**范围外**：`scripts/dsh-superagent`（tmux/`ps`/`fcntl`）、产品生成的 `#!/bin/sh` worker shim、systemd 单元、POSIX 权限位断言、飞书消费者假 CLI 的 shebang 执行。对应测试在 Windows 上保持跳过并注明「范围外」，不当作通过。
+- Windows 上的守护启停用 [`scripts/dsh-superagent-windows.ps1`](scripts/dsh-superagent-windows.ps1)，不依赖第三方服务包装器。
+- 既有产品配置中沿用 POSIX 绝对路径语义的字段（如 `stateDir` 需以 `/` 开头）属于产品现状，不在本阶段跨平台改造范围内。
+
 ## 快速开始
 
 ### 前置要求
@@ -40,13 +49,13 @@ pnpm check     # typecheck + test + build + plugin:check
 
 完整安装（账号、profile、机器配置、设置、验证）交给编码代理与运营者一起完成，指令在 [SETUP.md](SETUP.md)，细节在 [docs/006-deployment.md](docs/006-deployment.md)。最小路径是：
 
-```sh
+```powershell
 npm install -g @deepseek-ai/dsh@0.2.1-rc.3
-pnpm install && pnpm build
-dsh superagent --from-default-profile web --dump-config > /dev/null   # 仅在 profile 不存在时执行
+pnpm install; pnpm build
+dsh superagent --from-default-profile web --dump-config > $null   # 仅在 profile 不存在时执行
 dsh plugin --profile superagent add "link:$PWD"
-scripts/dsh-superagent start
-scripts/dsh-superagent status
+pwsh -NoProfile -File scripts/dsh-superagent-windows.ps1 -Action start
+pwsh -NoProfile -File scripts/dsh-superagent-windows.ps1 -Action status
 ```
 
 `--from-default-profile` 会替换已有 profile 并删除其中的 `cordis.patch.yml`；profile 已存在时不要执行它，改为编辑该文件。
@@ -126,7 +135,7 @@ worker 侧另有 5 个自有工具（`orchestrator_ack`、`orchestrator_report`�
 
 除 `stateDir`、`mcpEnabled`、`mcpPort` 外，其余限额保存后即可生效。端口被占用不会让编排停摆：进程继续运行，健康面板的 `mcp` 条目显示 `error` 与占用端口。
 
-> `stateDir` 的校验要求以 `/` 开头的绝对路径，沿用 POSIX 语义；在原生 Windows 路径（如 `D:\...`）下会被拒绝，请使用 WSL 或等价的 POSIX 环境。
+> `stateDir` 的校验要求以 `/` 开头的绝对路径，沿用 POSIX 语义；原生 Windows 路径（如 `D:\...`）会被拒绝。这是既有产品行为，**不在本阶段的跨平台改造范围内**；本项目不因该限制把 Linux/WSL 列为支持环境。
 
 ## 验证与测试
 
@@ -142,7 +151,7 @@ node scripts/validate-plugin.mjs [--dir <path>]   # 单独校验某个插件目�
 
 `plugin:check` 依赖先构建：它同时校验 `plugin/`（1 个技能）与 `lib/plugin/`（3 个技能）。校验覆盖官方 schema、`$schema` 版本一致性、`plugin.version` 与 `package.json` 一致、MCP URL 必须是回环 `http://…/mcp`、技能目录结构与 frontmatter，以及所有文本文件的 UTF-8（无 BOM）；任一项失败退出码为 1 并打印原因。
 
-当前基线（2026-11-06，Windows）：`pnpm check` 退出 0，全量测试 **1177 通过 / 26 跳过 / 0 失败**。跳过的 26 项都源于被测对象本身是 POSIX 专属实现：产品生成的 `#!/bin/sh` worker shim、`scripts/dsh-superagent` 服务脚本、飞书消费者的假 CLI，以及一处 POSIX 权限位断言；对应测试文件内用 `skipIf(platform)` 写明原因，未把跳过当通过。
+当前基线（2026-11-06，Windows）：`pnpm check` 退出 0，全量测试 **1179 通过 / 26 跳过 / 0 失败**。跳过的 26 项都源于被测对象本身是 POSIX 专属实现（产品生成的 `#!/bin/sh` worker shim、`scripts/dsh-superagent` 服务脚本、飞书消费者的假 CLI、一处 POSIX 权限位断言）；它们在 Windows 上**范围外**，测试文件内用 `skipIf(platform)` 写明原因，保留跳过但不当作通过，也不计入剩余待办。
 
 ## 已知限制
 
@@ -150,9 +159,9 @@ node scripts/validate-plugin.mjs [--dir <path>]   # 单独校验某个插件目�
 - **回环即身份**：端点只监听 `127.0.0.1` 并启用 DNS rebinding 防护，但不引入 token/OAuth；任何能访问本机回环端口的进程都能调用这些工具，信任边界是操作系统用户与权限。
 - **图片读取**：MCP 侧没有 DSH 主会话的附件通道，`orchestrator_eval_read` 的图片分支会被拒绝并给出原因。
 - **客户端差异**：agent plugins 目录与启用方式由各客户端约定；规范未定义 `streamable-http` 的重连语义，断线重试由客户端负责。
-- **必须常驻守护进程**：插件只是客户端入口，端点由 `scripts/dsh-superagent start` 启动的守护进程提供。
-- **未闭合的人工验收**：VS Code Copilot 冒烟（A4）客户端已就位、待 IDE 内人工验证（CLI 与 Insiders 不计入）；systemd/计划任务长期保活未验证（A6 的 Windows 机制演练已通过）；真实 GitHub/飞书触发（A5 第二轮）未执行，当前只报告自动化回归结果。
-- **平台覆盖**：自动化验证在 Windows 完成；POSIX 专属对象按上述方式跳过，Linux 行为仍需在目标环境复核。
+- **必须常驻守护进程**：插件只是客户端入口，端点由 `scripts/dsh-superagent-windows.ps1 -Action start` 启动的守护进程提供。
+- **未闭合的人工验收**：VS Code Copilot 冒烟（A4）客户端已就位、待 IDE 内人工验证（CLI 与 Insiders 不计入）；真实 GitHub/飞书触发（A5 第二轮）未执行，当前只报告自动化回归结果。
+- **平台覆盖**：支持环境是 Windows + VS Code Stable 的官方 Copilot / Copilot Chat；POSIX 专属对象（服务脚本、worker shim、systemd、权限位）为范围外，不再作为待验证或待支持项。
 
 ## 文档
 

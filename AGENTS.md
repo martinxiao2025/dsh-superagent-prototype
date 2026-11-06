@@ -46,7 +46,7 @@
 ### 1.3 无法在当前环境确认、需标记而非假设
 
 - **A4（VS Code Copilot 冒烟）**：范围限定 **Windows + VS Code Stable 1.119.0 的官方 Copilot Chat**（内置 `GitHub.copilot-chat@0.47.0`）；Copilot CLI 只作前置证据，**不计入 A4 验收**；Insiders 已由用户卸载，不纳入本次验证范围，脚本不得探测或依赖它。当前记录为「客户端就位、待人工验证」，不得写成通过；盘点与最小人工步骤见 `docs/009-copilot-plugin.md` §11。
-- **A6（保活演练）**：Windows 机制演练已用 `scripts/dsh-superagent-windows.ps1 -Action drill` 对真实 `Runtime` 完成并通过（强杀后 30.1 秒恢复、14 工具可用），证据见 `docs/009` §10；真实 `dsh --profile` 宿主、计划任务开机自启与 systemd 仍未验证。
+- **A6（保活演练）**：Windows 机制演练已用 `scripts/dsh-superagent-windows.ps1 -Action drill` 对真实 `Runtime` 完成并通过（强杀后 30.1 秒恢复、14 工具可用），证据见 `docs/009` §10；真实 `dsh --profile` 宿主与计划任务开机自启在 Windows 范围内仍未验证；systemd 与其它 POSIX 调度为**范围外**（见 §2.1）。
 - **真实 GitHub/飞书触发（A5 第二轮）**：需要真实凭据与仓库，未执行前只报告测试回归结果。
 - **官方 schema 的远端可用性**：已下载到本地校验输入目录后，校验过程禁止联网；schema 内容以本地文件为准。
 
@@ -67,6 +67,15 @@
 ## 2. 项目定位与目录结构
 
 `dsh-superagent` 是面向单个 GitHub 仓库的主动式编码代理，以 DSH bundle 形式运行；阶段一目标是新增合规插件包与 MCP 端点，不改领域逻辑。
+
+### 2.1 支持的运行环境（2026-11-06 用户确认）
+
+**本项目只支持并验证 Windows + VS Code Stable 的官方 Copilot / Copilot Chat。** 其他环境不在支持与验证范围内，也不作为未完成任务：
+
+- 范围外：Linux、macOS、WSL 及其它编辑器/宿主；VS Code Insiders（用户已卸载）；Copilot CLI（只作前置证据，不计入验收）。
+- POSIX 专属对象一律范围外：`scripts/dsh-superagent`（tmux/`ps`/`fcntl`）、产品生成的 `#!/bin/sh` worker shim、systemd 单元、POSIX 权限位断言、飞书消费者假 CLI 的 shebang 执行。
+- Windows 等价物：守护启停用 `scripts/dsh-superagent-windows.ps1`；相关测试在 Windows 上保持 `skipIf(platform)` 跳过并注明「范围外」，不得当作通过，也不得为跨平台去改产品行为。
+- 范围外不是遗留缺陷：文档与验收矩阵中不得再写成「待跨平台验证」或「未来支持其它环境」。
 
 | 路径 | 性质 | 可否手改 |
 | --- | --- | --- |
@@ -179,7 +188,7 @@ Get-ChildItem -Recurse -File src,tests,scripts,plugin,docs -Include *.ts,*.tsx,*
 4. 需要修改 `src/core` 的领域行为、`prompts/` 的语义、Policy 规则、既有工具的描述或 schema。
 5. 需要新增或重命名设置项、`SetupCode`、健康条目、locale 键（会影响面板与文档契约）。
 6. 需要改变 MCP 监听地址、鉴权模型、插件安装路径或分发方式。
-7. 需要真实 GitHub/飞书凭据，或需要在 VS Code Copilot、systemd、Windows 计划任务中做验收（A4/A6）。
+7. 需要真实 GitHub/飞书凭据，或需要在 VS Code Copilot、Windows 计划任务中做验收（A4/A6）。systemd/POSIX 只作为范围外说明，不再列入待办。
 8. 文档与代码冲突且无法用代码事实裁决（记录到 §1.3 并上报）。
 9. 计划中的验收标准无法满足，需要放宽或跳过。
 

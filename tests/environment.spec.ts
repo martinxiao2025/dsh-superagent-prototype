@@ -23,7 +23,7 @@ beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'environment-')); mkdirSync(
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
 // 产品把 worker shim 写成 POSIX shell 脚本（`#!/bin/sh` + `exec`），因此运行它们需要 POSIX shell；
-// 下面的检查在各平台都保持启用，其中三个执行 shim 的检查在 sh 不存在处做了标记。
+// 下面的检查在各平台都保持启用，其中三个执行 shim 的检查在 sh 不存在处做了标记（POSIX 专属，范围外）。
 const posix = process.platform !== 'win32'
 
 describe('worker shims', () => {

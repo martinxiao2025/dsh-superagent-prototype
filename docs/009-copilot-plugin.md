@@ -12,6 +12,8 @@
 
 插件加载后,Copilot 成为与 Web 面板、DSH 主会话并列的第三个客户端。领域逻辑(Engine、Policy、Store、Executor、Sources)零改动,MCP 只做操作路由。
 
+**支持环境(2026-11-06 用户确认):只支持并验证 Windows + VS Code Stable 的官方 Copilot / Copilot Chat。** Linux、macOS、WSL、其它编辑器/宿主、VS Code Insiders(已卸载)与 Copilot CLI(仅前置证据)都不在支持与验收范围;POSIX 专属对象(`#!/bin/sh` worker shim、systemd、POSIX 权限位、`scripts/dsh-superagent`)为**范围外**,不作为待办。
+
 ## 2. 插件包
 
 | 路径 | 内容 |
@@ -62,8 +64,8 @@ pnpm check          # typecheck + test + build + plugin:check
 
 保活由外部调度负责,Copilot 进程不必常驻:
 
-- Linux:systemd 单元 `Restart=always`,启动命令沿用 `scripts/dsh-superagent` 的 start;
-- Windows:用本仓库的 `scripts/dsh-superagent-windows.ps1 -Action start`(无第三方依赖,start/stop/status/supervise);需要开机自启时,由计划任务在登录时调用同一条命令。演练与实测见 §10;
+- Windows(支持环境):用本仓库的 `scripts/dsh-superagent-windows.ps1 -Action start`(无第三方依赖,start/stop/status/supervise);需要开机自启时,由计划任务在登录时调用同一条命令。演练与实测见 §10;
+- Linux/systemd(范围外,不实现也不验证):`scripts/dsh-superagent` 与 systemd 单元不属于本项目支持范围;
 - 守护进程重启后,MCP 端点重新监听同一端口;streamable-http 的断线重试由 Copilot 客户端负责,规范未定义重连语义。
 
 ## 7. 排障
@@ -87,8 +89,8 @@ pnpm check          # typecheck + test + build + plugin:check
 | A2 | 构建打包 | 通过 | `pnpm build` 退出 0;`lib/plugin/` 含 `plugin.json`、`mcp.json`、3 个技能目录,无 BOM |
 | A3 | MCP 连通 | 自动等价验证通过 | `tests/mcp.spec.ts`:真实 Streamable HTTP 握手、14 个工具、`orchestrator_read`、`orchestrator_route` 建票。inspector CLI/GUI 未执行:本地没有可独立启动的 MCP 守护进程(需要 DSH 宿主),以官方 SDK 客户端的真实 HTTP 链路作等价验证,不宣称已跑 inspector |
 | A4 | Copilot 冒烟 | 客户端就位,待人工验证 | 验证环境限定 Windows + VS Code Stable `1.119.0` 的官方 Copilot Chat(内置 `@0.47.0`);市场安装被内置版本拒绝,不影响使用。已自动确认 Agent Plugins 能力、`lib/plugin` 与三个技能、宿主 14 个工具;IDE 内登录、插件可见、技能可见与真实工具调用仍需人工完成。Insiders(用户已卸载)与 Copilot CLI 均不计入。清单见 §11 |
-| A5 | 回归 | 通过(Windows) | 全量 1179 通过、26 跳过、0 失败。跳过的 3 类在测试文件内写明原因:worker shim 执行、`scripts/dsh-superagent` 服务脚本、飞书消费者假 CLI 都以 `#!/bin/sh` 脚本为被测对象,Windows 无法执行;另 1 项 POSIX 权限位断言。此前 42 项失败中的 16 项已改为跨平台实现并真实通过。真实 GitHub/飞书触发仍未执行 |
-| A6 | 保活演练 | 通过(Windows 机制演练) | 用 `scripts/dsh-superagent-windows.ps1 -Action drill` 对真实 `Runtime` 宿主做启动→`taskkill /F /T`→自动拉起→管理 API 与 MCP 探针复核:首次就绪 2416ms,强杀后 30152ms 恢复,13 次重启尝试,恢复前后 `tools/list` 均为 14 个、`runtime`/`mcp` 均 `ready`。详见 §10。真实 `dsh --profile` 宿主与计划任务长期部署仍未验证 |
+| A5 | 回归 | 通过(Windows) | 全量 1179 通过、26 跳过、0 失败。跳过的 3 类在测试文件内写明原因:worker shim 执行、`scripts/dsh-superagent` 服务脚本、飞书消费者假 CLI 都以 `#!/bin/sh` 脚本为被测对象,Windows 无法执行;另 1 项 POSIX 权限位断言。这些对象均为**范围外**(项目只支持 Windows),保留跳过但不当作通过,也不计入待办。此前 42 项失败中的 16 项已改为跨平台实现并真实通过。真实 GitHub/飞书触发仍未执行 |
+| A6 | 保活演练 | 通过(Windows 机制演练) | 用 `scripts/dsh-superagent-windows.ps1 -Action drill` 对真实 `Runtime` 宿主做启动→`taskkill /F /T`→自动拉起→管理 API 与 MCP 探针复核:首次就绪 2416ms,强杀后 30152ms 恢复,13 次重启尝试,恢复前后 `tools/list` 均为 14 个、`runtime`/`mcp` 均 `ready`。详见 §10。systemd 等 POSIX 调度为**范围外**;真实 `dsh --profile` 宿主与计划任务开机自启不在本批验收内 |
 
 未闭合项如实保留,不以自动化结果替代人工验收。
 
@@ -124,7 +126,7 @@ pnpm check          # typecheck + test + build + plugin:check
 
 ### 10.1 既有机制与方案取舍
 
-- 产品自带的 `scripts/dsh-superagent` 依赖 tmux、`ps` 与 `fcntl`,只能在 POSIX 上运行;`tests/service-script.spec.ts` 在 Windows 上按其被测对象(`#!/bin/sh`)跳过。文档原先的保活建议是 systemd 或 Windows 计划任务,但本机没有部署过任何守护。
+- 产品自带的 `scripts/dsh-superagent` 依赖 tmux、`ps` 与 `fcntl`,只能在 POSIX 上运行;按 §1 的支持环境,它属于**范围外**,Windows 等价物是本仓库的 PowerShell 守护脚本。`tests/service-script.spec.ts` 在 Windows 上按其被测对象(`#!/bin/sh`)跳过并注明范围外。systemd 也不再是备选方案。
 - 备选方案与取舍:
   - **计划任务**:能开机自启,但需要注册任务与 XML,演练时难以在单次命令内完成启停与清理;
   - **nssm**:本机未安装,且任务要求不擅自联网安装第三方工具,排除;

@@ -141,8 +141,8 @@ lib/plugin/
 
 ## 5. 部署与保活
 
-- **守护进程**:沿用现有 DSH bundle 部署(`scripts/dsh-superagent` 已提供 start/stop/status);
-- **保活**:外部调度保证 24/7——Linux systemd 单元(`Restart=always`,复用 `scripts/dsh-superagent` 命令);Windows 计划任务(开机启动 + 失败重启);不依赖 Copilot 进程存活;
+- **守护进程**:Windows 上用 `scripts/dsh-superagent-windows.ps1` 提供 start/stop/status/drill;`scripts/dsh-superagent`(tmux/`ps`/`fcntl`)属 POSIX,**范围外**;
+- **保活**:Windows 计划任务(开机启动 + 失败重启)与仓库自带的 Windows 守护循环;systemd 等 POSIX 调度为**范围外**,不再作为交付内容;不依赖 Copilot 进程存活;
 - **插件安装**:手动将 `lib/plugin/`(或仓库 `plugin/`)放入 Copilot 客户端的插件目录(客户端自定,如 VS Code 的 agent plugins 目录);文档中写明放置路径与启用步骤;
 - **重连语义**:规范未定义断线重启策略;streamable-http 断线由 Copilot 客户端自行重试,验收时实测 VS Code 行为并记录。
 
@@ -152,10 +152,10 @@ lib/plugin/
 |---|---|---|
 | A1 | 规范合规 | `plugin.json`/`mcp.json` 通过官方 1.0.0 JSON schema 校验(下载 schema 至独立目录仅作校验输入,不联网执行) |
 | A2 | 构建打包 | `pnpm check` 全绿;`lib/plugin/` 结构与 §3.4 一致 |
-| A3 | MCP 连通 | MCP inspector 连 `http://127.0.0.1:3083/mcp`:握手成功、20 个工具列出、任选工具调用返回 |
-| A4 | Copilot 冒烟(需用户配合) | VS Code Copilot 加载插件:三个技能可见;聊天中 `@dsh-superagent` 查候选 → 路由 accept → Ticket 创建 → worker 执行 → 结果可查 |
+| A3 | MCP 连通 | MCP inspector 连 `http://127.0.0.1:3083/mcp`:握手成功、14 个工具列出、任选工具调用返回 |
+| A4 | Copilot 冒烟(需用户配合) | Windows + VS Code Stable 的官方 Copilot Chat 加载插件(CLI、Insiders、其它宿主不计入):三个技能可见;聊天中查候选 → 路由 accept → Ticket 创建 → worker 执行 → 结果可查 |
 | A5 | 回归 | 既有 Web 面板、DSH 主会话评估、GitHub 监听行为不变(现有测试全绿 + 一轮真实触发观察) |
-| A6 | 保活演练 | kill 守护进程 → 调度器拉起 → Copilot 侧重连恢复可用 |
+| A6 | 保活演练 | Windows 守护脚本强杀守护进程 → 自动拉起 → Copilot 侧重连恢复可用(systemd 等 POSIX 调度范围外) |
 
 ## 7. 工作量与顺序
 

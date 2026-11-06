@@ -247,7 +247,7 @@ it('lists in the same order in SQLite and in memory, and undoes a failed nested 
 })
 
 // Windows 没有 POSIX 权限位：stat().mode 总是报告 0o666/0o777，因此该断言只在
-// 能观察到 Store 写入的 mode 的地方才有意义。Store 在 POSIX 上仍请求 0o700/0o600。
+// 能观察到 Store 写入的 mode 的地方才有意义。Store 在 POSIX 上仍请求 0o700/0o600（Windows 范围外）。
 it.skipIf(process.platform === 'win32')('creates the state directory for its owner alone, and the database readable by its owner alone', () => {
   const path = join(directory, 'state', 'orchestrator.sqlite')
   new Store(path).close()

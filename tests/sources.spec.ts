@@ -1027,7 +1027,7 @@ it('reports GitHub as failing only after the configured number of consecutive fa
     observePulls: false, observeComments: false, observeCi: false })
 })
 // 假的 bot CLI 是一个 POSIX shell 脚本（`#!/bin/sh` 配合 `sleep`），消费者在其支持的每个平台上都会
-// 启动它；Windows 无法执行 shebang 脚本，因此该代码块仅在 POSIX 上验证。
+// 启动它；Windows 无法执行 shebang 脚本，因此该代码块仅在 POSIX 上验证（范围外）。
 describe.skipIf(process.platform === 'win32')('feishu event consumer', () => {
   let dir: string
   let controller: AbortController

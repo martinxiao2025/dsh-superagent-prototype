@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it as test } from 'vitest'
 
 // scripts/dsh-superagent 是一个 POSIX shell 服务脚本，本套测试通过 python3 配合替身的 ps、tmux 和
-// dsh 二进制来运行它；这些工具在 Windows 上都不存在，因此本套测试仅在 POSIX 上运行。
+// dsh 二进制来运行它；这些工具在 Windows 上都不存在，因此本套测试仅在 POSIX 上运行（项目支持环境为 Windows，POSIX 范围外）。
 const it = test.skipIf(process.platform === 'win32')
 
 let root: string

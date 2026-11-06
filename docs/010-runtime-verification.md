@@ -16,6 +16,8 @@
 
 本机没有安装 `dsh` 宿主，因此 Runtime 由本地脚本启动：**Engine、Policy、Store、评估、MCP 端点、提示词拼装全部是产品代码**；DSH 宿主服务（agents、sessionController、subprocess、webServer）与 Source 输入由脚本替代。所有替代点在下文标注。
 
+**支持环境（2026-11-06 用户确认）：Windows + VS Code Stable 的官方 Copilot / Copilot Chat。** 本文中的 Copilot CLI 路径只作前置证据，不计入 A4 正式验收；POSIX 专属对象（`#!/bin/sh`、systemd、权限位、`scripts/dsh-superagent`）为**范围外**，不作为待办。
+
 ## 2. 客户端探测结论
 
 | 客户端 | 探测结果 | 能否用于本次验证 |
@@ -122,7 +124,7 @@ Streamable HTTP MCP 端点（src/app/mcp.ts，真实）
 | VS Code Copilot Chat 冒烟（A4） | 未执行 | Stable 1.119.0 内置 Copilot Chat 0.47.0 已就位，但 IDE 内登录、插件可见、技能可见与工具调用仍需人工完成；状态与最小步骤见 `009` §11 |
 | 真实 worker 执行（改代码 → 提交 → PR） | 未执行 | 没有 `dsh` 宿主与真实模型 worker，工单停在 `working/queued` |
 | 双人 SoD（请求者与停止者不同） | 未覆盖 | 验证宿主只配置一个允许发送者，且无 worker 推进到 `person/review` |
-| 保活演练（A6） | Windows 机制演练已通过 | 强杀后自动拉起已验证（`009` §10）；真实 `dsh --profile` 宿主、systemd 与计划任务长期部署仍未验证 |
+| 保活演练（A6） | Windows 机制演练已通过 | 强杀后自动拉起已验证（`009` §10）；systemd 等 POSIX 调度**范围外**；真实 `dsh --profile` 宿主与计划任务开机自启不在本批验收内 |
 | 真实 GitHub / 飞书事件 | 未执行 | 无凭据；Trigger 由脚本注入替代 |
 
 ## 8. 复现方式
