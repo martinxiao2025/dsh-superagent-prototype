@@ -1,17 +1,17 @@
 # 阶段一实施任务计划
 
 > 依据：`docs/00-phase1-agent-plugins-migration.md`（阶段一：迁移到 agent-plugins 标准）
-> 实施落点：**`d:\superagent-plugin`（仓库根即新项目目录）**；原型 `d:\dsh-superagent-prototype`（`main@8c32a9d`）只作只读参考
+> 实施落点：**`d:\WorkSpace\dsh-superagent-prototype`（仓库根即当前项目目录，在原仓库内实施并保留历史与远端）**；基线 `main@8c32a9d`，工作在 `feat/phase1-agent-plugins`
 > 版本基线：`0.1.0` | 约束基线：`AGENTS.md`
 > 状态：执行中（批次 1/5 起） | 语言：简体中文 | 编码：UTF-8（无 BOM）
 
 ## 0. 修订说明（2026-11-06）
 
-**核对依据**：`docs/00-phase1-agent-plugins-migration.md`、原型 `d:\dsh-superagent-prototype`（`main@8c32a9d`）当前代码、官方 1.0.0 两份 schema（已下载实读）、`AGENTS.md` 的约束基线。
+**核对依据**：`docs/00-phase1-agent-plugins-migration.md`、本仓库 `main@8c32a9d` 基线与 `feat/phase1-agent-plugins` 分支当前代码、官方 1.0.0 两份 schema（已下载实读）、`AGENTS.md` 的约束基线。
 
 **改了什么**
 
-0. **实施落点更正（2026-11-06，用户硬约束）**：新项目直接落在 `d:\superagent-plugin`，不另建仓库、不迁往他处。原计划的“实施仓库 `d:\dsh-superagent-prototype`”全部改为本根；原型源码、测试、配置、脚本、插件源已导入本根（不含 `.git`、`.zcode/`、`node_modules/`、`lib/`），冲突与处理见 `AGENTS.md` §1.4。批次 0 因此新增 T0.0「迁入与建仓」，后续所有命令都在本根执行。
+0. **实施根口径变更（2026-11-06，用户决策，不是文档纠错）**：实施根就是当前仓库 `d:\WorkSpace\dsh-superagent-prototype`，阶段一直接在原仓库内实施，保留 `main` 历史与 `origin` 远端。此前的「新建 `d:\superagent-plugin`、不导入 `.git`、原型只读」口径作废；T0.0 相应改为「在原仓库内建立基线」，不再执行 `robocopy`、`git init`。冲突与处理见 `AGENTS.md` §1.4。
 1. **纠正 10 处与代码冲突的假设**（§2 B1–B10）：主会话工具实为 14 个、worker 实为 5 个；`mainTools` 需要真实 `Agent`（须引入 `ToolScope`）；端口占用不能走 `SetupError`（否则整个编排停摆）；管理 API 的 `x-orchestrator-request` 头 MCP 客户端不会发送；`lib/` 会被 tsdown `clean: true` 清空；文档编号只能续到 009；新增 SDK 运行时依赖需同步 `AGENTS.md`；内置技能不能挪进 `plugin/skills/`；健康条目需补中英文案；`homepage` 不得留占位符。
 2. **任务拆分与补齐**：M0–M5 细化为 T0.1–T5.6 共 26 项；§5.0 增加「输入 / 产出 / 验收 / 预估」四列，每项都可独立判定完成；合并重复项（原「打包」「接线」并入 M1、M2），把过大的 M2 拆成作用域改造、映射层、端点、接线、文案五步。
 3. **顺序按依赖链与风险重排**：基线 → 插件包与离线校验（零运行时风险，先锁合规）→ `ToolScope` 改造（唯一触及既有工具签名的改动，单独批次回归）→ MCP 映射与端点 → 测试防漂移 → 文档与主技能 → 验收。依据是：MCP 端点依赖 SDK 与作用域改造，测试依赖端点，文档依赖最终实现；而作用域改造一旦出错会影响既有 DSH 会话，必须最先被既有测试覆盖。
@@ -66,7 +66,7 @@
 
 ## 2. 基线核对：文档与代码的偏差
 
-以下 10 项已在原型仓库中逐条核实。B1–B4 会直接影响实现方式，必须在开工前裁决。
+以下 10 项已在仓库 `main@8c32a9d` 基线中逐条核实。B1–B4 会直接影响实现方式，必须在开工前裁决。
 
 | # | 文档说法 | 代码事实 | 建议处理 |
 | --- | --- | --- | --- |
@@ -125,7 +125,7 @@ flowchart LR
 
 | 编号 | 任务 | 输入 | 产出 | 前置 | 预估 | 验收方式 |
 | --- | --- | --- | --- | --- | --- | --- |
-| T0.0 | 原型迁入本根并建仓 | 原型 `d:\dsh-superagent-prototype`（排除 `.git`/`.zcode`/`node_modules`/`lib`） | 本根源码树、`git init` 仓库 | — | 0.2 | 目录与原型一致（除排除项）；原有 `docs/00`、`docs/01`、`AGENTS.md`、`.screenshots` 未被覆盖 |
+| T0.0 | 在当前仓库内建立实施基线 | 本仓库现有源码与 `main@8c32a9d` 历史（不复制、不新建仓库） | `feat/phase1-agent-plugins` 分支、干净工作区 | — | 0.2 | 分支正确；历史与 `origin` 远端保留；`git status` 干净 |
 | T0.1 | 依赖安装与工具链对齐 | `package.json`、`pnpm-lock.yaml` | `node_modules/`、版本记录 | T0.0 | 0.2 | `pnpm install` 退出 0；`node -v`、`pnpm -v` 满足 `engines` |
 | T0.2 | 分支与基线记录 | `main@8c32a9d` 的原型基线 | `feat/phase1-agent-plugins` 分支、§11 基线输出 | T0.1 | 0.1 | `pnpm typecheck/test/build` 三项真实结果留档 |
 | T0.3 | 模型面基线快照 | `src/app/tools/*.ts`、`tests/model-surface.spec.ts` | 14/5 工具与 2 技能清单 | T0.2 | 0.1 | 清单逐名与代码一致 |
@@ -161,22 +161,23 @@ flowchart LR
 
 ### M0 环境与基线
 
-**T0.0 原型迁入本根并建仓**
+**T0.0 在当前仓库内建立实施基线**
 
-1. 以 `robocopy d:\dsh-superagent-prototype d:\superagent-plugin /E /XD node_modules lib .zcode .git /XF AGENTS.md` 导入源码、测试、配置、脚本、提示词、技能、`locale/`、`examples/`；**不导入** `.git`、`.zcode/`、`node_modules/`、`lib/`。
-2. 已存在文件不覆盖：`AGENTS.md`（约束基线）、`docs/00-…`、`docs/01-…`、`.screenshots/` 原样保留；冲突与处理记入 `AGENTS.md` §1.4。
-3. 在 `d:\superagent-plugin` 执行 `git init`，建立唯一仓库根；不设置远端、不迁移原型历史。
-4. 验收：`Get-ChildItem` 的顶层目录与原型一致（除排除项）；`git status` 只显示首次导入的未跟踪文件。
+1. 不新建目录、不复制源码：实施根就是已含原型历史的 `d:\WorkSpace\dsh-superagent-prototype`，阶段一直接在 `feat/phase1-agent-plugins` 分支提交。
+2. 保留 `main@8c32a9d` 历史与 `origin` 远端；不改写已推送历史，不 force push。
+3. 原有 `AGENTS.md`、`docs/00-…`、`docs/01-…`、`.screenshots/` 原样保留；口径变更记入 `AGENTS.md` §1.4。
+4. 验收：`git status -sb` 显示工作区干净、分支为 `feat/phase1-agent-plugins`，提交历史含阶段一批次且与远端一致。
 
 **T0.1 依赖安装与工具链对齐**
 
-1. 实测本机 `node v24.19.0`、`pnpm 11.7.0`，与 `packageManager: pnpm@11.7.0` 一致（无需再执行 corepack 激活）；若换机后版本不符，先 `corepack prepare pnpm@11.7.0 --activate`。
-2. 在 `d:\superagent-plugin` 执行 `pnpm install`（当前无 `node_modules`，必须联网）。
-3. 若安装失败或 Node 版本不满足，记录实际错误并暂停，不得跳过基线直接开发。
+1. Node 只需满足 `package.json` 的 `engines` 最低支持版本（当前为 `^22.19.0 || >=24.0.0`），不要求与某个具体版本精确一致；本机 `node -v` 的实测值只作环境记录，不作为门槛。
+2. pnpm 由 `packageManager: pnpm@11.7.0` 锁定；若换机后版本不符，先 `corepack prepare pnpm@11.7.0 --activate`。
+3. 在本仓库根执行 `pnpm install`（无 `node_modules` 时需联网）。
+4. 若安装失败或 Node 版本低于 `engines` 下限，记录实际错误并暂停，不得跳过基线直接开发。
 
 **T0.2 分支与基线记录**
 
-1. 在新建仓库执行 `git switch -c feat/phase1-agent-plugins`（首次提交前需先有 `main` 初始提交，见批次 1 的提交顺序）。
+1. 在本仓库执行 `git switch -c feat/phase1-agent-plugins`（基线 `main@8c32a9d` 已存在，直接切出阶段一分支）。
 2. 依次执行 `pnpm typecheck`、`pnpm test`、`pnpm build`，把真实输出（通过数、失败项、是否已有失败）记录到本计划的执行记录中。
 3. Windows 上既有测试存在环境性失败（`sh`/`sleep`/`env` 缺失、symlink EPERM、POSIX 权限位、路径分隔符），必须逐条记录，**不得**改测试迁就；结论中区分「环境性失败」与「本阶段引入的失败」。
 
@@ -542,7 +543,7 @@ npx -y @modelcontextprotocol/inspector --cli http://127.0.0.1:3083/mcp --method 
 
 | 批次 | 日期 | 命令 / 动作 | 真实结果 | 提交 |
 | --- | --- | --- | --- | --- |
-| 基线 | 2026-11-06 | `git status`、`node -v`、`pnpm -v` | 原型 `main@8c32a9d`；未跟踪 `.zcode/`、`AGENTS.md`；node v24.19.0、pnpm 11.7.0 | — |
+| 基线 | 2026-11-06 | `git status`、`node -v`、`pnpm -v` | 原型 `main@8c32a9d`；未跟踪 `.zcode/`、`AGENTS.md`；Node 满足 `engines`（环境记录，不作门槛）、pnpm 11.7.0 | — |
 | 迁入 | 2026-11-06 | `robocopy … /XD node_modules lib .zcode .git /XF AGENTS.md` | 源码/测试/配置/脚本/技能已入本根；`AGENTS.md`、`docs/00`、`docs/01`、`.screenshots` 未覆盖 | `73ccce7` |
 | 基线测试（原型） | 2026-11-06 | `vitest run --reporter=json` | 8 个文件失败，全部为 Windows 环境性：`sh`/`sleep`/`env`/`gh` ENOENT、symlink EPERM、POSIX 权限位、`docs.spec` 反斜杠路径。非本阶段代码引入 | — |
 | 1 | 2026-11-06 | `pnpm install`、`pnpm build`、`node scripts/validate-plugin.mjs` | 安装退出 0；`lib/plugin` 生成；正例退出 0；4 类负例均退出 1 | `5f9c999` |
@@ -557,8 +558,8 @@ npx -y @modelcontextprotocol/inspector --cli http://127.0.0.1:3083/mcp --method 
 | 中文化·模型运行时资产 | 2026-11-06 | `pnpm check`、`tests/model-surface.spec.ts` | `prompts/**`、14 个主会话工具的描述与 schema 说明、executor 指令共 38 个文件；工具名、参数名、机器解析串未翻译 | `330df33` |
 | 真实运行验证 | 2026-11-06 | `copilot -p … --plugin-dir lib/plugin`、官方 MCP SDK 探针、`pnpm check` | 真实 Copilot CLI 1.0.103 两次会话跑通（读候选、建工单、审核门 `notReady`、备注）；协议层 14 工具、中文错误、提示词预览正常；修复 3 个文案问题（SKILL 资源名、默认规则漏译、zod 英文默认消息），记录见 `docs/010-runtime-verification.md` | `dab5a99` |
 | 进度登记 | 2026-11-06 | `pnpm check`、`git push origin feat/phase1-agent-plugins` | `AGENTS.md`、README、本表与 `docs/010` 对齐当前编号与状态；`pnpm check` 全绿；远端 `feat/phase1-agent-plugins` 与本地一致 | 本批 |
-| 全量核对与修复 | 2026-11-06 | `pnpm install --frozen-lockfile`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`pnpm plugin:check` | 安装 314 个包退出 0；typecheck 退出 0；全量 1179 通过 / 26 跳过 / 0 失败；`lib/plugin` 3 个技能；两处插件校验通过。核对发现并修复 1 个 Windows 跨盘符缺陷：`promptFile` 收到绝对路径时被 `join` 拼坏（包根在 D:、临时目录在 C:）；`tests/mcp.spec.ts` 增补「参数拒绝后继续服务」与「过期 revision 被拒」两例；T2.2/T2.3/T2.4/T3.1 与 `docs/007` 测试表按代码事实更正。本机 node v24.2.0（满足 `>=24.0.0`），与 §1.1 记录的 v24.19.0 不同 | 本批 |
+| 全量核对与修复 | 2026-11-06 | `pnpm install --frozen-lockfile`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`pnpm plugin:check` | 安装 314 个包退出 0；typecheck 退出 0；全量 1179 通过 / 26 跳过 / 0 失败；`lib/plugin` 3 个技能；两处插件校验通过。核对发现并修复 1 个 Windows 跨盘符缺陷：`promptFile` 收到绝对路径时被 `join` 拼坏（包根在 D:、临时目录在 C:）；`tests/mcp.spec.ts` 增补「参数拒绝后继续服务」与「过期 revision 被拒」两例；T2.2/T2.3/T2.4/T3.1 与 `docs/007` 测试表按代码事实更正。本机 node v24.2.0 仅作环境记录，门槛以 `engines` 为准 | 本批 |
 
 未闭合项（截至本批）：VS Code Copilot Chat 冒烟（A4，本机未安装官方 Copilot 扩展）、真实 worker 执行（无 `dsh` 宿主与真实模型 worker）、双人 SoD（验证宿主只有一个允许发送者）、保活演练（A6，需 systemd/计划任务）、真实 GitHub/飞书事件（无凭据）。Windows 上跳过的测试仍为 26 项，均为 POSIX 专属被测对象（`#!/bin/sh` worker shim、服务管理脚本、飞书假 CLI 与权限位），已在测试文件内写明原因，不视为通过。
 
-路径事实（2026-11-06 复核）：`d:\superagent-plugin` 不存在；阶段一全部提交位于 `d:\WorkSpace\dsh-superagent-prototype`（分支 `feat/phase1-agent-plugins`，远端 `origin` 指向原型仓库）。`AGENTS.md` 与本文 T0.0 仍按「新根 `d:\superagent-plugin`」表述，属文档与环境的既定冲突，未擅自改写；是否把当前仓库定为正式实施根，待用户决定。
+路径与版本口径（2026-11-06，用户决策）：实施根就是当前仓库 `d:\WorkSpace\dsh-superagent-prototype`，阶段一在原仓库内实施并保留 `main@8c32a9d` 历史与 `origin` 远端；`d:\superagent-plugin` 从未存在，相关表述已全部改为本根。Node 只要求不低于 `package.json` 的 `engines` 下限（当前 `^22.19.0 || >=24.0.0`），不锁定具体版本；本机 `node v24.2.0` 仅作环境记录，不作为要求或验收条件。

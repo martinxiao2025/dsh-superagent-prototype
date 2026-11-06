@@ -1,10 +1,10 @@
 # AGENTS.md — 阶段一实施约束基线
 
-> 适用对象：在本项目 `d:\superagent-plugin`（仓库根即新项目目录）中工作的编码代理与开发者。
-> 依据：`docs/00-phase1-agent-plugins-migration.md`、`docs/01-phase1-task-plan.md`，以及原型 `d:\dsh-superagent-prototype`（`main@8c32a9d`）的实际代码与配置。
+> 适用对象：在本项目 `d:\WorkSpace\dsh-superagent-prototype`（仓库根即当前项目目录）中工作的编码代理与开发者。
+> 依据：`docs/00-phase1-agent-plugins-migration.md`、`docs/01-phase1-task-plan.md`，以及本仓库 `main@8c32a9d` 基线与现行分支 `feat/phase1-agent-plugins` 的实际代码与配置。
 > 语言：简体中文 | 编码：UTF-8（无 BOM） | 更新时间：2026-11-06
 >
-> 路径约定：`docs/…`、`src/…`、`tests/…`、`scripts/…`、`plugin/…` 均相对本文件所在的项目根 `d:\superagent-plugin`。原型目录只作只读参考，**不得**在原型里继续开发，也不得把产出写到其它路径或另建仓库。
+> 路径约定：`docs/…`、`src/…`、`tests/…`、`scripts/…`、`plugin/…` 均相对本文件所在的项目根 `d:\WorkSpace\dsh-superagent-prototype`。本仓库就是原型仓库，阶段一直接在其 `feat/phase1-agent-plugins` 分支实施，保留 `main` 历史与 `origin` 远端；不另建仓库，也不把产出写到其它路径。
 
 ## 1. 事实核对结论
 
@@ -23,9 +23,9 @@
 | `skills/` 下的技能会被加载进 DSH 会话，且测试断言内置技能恰为 `dsh-superagent-feishu`、`dsh-superagent-github` | `src/app/skill-files.ts`、`tests/tools.spec.ts` |
 | 面板文案必须中英双语，键与占位符一致 | `src/client/locales.ts`、`tests/locales.spec.ts` |
 | 模型可见表面（工具、提示词、技能、输入）受防漂移测试约束 | `tests/model-surface.spec.ts` |
-| Node `v24.19.0`、pnpm `11.7.0` 满足 `engines` | `node -v`、`pnpm -v`、`package.json` |
+| Node 满足 `engines` 最低支持版本（当前 `^22.19.0 || >=24.0.0`），不锁定具体版本；本机记录为 `v24.2.0`，pnpm `11.7.0` | `node -v`、`pnpm -v`、`package.json` |
 | 运行时依赖新增 `@modelcontextprotocol/sdk`（精确 `1.32.2`），`ajv`（精确 `8.20.0`）仅为离线校验的开发依赖 | `package.json`；理由：MCP 服务端与官方 schema 校验，均已锁定版本 |
-| 原型仓库远端为 `origin git@github.com:martinxiao2025/dsh-superagent-prototype.git`；新项目根不自动继承该远端 | 原型 `git remote -v`；本仓库 `git remote -v` 为空 |
+| 仓库远端为 `origin git@github.com:martinxiao2025/dsh-superagent-prototype.git`，阶段一提交推送到 `feat/phase1-agent-plugins` | 本仓库 `git remote -v`、`git status -sb` |
 
 ### 1.2 已过时或与代码冲突的条目（不得照抄执行）
 
@@ -41,7 +41,7 @@
 | `00` §7 要求新增 `docs/009-copilot-plugin.md` | 现有编号 `000`–`010` 连续 | 阶段一新增 `009`，其后补 `010`；新编号只能续到下一个，且只能链接更早编号 |
 | 计划 T0.1 记录 pnpm `10.33.0` | 本机已是 `11.7.0` | 已修订为 11.7.0；换机再按需 corepack |
 | `01` 的 `pnpm plugin:build` / `pnpm plugin:check` | 迁移时 `package.json` 已有这两个脚本（批次 1 落地） | 直接用 `pnpm plugin:build` / `pnpm plugin:check` |
-| 计划把实施落点写成 `d:\dsh-superagent-prototype` | 用户 2026-11-06 硬性更正：新项目就在 `d:\superagent-plugin` | 已把原型源码/配置/测试导入本根；后续只在本根开发、提交，原型只读 |
+| 计划早期把实施落点写成 `d:\superagent-plugin` | 用户 2026-11-06 决策：实施根就是当前仓库 `d:\WorkSpace\dsh-superagent-prototype`，在原仓库内实施并保留历史与远端 | 这是**用户决策后的口径变更，不是文档纠错**；`d:\superagent-plugin` 从未存在，相关表述已全部改到本根 |
 
 ### 1.3 无法在当前环境确认、需标记而非假设
 
@@ -52,14 +52,16 @@
 
 冲突处理原则：**代码事实 > 计划文档 > 方案文档**。无法用代码裁决时，写入本节并上报，不自行假设。
 
-### 1.4 迁入本根时的冲突与处理（2026-11-06）
+### 1.4 实施根口径变更后的历史记录（2026-11-06）
+
+> 以下为早期「迁入新根」阶段的记录。用户随后决定就在原仓库实施，表中「不导入 `.git`」「新建仓库」「原型只读」等做法已废止；保留本表仅用于解释历史基线，不再作为执行约束。
 
 | 冲突点 | 处理 | 遗留 |
 | --- | --- | --- |
-| 根目录已有 `AGENTS.md`（本文件），原型根也有一份未跟踪的同名开发指南 | **保留本文件**；原型那份不导入，其项目约定已由本文件 §2–§6 覆盖 | 如需逐字保留原型指南，另存 `docs/` 并说明，当前不做 |
-| 根目录已有 `docs/00-…`、`docs/01-…`（两位编号），原型 `docs/000`–`008`（三位编号） | 两套并存；`tests/docs.spec.ts` 只匹配三位编号，不受影响；阶段一新增 `docs/009-copilot-plugin.md`，真实运行验证记录为 `docs/010-runtime-verification.md` | 文档导航需人工区分「计划文档 00/01」与「设计文档 000–010」 |
-| 原型 `.git` 含历史 | **不导入**；本根新建仓库，原型保留原历史只读 | 原型分支 `feat/phase1-agent-plugins` 与已做的批次 1 改动不再作为交付物，以本根为准 |
-| 原型 `.zcode/`、`node_modules/`、`lib/` | **不导入**（本地工具、依赖与生成物） | 本根需重新 `pnpm install` 与 `pnpm build` |
+| 根目录已有 `AGENTS.md`（本文件） | **保留本文件**；其项目约定覆盖 `docs`、`src`、`tests` 的使用方式 | 无 |
+| 根目录已有 `docs/00-…`、`docs/01-…`（两位编号），版本库内 `docs/000`–`008`（三位编号） | 两套并存；`tests/docs.spec.ts` 只匹配三位编号，不受影响；阶段一新增 `docs/009-copilot-plugin.md`，真实运行验证记录为 `docs/010-runtime-verification.md` | 文档导航需人工区分「计划文档 00/01」与「设计文档 000–010」 |
+| 版本库 `.git` 含历史与 `origin` 远端 | **保留**；阶段一在 `feat/phase1-agent-plugins` 分支继续提交与推送，不另建仓库、不改写历史 | 禁止 force push；`main@8c32a9d` 为基线 |
+| `.zcode/`、`node_modules/`、`lib/` | 不入版本控制（本地工具、依赖与生成物） | 本根需 `pnpm install` 与 `pnpm build` |
 | 根目录原有 `.screenshots/` | 原样保留，不读不写不提交 | 无 |
 
 ## 2. 项目定位与目录结构
