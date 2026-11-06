@@ -274,7 +274,7 @@ exit=1
 | 用户级默认模型 | 同一文件写入 `"chat.defaultModel": "deepseek-flash"`(用户级、持久) | 新会话默认模型为 `DeepSeek V4.1 Flash`;重载后复核通过 |
 | `chat.permissions.default` | 分别写入 `autoApprove`、`autopilot` 均不生效,重载后新会话仍是 `Manual permissions`;该键在 workbench bundle 中有 schema,但运行时读取未生效 | 不使用该键,以 `chat.defaultConfiguration` 为准 |
 | `team-develop-agent` 插件 | 请求卸载时它已不在 `~/.copilot/installed-plugins/_direct/`(`_direct` 下仅剩 `plugin`,即 `dsh-superagent`);`code --list-extensions` 也无该扩展 | 对 `dsh-superagent`、三个技能与 14 个工具无影响;无需重新校验 A4 关键步骤 |
-| `team-develop-agent` 残留 | 仍有 `C:\Users\61054\.copilot\plugin-data\team-develop-agent` 与 `%APPDATA%\Code\agentPlugins\file-c-3A-…-direct-team-develop-agent` | **未删除**,等用户确认后再清理(AGENTS §8.2);只清理该插件自身 |
+| `team-develop-agent` 残留清理 | 2026-11-06 经用户确认后删除两处:`C:\Users\61054\.copilot\plugin-data\team-develop-agent`(空目录)与 `%APPDATA%\Code\agentPlugins\file-c-3A-…-direct-team-develop-agent`(95 个文件,约 840 KB);删除后复检均不存在 | 删除前逐个确认路径确属该插件;同级 `…-direct-plugin`(dsh-superagent)未动。复检 `~/.copilot` 与 `agentPlugins` 已无同名残留,用户 `settings.json` 无引用;唯一相关记录是 Copilot 会话状态文件里的历史 `cwd`(`D:\team-develop-agent`),属 UI 历史、非插件配置,未修改。宿主重启后探针仍为 14 个工具、`runtime`/`mcp` 均 `ready`,插件完好 |
 | 权限作用范围 | `chat.defaultConfiguration` 为用户级,仅影响新会话的模式与工具审批,不影响其它设置 | 无安全旁路:工具仍走 Policy/Mandate 复验,"Allow all" 只是免去客户端逐次确认 |
 
 ### 11.7 质量自查与修复(四维度,2026-11-06)
