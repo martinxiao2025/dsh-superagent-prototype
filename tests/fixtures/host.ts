@@ -1,6 +1,9 @@
 /**
  * 内存中的 DSH 主机夹具（同 tests/runtime.spec.ts），运行已配置的 Runtime，带有 GitHub 与 Feishu Source、
  * 允许成员 Alice（`ou_alice`）、监听聊天 `oc_team`，以及 `auto` eval 模式。用 `stop()` 停止它。
+ *
+ * 过渡文件：宿主改造后由 `tests/fixtures/agent-host.ts`（`FakeAgentHost`）取代；按改造计划
+ * 在第 ② 单元切换调用方后删除，删除前不再新增依赖它的用例。
  */
 import { Context } from '@deepseek-ai/cordis'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'

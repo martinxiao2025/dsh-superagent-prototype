@@ -355,6 +355,8 @@ flowchart TB
 | `src/app/views/overview.ts` | 概览：需要人的工单、问题、最后一天的流转与执行器负载 |
 | `src/executor/dsh.ts` | DshExecutor、`WorkerSlots`、`ticketExecution`、`inputMessage` 与 `mandateInstructions` |
 | `src/executor/background.ts` | worker 在 DeepSeek Harness 中的后台工作，其会话拥有的 shell 作业（`ctx.jobs`）与其子智能体（`ctx.subagents`）：`runningJobs`、`untilQuiet`、`killJobs`、`collectJobs`、`stopSubagents`、`stopBackground`、`until`，以及 `cancelled`（其子智能体的停止取消了回合的 worker） |
+| `src/executor/host.ts` | 宿主与 agent 执行的抽象：`AgentHost` 的启动、健康检查、派发回合、结果回收与停止，以及回合请求、回执、结果与 MCP 服务器的类型。Runtime 只依赖它，换宿主不影响领域规则 |
+| `src/executor/copilot.ts` | `CopilotCliHost`：用 `copilot` CLI 的非交互模式运行真实回合，提示词经 stdin 送达，`parseTurnOutput` 解析文本与 JSONL 输出；Windows 上 `.cmd` 垫片无法以 `shell: false` 启动时记为健康错误，而不是抛出 |
 | `src/infra/commands.ts` | `Commands`，CLI 传输：`run`；`api` 与 `pages`（限于配置的仓库并经过校验）；`lark`（以机器人身份）；`git`。`CliError` 携带命令输出报告的代码，例如 GitHub HTTP 状态；不输出任何内容的命令以其结束方式失败，绝不以其参数失败；`validItems` 跳过并统计列表中的畸形项 |
 | `src/infra/environment.ts` | 智能体的进程环境：命令 shim、git 配置与凭证助手、`runAsWorker`，以及环境与工单目录的检查 |
 | `src/infra/paths.ts` | 包的根目录，即打包文件所在位置 |
@@ -415,6 +417,7 @@ flowchart TB
 | `tests/admission-context.spec.ts`、`tests/feishu-image.spec.ts` | 评估的线程窗口，以及飞书图片读取 |
 | `tests/assessment.spec.ts` | MasterAssessor 每次评估保留的内容，以及何时释放 |
 | `tests/background.spec.ts` | 等待 worker 的 shell 作业与子智能体：唤醒它的结束，以及停止的宿主 |
+| `tests/host.spec.ts` | 宿主抽象与 Copilot CLI 宿主：就绪与错误自检、正常回合与经 stdin 的提示词、非零退出码、超时、无法解析的输出、MCP 配置临时文件与清理、停止，以及测试替身 |
 | `tests/bundle-patch.spec.ts` | bundle 的补丁，按 DeepSeek Harness 的读取方式读取，以及它定义执行器会话的智能体预设 |
 | `tests/effects.spec.ts` | 副作用队列：合并、限制、退避重试、健康与关闭 |
 | `tests/passes.spec.ts` | 轮次：一次一个，轮次期间请求的在轮次后合并运行，以及失败轮次报告运行时健康 |

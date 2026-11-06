@@ -10,6 +10,9 @@
  * 运行方式（直接加载 `src/**` 的 TypeScript 源码，不依赖 `lib/`）：
  *   node --experimental-transform-types scripts/keepalive-host.mjs
  *
+ * 过渡文件：宿主改造后由 `scripts/copilot-host.mjs`（Copilot CLI 宿主）取代；按改造计划
+ * 在第 ④ 单元替换 Windows 守护脚本的启动命令后删除本文件。
+ *
  * 环境变量：
  *   KEEPALIVE_STATE_DIR  状态目录，缺省 `.artifacts/keepalive/state`（跨重启必须保持不变）
  *   KEEPALIVE_WEB_PORT   管理 HTTP 端口，缺省 3082
