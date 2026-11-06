@@ -1,12 +1,15 @@
 /** 从磁盘加载打包的内置技能定义与提示词模板。 */
 import { readFileSync } from 'node:fs'
-import { packagePath } from '../infra/paths.ts'
+import { resolve } from 'node:path'
+import { packageRoot } from '../infra/paths.ts'
 /**
  * 读取打包的文本文件，并将换行统一为 Unix 风格。
+ * 绝对路径原样使用；相对路径按包根解析。Windows 上包根与临时目录可能不在同一盘符，
+ * 此时无法用 `path.relative` 得到可用路径，因此这里必须接受绝对路径。
  * @throws 文件缺失或只含空白字符时抛出错误并指明该文件，因为 `dsh-superagent` 缺少它就无法加载。
  */
 function packaged(...parts: string[]): { path: string; text: string } {
-  const path = packagePath(...parts)
+  const path = resolve(packageRoot(), ...parts)
   let text: string
   try { text = readFileSync(path, 'utf8').replaceAll('\r\n', '\n') }
   catch (error) {

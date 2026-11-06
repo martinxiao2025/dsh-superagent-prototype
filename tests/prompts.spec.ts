@@ -1,6 +1,6 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, relative } from 'node:path'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { Store } from '../src/app/store.ts'
 import { Prompts, builtInBase, composePrompt, defaultPrompts, policySection, promptParts, type PromptConfig } from '../src/app/prompts.ts'
@@ -9,7 +9,6 @@ import { KV } from '../src/kv.ts'
 import { SettingsSchema, policyVersion } from '../src/policy.ts'
 import { guides, handoffPolicy, mainAdmissionPolicy, masterPrompt, sharedPrompt, workerPrompt } from '../src/app/context.ts'
 import { promptFile } from '../src/app/skill-files.ts'
-import { packagePath } from '../src/infra/paths.ts'
 import type { Variable } from '../src/app/execution-environment.ts'
 
 /** 任何 ticket 之外的执行环境，即 setup 完成后 runtime 传入的那份。 */
@@ -59,8 +58,8 @@ it('assembles every role from fixed sections around the team sections, whatever 
 
 it('reads a prompt file whatever its line ends and blank lines, and names a missing or empty one', () => {
   const dir = mkdtempSync(join(tmpdir(), 'prompt-file-'))
-  // promptFile 以 prompts/ 为基准解析路径；需用相对路径才能到达临时目录。
-  const name = (file: string) => relative(packagePath('prompts'), join(dir, file))
+  // promptFile 支持绝对路径；Windows 上包根与临时目录可能不同盘符，无法用相对路径跨越。
+  const name = (file: string) => join(dir, file)
   try {
     writeFileSync(join(dir, 'crlf.md'), 'One.\r\nTwo. \r\n \t\r\n\r\nThree.\r\n')
     writeFileSync(join(dir, 'blank.md'), ' \n\t\n')
