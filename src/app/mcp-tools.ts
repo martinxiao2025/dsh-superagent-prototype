@@ -6,6 +6,9 @@ import { UserError } from '../core/index.ts'
 import { mainTools, type MainToolsHost } from './tools/main.ts'
 import type { Tool } from './tools/tool.ts'
 
+// MCP 客户端看到的参数校验消息随项目统一为简体中文；工具自定义的 refine 消息不受影响。
+z.config(z.locales.zhCN())
+
 /** MCP 客户端作为工具 `inputSchema` 收到的 JSON Schema 对象。 */
 interface InputSchema {
   type: 'object'

@@ -656,7 +656,7 @@ it('describes rule edits in the Policy history and skips Policy syncs that chang
   await runtime.settings.sync('feishu')
   expect(revision()).toBe(before)
   await runtime.settings.save('policy', { ...runtime.store.settings().policy, rules: [{ ...settings.policy.rules[0]!, name: '文案' }, { ...settings.policy.rules[1]!, enabled: false }, { id: 'docs', name: '文档', enabled: true, instruction: 'x' }] }, runtime.store.blockRevision('policy'), 'panel')
-  expect(policyHistory(runtime.store, runtime.sources, policyVersion(runtime.store.settings())).items[0]!.changes).toEqual([{ code: 'ruleRenamed', from: 'Copy fixes', to: '文案' }, { code: 'ruleDisabled', name: 'Visual fixes' }, { code: 'ruleAdded', name: '文档' }])
+  expect(policyHistory(runtime.store, runtime.sources, policyVersion(runtime.store.settings())).items[0]!.changes).toEqual([{ code: 'ruleRenamed', from: '文案修复', to: '文案' }, { code: 'ruleDisabled', name: '视觉修复' }, { code: 'ruleAdded', name: '文档' }])
 })
 
 it('records an admission table change in the Policy history as one line for its Source, with a new Policy version', async () => {
