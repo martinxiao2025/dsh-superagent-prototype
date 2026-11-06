@@ -62,7 +62,7 @@ pwsh -NoProfile -File scripts/dsh-superagent-windows.ps1 -Action status
 
 ### 接入 Copilot 等 agent-plugins 客户端
 
-把构建产物 `lib/plugin/`（含 `plugin.json`、`mcp.json` 与 3 个技能目录）整体放入客户端的 agent plugins 目录，然后在客户端启用插件。目录位置由客户端约定，VS Code 与 M365 各不相同。VS Code Stable 1.119 可在命令面板执行 `Chat: Install Plugin from Source` 并指向本机的 `lib/plugin`；本机人工步骤见 `docs/009-copilot-plugin.md` §11.4。
+把构建产物 `lib/plugin/`（含 `plugin.json`、`mcp.json` 与 3 个技能目录）整体放入客户端的 agent plugins 目录，然后在客户端启用插件。目录位置由客户端约定，VS Code 与 M365 各不相同。VS Code Stable 1.145 可在命令面板执行 `Chat: Install Plugin from Source` 并输入 `lib/plugin` 的绝对路径（`file:///` URI 会被拒）；本机实测步骤见 `docs/009-copilot-plugin.md` §11.4。
 
 `plugin/mcp.json` 指向 `http://127.0.0.1:3083/mcp`。若在机器配置里改了 `mcpPort`，这个 URL 必须同步修改；端点由本机守护进程提供，**客户端自身不能代替守护进程**。
 

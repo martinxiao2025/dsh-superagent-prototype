@@ -60,7 +60,7 @@ pnpm check          # typecheck + test + build + plugin:check
 
 ## 6. 安装与保活
 
-安装:把 `lib/plugin/`(或仓库 `plugin/` 加构建产物)整体放入 Copilot 客户端的 agent plugins 目录;目录由客户端约定,VS Code 与 M365 各不相同,以客户端文档为准。放入后在客户端启用该插件,`mcp.json` 指向本机守护进程。VS Code Stable 1.119 可在命令面板执行 `Chat: Install Plugin from Source` 并指向本机的 `lib/plugin`,具体人工步骤见 §11.4。
+安装:把 `lib/plugin/`(或仓库 `plugin/` 加构建产物)整体放入 Copilot 客户端的 agent plugins 目录;目录由客户端约定,VS Code 与 M365 各不相同,以客户端文档为准。放入后在客户端启用该插件,`mcp.json` 指向本机守护进程。VS Code Stable 1.145 可在命令面板执行 `Chat: Install Plugin from Source` 并输入本机 `lib/plugin` 的**绝对路径**(`file:///` URI 会被拒),具体步骤见 §11.4。
 
 保活由外部调度负责,Copilot 进程不必常驻:
 
@@ -88,7 +88,7 @@ pnpm check          # typecheck + test + build + plugin:check
 | A1 | 规范合规 | 作者侧校验通过 | `node scripts/validate-plugin.mjs` 与 `--dir lib/plugin` 均退出 0;4 类负例(大写名称、schema 版本不一致、嵌套技能目录、未知字段)均退出 1。注意:该脚本是作者侧门禁,比规范对客户端的最低要求更严格(未知顶层字段直接失败、`mcpServers` 不得为空、MCP 仅允许回环 HTTP),不能据此宣称客户端一致性 |
 | A2 | 构建打包 | 通过 | `pnpm build` 退出 0;`lib/plugin/` 含 `plugin.json`、`mcp.json`、3 个技能目录,无 BOM |
 | A3 | MCP 连通 | 自动等价验证通过 | `tests/mcp.spec.ts`:真实 Streamable HTTP 握手、14 个工具、`orchestrator_read`、`orchestrator_route` 建票。inspector CLI/GUI 未执行:本地没有可独立启动的 MCP 守护进程(需要 DSH 宿主),以官方 SDK 客户端的真实 HTTP 链路作等价验证,不宣称已跑 inspector |
-| A4 | Copilot 冒烟 | 客户端就位,待人工验证 | 验证环境限定 Windows + VS Code Stable `1.119.0` 的官方 Copilot Chat(内置 `@0.47.0`);市场安装被内置版本拒绝,不影响使用。已自动确认 Agent Plugins 能力、`lib/plugin` 与三个技能、宿主 14 个工具;IDE 内登录、插件可见、技能可见与真实工具调用仍需人工完成。Insiders(用户已卸载)与 Copilot CLI 均不计入。清单见 §11 |
+| A4 | Copilot 冒烟 | **通过**(2026-11-06 实测) | Windows + VS Code Stable `1.145.2`(commit `c4453f8e…`)的官方 Copilot Chat(内置 `GitHub.copilot-chat@0.73.0`)。插件 `dsh-superagent@0.1.0` 经 `Chat: Install Plugin from Source` 以绝对路径装入并启用,三个技能可见;宿主 `tools/list` 为 14 个,`runtime`/`mcp` 均 `ready`;在 Chat 内用模型 `DeepSeek V4.1 Flash`(`deepseek-flash`)真实调用 `orchestrator_read`(tickets)、`orchestrator_route`(accept 建票 `1d2e38c4…`)、`orchestrator_reply`(被领域规则以 `notReady` 拒绝,属真实结果)。权限档位与默认模型已持久化到用户设置。Copilot CLI 与已卸载的 Insiders 均不计入。明细见 §11 |
 | A5 | 回归 | 通过(Windows) | 全量 1179 通过、26 跳过、0 失败。跳过的 3 类在测试文件内写明原因:worker shim 执行、`scripts/dsh-superagent` 服务脚本、飞书消费者假 CLI 都以 `#!/bin/sh` 脚本为被测对象,Windows 无法执行;另 1 项 POSIX 权限位断言。这些对象均为**范围外**(项目只支持 Windows),保留跳过但不当作通过,也不计入待办。此前 42 项失败中的 16 项已改为跨平台实现并真实通过。真实 GitHub/飞书触发仍未执行 |
 | A6 | 保活演练 | 通过(Windows 机制演练) | 用 `scripts/dsh-superagent-windows.ps1 -Action drill` 对真实 `Runtime` 宿主做启动→`taskkill /F /T`→自动拉起→管理 API 与 MCP 探针复核:首次就绪 2416ms,强杀后 30152ms 恢复,13 次重启尝试,恢复前后 `tools/list` 均为 14 个、`runtime`/`mcp` 均 `ready`。详见 §10。systemd 等 POSIX 调度为**范围外**;真实 `dsh --profile` 宿主与计划任务开机自启不在本批验收内 |
 
@@ -120,7 +120,7 @@ pnpm check          # typecheck + test + build + plugin:check
 | Agent Skills §Frontmatter | `name`/`description` 必填;`name` 1–64、小写字母数字连字符、无 `--`、与目录同名;`description` 1–1024;可选字段类型固定 | 3 个 `SKILL.md` 均只有合规的 `name`/`description`,目录同名 | 符合 | `plugin/skills/dsh-superagent/SKILL.md`、`lib/plugin/skills/*/SKILL.md` |
 | 扩展命名空间 | `extensions` 与同名顶层目录均可选;未实现该命名空间的客户端应忽略 | 未使用 | 符合(未使用) | `plugin/` 顶层目录清单 |
 
-**结论**:插件的包结构、清单、MCP 配置、技能发现与 frontmatter 均符合 Agent Plugins 1.0.0 与 Agent Skills 规范;未发现需要改代码或改包结构的不符项。校验脚本比规范对客户端的最低行为更严格,已在 A1 与本表中注明,不据此宣称客户端一致性。A6 已按 §10 完成 Windows 机制演练并通过;A4 的客户端(Stable 内置 Copilot Chat 0.47.0)已就位,IDE 内验证未完成,状态为待人工验证(§11);真实 GitHub/飞书触发未执行。
+**结论**:插件的包结构、清单、MCP 配置、技能发现与 frontmatter 均符合 Agent Plugins 1.0.0 与 Agent Skills 规范;未发现需要改代码或改包结构的不符项。校验脚本比规范对客户端的最低行为更严格,已在 A1 与本表中注明,不据此宣称客户端一致性。A6 已按 §10 完成 Windows 机制演练并通过;A4 已在 Stable 1.145.2 内置 Copilot Chat 0.73.0 中实测通过(§11);真实 GitHub/飞书触发未执行。
 
 ## 10. A6 Windows 保活演练(2026-11-06)
 
@@ -180,23 +180,30 @@ pwsh -NoProfile -File scripts/dsh-superagent-windows.ps1 -Action drill `
 
 ### 11.1 验收口径
 
-A4 的验证环境写死为 **Windows + VS Code Stable 1.119.0 的官方 Copilot / Copilot Chat**,只认其中真实发生的验证行为(插件可见、技能可见、工具可列并可调用)。
+A4 的验证环境写死为 **Windows + VS Code Stable 的官方 Copilot / Copilot Chat**,只认其中真实发生的验证行为(插件可见、技能可见、工具可列并可调用)。
 
+- 实测版本:VS Code Stable `1.145.2`(commit `c4453f8ea430795f941c1b2ff6c9321135a74a02`,安装根 `C:\Program Files\Microsoft VS Code`),内置 Copilot Chat `GitHub.copilot-chat@0.73.0`。2026-11-06 首次盘点时为 `1.119.0`(内置 Chat `0.47.0`),用户随后手工升级;升级后旧的 1.119.0 进程已不存在,运行中只有 1.145.2。
 - VS Code Insiders:用户已手工卸载,**不纳入本次验证范围**;脚本与文档均不再探测 Insiders,不存在时也不计失败。
 - Copilot CLI(`copilot --plugin-dir …`):只作前置证据单列,**不计入 A4 验收**。
 - 其他编辑器与宿主:不计入。
 
-当前状态:**客户端就位、待人工验证**(`scripts/copilot-smoke.ps1` 输出 `a4Status=client-ready-manual-pending`)。未标记通过。
+当前状态:**通过**(2026-11-06 在 Stable 1.145.2 内实测完成插件安装、技能可见、工具列表与三个工具的真实调用)。`scripts/copilot-smoke.ps1` 仍是只读盘点脚本,其自动输出 `a4Status=client-ready-manual-pending` 表示"自动前置条件齐备",不能单独作为 A4 结论;A4 的结论以本节实测为准。
 
 ### 11.2 客户端就位情况与安装结果
 
 | 项 | 实测 | 结论 |
 | --- | --- | --- |
-| VS Code Stable | `1.119.0`,commit `8b640eef5a6c…`,安装根 `C:\Program Files\Microsoft VS Code` | 就位 |
-| Copilot Chat | 内置扩展 `GitHub.copilot-chat@0.47.0`,清单在 `resources\app\extensions\copilot\package.json`,`engines ^1.119.0` | 就位,无需市场安装 |
+| VS Code Stable | `1.145.2`,commit `c4453f8e…`,安装根 `C:\Program Files\Microsoft VS Code`;`code --version` 与运行中进程一致 | 就位 |
+| Copilot Chat | 内置扩展 `GitHub.copilot-chat@0.73.0`,清单在 `resources\app\extensions\copilot\package.json`,`engines ^1.145.2`;内置扩展不出现在 `code --list-extensions` | 就位,无需市场安装 |
 | `GitHub.copilot` 补全扩展 | 未安装 | 非 A4 必需;插件平台由内置 Chat 提供 |
-| Agent Plugins 能力 | workbench 主脚本含 `chat.plugins.enabled`、`chat.pluginLocations`(旧键 `chat.plugins.paths` 仍在),命令 `workbench.action.chat.installPluginFromSource`、`managePlugins`、`managePluginMarketplaces`、`createPlugin` | 能力存在 |
-| 登录状态 | `globalStorage\github.copilot` 不存在、`github.copilot-chat` 存在;系统凭据中 copilot 条目 0 | **无法在 IDE 外判定**,需在 Chat 内确认 |
+| 登录状态 | Chat 面板可正常发起会话,仅记"已登录";未读取、复制或截图任何 token/cookie | 已登录 |
+| 模型 | 选择器显示 `DeepSeek V4.1 Flash`(id `deepseek-flash`,元数据标注 `0 credits`);Free 配额不再构成阻塞 | 可用 |
+| 权限档位 | 界面显示 `Autopilot · Allow all`;工具调用不再逐次确认 | 生效 |
+| Agent Plugins 能力 | 命令 `workbench.action.chat.installPluginFromSource`、`managePlugins` 可用 | 能力存在 |
+| 插件安装 | `Chat: Install Plugin from Source` 拒绝 `file:///d:/…/lib/plugin`,原文 `Invalid plugin spec. Use: plugin-name@marketplace-name, owner/repo, or a URL`;改填绝对路径 `D:\WorkSpace\dsh-superagent-prototype\lib\plugin` 后成功,落到 `~/.copilot/installed-plugins/_direct/plugin`(`dsh-superagent@0.1.0`) | 已安装并启用 |
+| 三个技能 | `dsh-superagent`、`dsh-superagent-github`、`dsh-superagent-feishu` 均可见 | 可见 |
+
+以下为 1.119.0 时期的安装尝试,保留作历史记录(升级到 1.145.2 后不再有内置版本冲突问题):
 
 用户授权后执行的安装命令与真实输出:
 
@@ -222,33 +229,51 @@ exit=1
 | 宿主工具面 | 启动 `scripts/keepalive-host.mjs` 后运行 `node scripts/keepalive-probe.mjs` | `{"ok":true,"tools":14,...}`;`runtime=ready`、`mcp=ready` |
 | 插件包可被真实客户端读取 | `copilot --plugin-dir lib/plugin plugin list --json` | 列出 `dsh-superagent`;**CLI,不计入 A4 验收** |
 
-以上都不等于 A4 通过:它们证明包、端点与工具面可用,没有证明 VS Code Copilot 内能看到插件、技能并调用工具。
+以上是前置证据:它们证明包、端点与工具面可用;A4 的结论以 §11.4 与 §11.5 的 IDE 内实测为准。
 
 同时修复 `scripts/dsh-superagent-windows.ps1` 的一个缺陷:`-Action stop` 写入的 `manually-stopped` 标记原先不会被清理,导致停止后再 `start` 一律被拒。现在进程全部退出后自动清标记;已实测"启动 → 探针 14 工具 → 停止 → 再次启动"可用。
 
-### 11.4 需要用户在 VS Code Stable 内完成的最小步骤
+### 11.4 IDE 内实测步骤与真实结果(2026-11-06)
 
-以下步骤必须在 Stable 内人工完成,脚本无法替代;完成前 A4 保持"客户端就位、待人工验证"。
+以下步骤在 Windows + VS Code Stable 1.145.2 的官方 Copilot Chat 内真实执行;截图保存在 `.artifacts/screenshots/`(不提交)。
 
-1. **装入插件**:`Ctrl+Shift+P` → `Chat: Install Plugin from Source`(命令 id `workbench.action.chat.installPluginFromSource`)→ 输入 `file:///d:/WorkSpace/dsh-superagent-prototype/lib/plugin`。
-   备选:在工作区 `.vscode/settings.json` 增加 `"chat.pluginLocations": { "d:/WorkSpace/dsh-superagent-prototype/lib/plugin": true }`(`chat.plugins.enabled` 默认已为 `true`)。
-   预期:Copilot Chat 的插件列表出现 `dsh-superagent`,状态为启用。
-2. **登录**:在 Copilot Chat 面板用有 Copilot 权限的 GitHub 账号登录。只确认登录状态存在,不导出、不落盘任何 token/cookie。
-   预期:Chat 输入框可用,不再提示登录。
-3. **确认技能可见**:插件详情或 Agent/技能列表中可见 `dsh-superagent`、`dsh-superagent-github`、`dsh-superagent-feishu` 三项。
-4. **启动服务端**:
+1. **装入插件**:`Ctrl+Shift+P` → `Chat: Install Plugin from Source`(命令 id `workbench.action.chat.installPluginFromSource`)。
+   - 先输入 `file:///d:/WorkSpace/dsh-superagent-prototype/lib/plugin`,被拒,原文:`Invalid plugin spec. Use: plugin-name@marketplace-name, owner/repo, or a URL`。
+   - 改填绝对路径 `D:\WorkSpace\dsh-superagent-prototype\lib\plugin` 后安装成功,插件位于 `~/.copilot/installed-plugins/_direct/plugin`,版本 `dsh-superagent@0.1.0`,状态启用。
+   - 备选(本次未用):`chat.pluginLocations` 是**机器级**(scope `MACHINE`)设置,只能写在用户设置 `%APPDATA%\Code\User\settings.json`;写工作区 `.vscode/settings.json` 无效。
+2. **登录与模型**:Chat 面板已登录(只记状态,不读凭据);模型选择器显示 `DeepSeek V4.1 Flash`(id `deepseek-flash`)。
+3. **确认技能可见**:插件详情可见 `dsh-superagent`、`dsh-superagent-github`、`dsh-superagent-feishu` 三项。
+4. **启动宿主**:
 
    ```powershell
    pwsh -NoProfile -File scripts/dsh-superagent-windows.ps1 -Action start -Profile a4 -Command 'node --experimental-transform-types scripts/keepalive-host.mjs'
    node scripts/keepalive-probe.mjs
    ```
 
-   预期:探针输出 `tools=14`。本步是自动的,但必须与第 5 步同机同时运行。
-5. **在 Copilot Chat 中真实调用**(Agent 模式、允许工具):
-   - `orchestrator_read` 读取 `tickets`;
-   - `orchestrator_route` 对一条候选执行 `accept`;
-   - `orchestrator_reply` 回复一条线程。
-   预期:工具返回 JSON;Web 面板 `http://127.0.0.1:3082` 能看到对应 Ticket/线程变化。
-6. **留证与收尾**:把插件页、技能列表、三次工具调用的截图保存到 `.artifacts/screenshots/a4-*.png`(不提交);随后执行 `-Action stop -Profile a4` 停止服务端。
-7. **回填**:把结果与截图文件名写入本节,把 §8 的 A4 行改为"通过",最后跑 `pnpm check`。
+   实测:`{"ok":true,"tools":14,...}`,`runtime=ready`、`mcp=ready`;`feishu`/`history`/`github` 为 `starting`(宿主脚本不启动 Source 轮询器,与本项无关)。
+5. **权限档位**:Chat 面板切到 `Autopilot` + `Allow all`。该选择器只改内存态,重载窗口即回落到 `Manual permissions`;持久默认见 §11.6。
+6. **真实调用**(Agent 模式、允许工具):三个工具依次调用,结果见 §11.5。
+7. **收尾**:`-Action stop -Profile a4` 停止宿主,随后跑 `pnpm check`。
+
+### 11.5 三个工具的真实调用记录
+
+| 工具 | 入参 | 实际返回/界面变化 | 证据 |
+| --- | --- | --- | --- |
+| `orchestrator_read` | `resource=tickets` | 返回 `{"items":[{"ticket_id":"1d2e38c416e4d7634c460ed8c481100f","title":"…","state":"working",…}]}`;首轮 `triggers` 也正常返回候选列表 | `a4-tools-chat.png` |
+| `orchestrator_route` | `action=accept`,`worktree_name=verify-login-link` | 首次用 `worktree_name=a4-verify` 被拒(规则要求 1–4 个小写英文词且首段仅字母),模型原样报错后用 `verify-login-link` 成功,建票 `1d2e38c416e4d7634c460ed8c481100f`;MCP 直连复核可见该票 `state=working` | `a4-tools-chat.png`;MCP 复核 |
+| `orchestrator_reply` | `purpose=result` | 被领域规则拒绝,`code=notReady`,原文"工单尚未就绪,无法交付。把进展保持在内部,等待经过验证的 ready 汇报;不要把进展标成答案,也不要通过其它渠道发送。" 工单仍为 `working/queued`,没有真实 worker 跑完;按事实记录,不重试、不改写 | `a4-tools-chat.png` |
+
+补充观察:Chat 曾提示 `The model only supports 128 tools, 19 tools were not provided to the model`。这是当前模型声明的工具上限与客户端工具总数之差,本插件的 14 个工具均在已提供范围内(三个调用均成功),不影响 A4 结论。
+
+### 11.6 已知环境变更与默认值(2026-11-06)
+
+| 变更 | 事实 | 影响 |
+| --- | --- | --- |
+| VS Code 升级 | `1.119.0` → `1.145.2`(内置 Copilot Chat `0.47.0` → `0.73.0`);旧 1.119.0 进程已不存在 | A4 口径改为 1.145.2 |
+| 用户级默认档位 | 用户设置 `%APPDATA%\Code\User\settings.json` 写入 `"chat.defaultConfiguration": { "mode": "autopilot", "approvals": "allowAll" }`(用户级、持久) | 新窗口/新会话默认 `Autopilot · Allow all`,工具调用不再逐次确认;重载窗口后复核通过 |
+| 用户级默认模型 | 同一文件写入 `"chat.defaultModel": "deepseek-flash"`(用户级、持久) | 新会话默认模型为 `DeepSeek V4.1 Flash`;重载后复核通过 |
+| `chat.permissions.default` | 分别写入 `autoApprove`、`autopilot` 均不生效,重载后新会话仍是 `Manual permissions`;该键在 workbench bundle 中有 schema,但运行时读取未生效 | 不使用该键,以 `chat.defaultConfiguration` 为准 |
+| `team-develop-agent` 插件 | 请求卸载时它已不在 `~/.copilot/installed-plugins/_direct/`(`_direct` 下仅剩 `plugin`,即 `dsh-superagent`);`code --list-extensions` 也无该扩展 | 对 `dsh-superagent`、三个技能与 14 个工具无影响;无需重新校验 A4 关键步骤 |
+| `team-develop-agent` 残留 | 仍有 `C:\Users\61054\.copilot\plugin-data\team-develop-agent` 与 `%APPDATA%\Code\agentPlugins\file-c-3A-…-direct-team-develop-agent` | **未删除**,等用户确认后再清理(AGENTS §8.2);只清理该插件自身 |
+| 权限作用范围 | `chat.defaultConfiguration` 为用户级,仅影响新会话的模式与工具审批,不影响其它设置 | 无安全旁路:工具仍走 Policy/Mandate 复验,"Allow all" 只是免去客户端逐次确认 |
 

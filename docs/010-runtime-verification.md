@@ -22,8 +22,8 @@
 
 | 客户端 | 探测结果 | 能否用于本次验证 |
 | --- | --- | --- |
-| VS Code | 已安装 `1.145.1`（2026-11-06 复核时 Stable 为 `1.119.0`，客户端口径以 `009` §11 为准） | — |
-| GitHub Copilot / Copilot Chat 扩展 | 当时 `code --list-extensions` 未见官方 Copilot 扩展；后续在 Stable `1.119.0` 确认 Copilot Chat 是内置扩展 `0.47.0`（`resources\app\extensions\copilot`） | 否，VS Code 内的 A4 仍需人工验证 |
+| VS Code | `1.145.2`（commit `c4453f8e…`，安装根 `C:\Program Files\Microsoft VS Code`）；A4 实测口径见 `009` §11 | — |
+| GitHub Copilot / Copilot Chat 扩展 | 内置扩展 `GitHub.copilot-chat@0.73.0`（`resources\app\extensions\copilot`），不出现在 `code --list-extensions` | 是，A4 已在 IDE 内实测通过 |
 | GitHub Copilot CLI | 已安装 1.0.103，已登录，`-p` 非交互可用 | **是**，作为真实模型客户端 |
 | `copilot plugin` / `copilot mcp` | 子命令可用；`--plugin-dir lib/plugin` 能加载本插件 | 是 |
 | `dsh` 宿主 CLI | 未安装 | 否，改为脚本宿主 |
@@ -31,7 +31,7 @@
 
 `copilot --plugin-dir ./lib/plugin plugin list --json` 的实际输出：插件 `dsh-superagent`、版本 0.1.0、来源 external、状态 enabled。这证明 `plugin/` 清单结构被真实客户端接受。
 
-A4 的验收环境限定为 **Windows + VS Code Stable 1.119.0 的官方 Copilot Chat**；本节的 Copilot CLI 路径只作前置证据，**不计入 A4 验收**（见 `009` §11.1）。
+A4 的验收环境限定为 **Windows + VS Code Stable 1.145.2 的官方 Copilot Chat**；本节的 Copilot CLI 路径只作前置证据，**不计入 A4 验收**（见 `009` §11.1）。
 
 ## 3. 验证拓扑
 
@@ -121,7 +121,7 @@ Streamable HTTP MCP 端点（src/app/mcp.ts，真实）
 
 | 项目 | 状态 | 原因 |
 | --- | --- | --- |
-| VS Code Copilot Chat 冒烟（A4） | 未执行 | Stable 1.119.0 内置 Copilot Chat 0.47.0 已就位，但 IDE 内登录、插件可见、技能可见与工具调用仍需人工完成；状态与最小步骤见 `009` §11 |
+| VS Code Copilot Chat 冒烟（A4） | 通过 | Stable 1.145.2 内置 Copilot Chat 0.73.0；插件 `dsh-superagent` 启用、三技能可见、Model `DeepSeek V4.1 Flash`，三个工具真实调用（`orchestrator_reply` 被 `notReady` 拒绝属真实结果），明细见 `009` §11 |
 | 真实 worker 执行（改代码 → 提交 → PR） | 未执行 | 没有 `dsh` 宿主与真实模型 worker，工单停在 `working/queued` |
 | 双人 SoD（请求者与停止者不同） | 未覆盖 | 验证宿主只配置一个允许发送者，且无 worker 推进到 `person/review` |
 | 保活演练（A6） | Windows 机制演练已通过 | 强杀后自动拉起已验证（`009` §10）；systemd 等 POSIX 调度**范围外**；真实 `dsh --profile` 宿主与计划任务开机自启不在本批验收内 |

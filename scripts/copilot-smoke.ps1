@@ -16,7 +16,7 @@
 
 .PARAMETER Install
     显式要求尝试安装官方扩展 GitHub.copilot 与 GitHub.copilot-chat。需要联网与有效订阅；
-    其中 Copilot Chat 在 VS Code 1.119 是内置扩展（0.47.0），市场安装通常会被拒绝降级，
+    其中 Copilot Chat 内置在 VS Code 里（实测 1.145.2 为 0.73.0），市场安装通常会被拒绝降级，
     脚本如实记录失败原因，不把失败改写成成功。
 
 .EXAMPLE
@@ -234,7 +234,7 @@ $report = [ordered]@{
     }
     checks = $checks
     manualSteps = @(
-        'Stable 打开后按 Ctrl+Shift+P，运行 “Chat: Install Plugin from Source”（workbench.action.chat.installPluginFromSource），输入 file:///d:/WorkSpace/dsh-superagent-prototype/lib/plugin；或在工作区设置把 chat.pluginLocations 指向该目录。',
+        'Stable 打开后按 Ctrl+Shift+P，运行 “Chat: Install Plugin from Source”（workbench.action.chat.installPluginFromSource），输入插件目录的绝对路径（实测 file:/// URI 会被拒，例如 D:\WorkSpace\dsh-superagent-prototype\lib\plugin）；或在用户设置写入 chat.pluginLocations（该键为机器级 MACHINE，工作区设置无效）。',
         '在 Copilot Chat 里登录有 Copilot 权限的 GitHub 账号；本脚本只报登录状态存在性，不读取任何凭据。',
         '确认 Copilot 的插件列表中 dsh-superagent 处于启用状态，且技能 dsh-superagent、dsh-superagent-github、dsh-superagent-feishu 均可见。',
         '先在仓库根启动宿主与 MCP 端点（scripts/dsh-superagent-windows.ps1 -Action start -Profile a4 -Command "node --experimental-transform-types scripts/keepalive-host.mjs"），再在 Copilot Chat 中确认工具可列并可调用：orchestrator_read(tickets) → orchestrator_route → orchestrator_reply。',

@@ -45,7 +45,7 @@
 
 ### 1.3 无法在当前环境确认、需标记而非假设
 
-- **A4（VS Code Copilot 冒烟）**：范围限定 **Windows + VS Code Stable 1.119.0 的官方 Copilot Chat**（内置 `GitHub.copilot-chat@0.47.0`）；Copilot CLI 只作前置证据，**不计入 A4 验收**；Insiders 已由用户卸载，不纳入本次验证范围，脚本不得探测或依赖它。当前记录为「客户端就位、待人工验证」，不得写成通过；盘点与最小人工步骤见 `docs/009-copilot-plugin.md` §11。
+- **A4（VS Code Copilot 冒烟）**：范围限定 **Windows + VS Code Stable 的官方 Copilot Chat**；2026-11-06 已在 Stable `1.145.2`（内置 `GitHub.copilot-chat@0.73.0`）内实测通过：插件 `dsh-superagent@0.1.0` 与三个技能可见、`tools/list` 14 个、用 `DeepSeek V4.1 Flash`（`deepseek-flash`）真实调用 `orchestrator_read`/`orchestrator_route`/`orchestrator_reply`（第三个被领域规则以 `notReady` 拒绝，属真实结果）。Copilot CLI 只作前置证据，**不计入 A4 验收**；Insiders 已由用户卸载，不纳入验证范围。明细见 `docs/009-copilot-plugin.md` §11。
 - **A6（保活演练）**：Windows 机制演练已用 `scripts/dsh-superagent-windows.ps1 -Action drill` 对真实 `Runtime` 完成并通过（强杀后 30.1 秒恢复、14 工具可用），证据见 `docs/009` §10；真实 `dsh --profile` 宿主与计划任务开机自启在 Windows 范围内仍未验证；systemd 与其它 POSIX 调度为**范围外**（见 §2.1）。
 - **真实 GitHub/飞书触发（A5 第二轮）**：需要真实凭据与仓库，未执行前只报告测试回归结果。
 - **官方 schema 的远端可用性**：已下载到本地校验输入目录后，校验过程禁止联网；schema 内容以本地文件为准。
