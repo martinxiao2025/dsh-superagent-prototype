@@ -251,7 +251,7 @@ export function mainTools(host: MainToolsHost, scope: ToolScope): Tool[] {
         block: z.enum(['policy', 'eval', 'executor', 'pause', 'source']).describe('pause 暂停或恢复处理：新的 Eval、派发与回复。'),
         source: z.string().min(1).optional().describe('配合 block source：Source 实例 id，例如 github 或 feishu。'),
         value: z.unknown().describe('整个块；Source 取 { enabled, config }，pause 取 { paused }。'),
-        revision: z.number().int().nonnegative().describe('该块的修订；pause 会忽略它。'),
+        revision: z.number().int().nonnegative().describe('该块的修订；先用 orchestrator_read 的 settings 资源读到它。pause 会忽略它。'),
       }).strict()
         .refine(args => (args.block === 'source') === (args.source !== undefined), 'source 只与 block source 一起使用，用来指明 Source 实例'),
       execute: async args => {

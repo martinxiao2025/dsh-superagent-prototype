@@ -288,3 +288,83 @@ exit=1
 
 验证:`pnpm check` 退出 0——1179 通过、26 跳过(范围外)、0 失败;`plugin/` 与 `lib/plugin/` 两处校验通过;`tests/mcp.spec.ts` 的 14 工具与 `tools/list` 契约断言未改。
 
+## 12. 全流程实测(2026-11-06 第二轮)
+
+范围:Windows + VS Code Stable + 内置 Copilot Chat + `DeepSeek V4.1 Flash` + 本地插件与真实 `Runtime` 宿主。主链路与异常路径经真实 MCP 端点(`127.0.0.1:3083/mcp`)逐条调用,交互层在 Copilot Chat 内实跑;原始返回留存于 `.artifacts/a4/results/*.jsonl`(不提交)。
+
+### 12.1 环境基线
+
+| 项 | 实测 |
+| --- | --- |
+| VS Code | `1.145.2`(commit `c4453f8e…`),官方 Stable |
+| Copilot Chat | 内置 `GitHub.copilot-chat@0.73.0` |
+| 插件 | `dsh-superagent@0.1.0`,位于 `C:\Users\61054\.copilot\installed-plugins\_direct`;扩展视图 "Agent Plugins - Installed" 可见 |
+| 技能 | `dsh-superagent`、`dsh-superagent-github`、`dsh-superagent-feishu` 三个可见,首个在 Chat 内被真实读取 |
+| 默认档位 | 会话输入框显示 `Autopilot · Allow all` |
+| 默认模型 | `DeepSeek V4.1 Flash`(`deepseek-flash`),Effort `High`,上下文 `1M` |
+| 宿主工具面 | `tools/list` 14 个;`runtime`/`mcp` 为 `ready`,`feishu`/`github`/`history` 为 `starting`(本机无真实凭据与监听,属预期) |
+
+### 12.2 主链路(真实调用)
+
+| 步骤 | 入参要点 | 真实结果 |
+| --- | --- | --- |
+| 读候选 | `orchestrator_read` `resource=triggers` | 返回候选列表与 `next_offset`,每条含 `trigger_id`/`thread`/`disposition` |
+| 建票 | `orchestrator_route` `kind=accept`,`worktree_name=fix-save-error` | `decision=accept`,生成工单 `b9352f08c0922acadadf7641fee69e00`,状态 `working`,同时创建 worktree 目录 |
+| 读工单 | `orchestrator_read` `resource=ticket/<id>` | 含 assignment、worktree、状态与 `read` 指针 |
+| 提示词预览 | `orchestrator_prompts_save` `preview=true` | 只回预览,不写库 |
+| 提示词保存 | 同上 `baseRevision=0` | 成功,revision 0 → 1;再次保存 1 → 2 |
+| 追加输入 | `orchestrator_ticket_note` `{ticket_id,text}` | 成功,读回 `inputs` 可见该条 |
+| 重新入队 | `orchestrator_trigger_requeue` `{trigger_id}` | 成功,候选重新可路由 |
+| 结果提交 | `orchestrator_reply` `purpose=result` | 被 `notReady` 拒绝(见 12.3),属真实领域结果 |
+
+说明:本机没有 `dsh` 宿主与真实 agent CLI,`scripts/keepalive-host.mjs` 用假 DSH 服务驱动真实 `Runtime`,worker 不会产生真实回合,因此工单停留在 `working`,无法走到 `review/ready → 结果交付`。这一段的真实结论只有"未就绪会被拒绝",不以单元测试结论代替。
+
+### 12.3 异常与边界(真实文案)
+
+| 场景 | 真实返回 | 可诊断性 |
+| --- | --- | --- |
+| 非法 `worktree_name`(`A4-verify`) | `worktree_name: 请用 1–4 个简短英文词，全部小写，采用 kebab-case，最多 32 个字符，且第一段只能是小写字母` | 可诊断,直接给出重写规则 |
+| accept 缺 `acknowledgement` | `accept 需要 acknowledgement` | 可诊断;未复述该字段格式 |
+| 重复 accept 同一 Trigger | `已被接受为 b9352f08…；标题与确认未改变`,并回卡片 | 幂等,未重复建票 |
+| 不存在的 `trigger_id` | `未知 Trigger`(`unknownTrigger`) | 能定位是哪个 id(结果里带 `trigger_id`),但无下一步 |
+| 不存在的工单(retry/request_status/reply/read) | `未知工单`(`unknownTicket`) | 同上 |
+| 对 `working` 工单 retry | `只有未结束的工单才能重试，且仅当它的 worker 最近一次汇报为 failed 或 blocked、此后没有人发过消息，或向它的 worker 交付 Input 失败时`(`notRetryable`) | 条件清楚,但未指明当前状态 |
+| 对 `working` 工单请求状态 | `worker 并未在等待；未发送任何内容` + 工单卡 | 如实,且说明未产生副作用 |
+| `ticket_note` 传 `note` 而非 `text` | `参数无效`,issues 为 `path=text 期望 string` 与 `出现未知的键(key): "note"` | 可诊断,但未列出可接受的键 |
+| `prompts_save` 缺 `baseRevision` | `preview=false 时必须提供 baseRevision；先用 orchestrator_read 的 prompts 资源读取当前修订` | 可诊断且给出下一步 |
+| 过期 `baseRevision` | `提示词版本已变更为 3；保存前请先对比最新版本` | 可诊断;该错误没有 `code` |
+| `reply purpose=attention` 缺前置 | `Attention 需要该工单当前在 human_action 中的 attention 问题。常规的未完成工作保持在内部。` | 可诊断 |
+| `settings_save` 缺 `revision` | `参数无效`,`path=revision 期望 数字，实际接收 undefined` | 文案只说类型,未说怎么取(已修,见 12.6) |
+| 未知 Thread 取消订阅 | `{"removed":false,"thread":"…"}` | 如实,非错误 |
+
+### 12.4 并发与状态
+
+| 项 | 真实结果 |
+| --- | --- |
+| 同一 `baseRevision` 并发保存提示词 | 一个成功(revision 2 → 3),另一个被拒:`提示词版本已变更为 3；保存前请先对比最新版本` |
+| 同一 Trigger 并发 accept | 只创建一张工单;另一条返回已存在,不重复建票 |
+| MCP 端口被占用 | 第二个宿主(`web=3092`,`mcp=3083`)启动成功,`runtime=ready`、`mcp=error` 并带占用说明,进程继续运行,与 §4 的设计一致 |
+| 停止宿主 | `Stop-Process` 后 3082/3083 均无监听;健康端点不再响应 |
+
+### 12.5 Copilot Chat 交互
+
+- 新会话默认 `Autopilot · Allow all` 与 `DeepSeek V4.1 Flash`,与用户设置一致。
+- 在 Chat 内真实调用 `orchestrator_read`(`resource=triggers`):自动读取 `dsh-superagent` 技能,6 步、32 秒完成,无逐次确认,返回 3 条候选的 `trigger_id`/`thread`/`preview`/`disposition` 与 `next_offset=3`。
+- Chat 提示 `The model only supports 128 tools, 29 tools were not provided to the model`:被裁掉的是其它工具,本插件 14 个工具仍可用(调用成功可证)。
+- 关闭并重新启动 VS Code(新进程)后,插件与技能仍可发现、工具仍可调用。
+- 工具结果在界面上以"步骤 + 折叠详情 + 任务完成摘要"呈现;错误以 `isError` 与 `code` 原样进入上下文,模型可据此纠正。
+- 限制:Computer Use 的 UI Automation 树在首轮渲染后不再暴露 Chat webview 的输入框,第二轮提问无法自动化输入;该项以首轮实跑为准,后续人工操作不受影响。
+
+### 12.6 本轮缺陷与修复
+
+| 维度 | 发现 | 处理 |
+| --- | --- | --- |
+| 准确 | `orchestrator_settings_save` 的 `revision` 只写"该块的修订",模型缺参时只得到"期望数字",不知道该先读哪 | 描述补"先用 orchestrator_read 的 settings 资源读到它";schema 与校验不变 |
+
+以下两项只记录、本轮不改:
+
+- `未知工单`/`未知 Trigger` 缺下一步提示。文案在 `src/core/errors.ts`,同时被面板中文文案直接引用;要补"用 orchestrator_read 确认 id"会把工具名带进面板,属产品口径决策。
+- `notRetryable` 未带当前状态。补状态需要把状态值传进 `UserError.values` 并同步面板与测试,超出本轮最小修复范围。
+
+验证:`pnpm check` 退出 0;`pnpm test` 为 1179 通过、26 跳过(范围外)、0 失败。
+
