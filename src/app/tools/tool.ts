@@ -1,8 +1,17 @@
 /** Shared tool primitives and schemas for the main and executor Sessions. */
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import { z } from 'zod'
 import { IM_WORDS, wordCount } from '../../infra/text.ts'
 import { resourceGrammar } from '../resources.ts'
 
+/**
+ * The Session a tool call acts for: its id keys prompt-preview resources, and the Agent, when there is one, is the main
+ * Session that receives image attachments. MCP callers have an id but no Agent.
+ */
+export interface ToolScope {
+  id: string
+  agent?: Agent
+}
 export interface Tool<S extends z.ZodType = z.ZodType> {
   name: string
   description: string

@@ -45,6 +45,7 @@ const TEXT = {
   'health.reply': ['发往渠道的消息', 'Messages to Channels'],
   'health.worker': ['执行器事件处理', 'Executor event handling'],
   'health.evals': ['未完成的评估', 'Unavailable Evals'],
+  'health.mcp': ['MCP 端点', 'MCP endpoint'],
   none: ['暂无。', 'None.'],
   openSession: ['打开 Session', 'Open Session'],
   stop: ['停止', 'Stop'],

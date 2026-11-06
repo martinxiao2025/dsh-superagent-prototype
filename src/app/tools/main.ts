@@ -1,6 +1,5 @@
 /** Main Session tools for routing triggers, assessing candidates, sending replies, and updating settings and prompts. */
 import type { Context } from '@deepseek-ai/cordis'
-import type { Agent } from '@deepseek-ai/dsh-agent'
 import { z } from 'zod'
 import { UserError, followupOwners, key, reasonText, type Decision, type DecisionKind, type EngineForMainSession, type EngineForPeople }
   from '../../core/index.ts'
@@ -12,7 +11,7 @@ import { readResource, type MainResourceHost, type ResourceHost } from '../resou
 import type { Sessions } from '../sessions.ts'
 import type { Settings } from '../settings.ts'
 import type { Store } from '../store.ts'
-import { AcknowledgementSchema, readTool, tool, type Tool } from './tool.ts'
+import { AcknowledgementSchema, readTool, tool, type Tool, type ToolScope } from './tool.ts'
 
 const RoutingNoteSchema = z.string().trim()
   .refine(text => wordCount(text) <= NOTE_WORDS, `Routing note must not exceed ${NOTE_WORDS} words (Chinese uses word segmentation). Shorten it; do not split it across deliveries.`)
@@ -151,8 +150,8 @@ function routeTool(host: MainToolsHost): Tool {
     },
   })
 }
-/** Builds the main Session's tools; `agent` scopes prompt preview resources to that Session. */
-export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
+/** Builds the main Session's tools; `scope` names the Session and, for DSH, supplies the Agent that receives images. */
+export function mainTools(host: MainToolsHost, scope: ToolScope): Tool[] {
   const resources: MainResourceHost = { ...host.resources, sessions: host.sessions, settings: host.settings }
   return [
     readTool('Read one page of a resource the resource parameter lists, such as the ticket list or a ticket. Follow next_offset, and next_resource where a page names one.',
@@ -209,7 +208,7 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
       name: 'orchestrator_eval_read',
       description: 'Read more of a candidate\'s context, always with its trigger_id: a message or stub whole by message_id, an image by image_id, the root, the parent, a thread page by cursor, or a file or directory by path.',
       schema: EvalReadSchema,
-      execute: async (read, signal) => host.assessor.read(agent, read, signal),
+      execute: async (read, signal) => host.assessor.read(scope.agent, read, signal),
     }),
     tool({
       name: 'orchestrator_eval_decide',
@@ -287,8 +286,8 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
         if (args.preview) {
           const preview = host.prompts.preview(args.config)
           return { scope: preview.scope, previews: (['orchestrator', 'worker'] as const).map(role => {
-            const resource = `prompt-preview/${key(agent.id, role, preview[role])}`
-            host.resources.pages.set(`${agent.id}:${resource}`, preview[role])
+            const resource = `prompt-preview/${key(scope.id, role, preview[role])}`
+            host.resources.pages.set(`${scope.id}:${resource}`, preview[role])
             return { role, chars: preview[role].length, read: resource }
           }) }
         }

@@ -35,6 +35,8 @@ import { candidateCard, repliedTo, sourceLink, type LinkHost } from './links.ts'
 import { eventNotice, followupNotice } from './notices.ts'
 import { pullEndNotices } from '../sources/github-pull.ts'
 import { HealthBoard } from '../infra/health.ts'
+import { McpEndpoint } from './mcp.ts'
+import { mcpTools } from './mcp-tools.ts'
 import { Outbox } from './outbox.ts'
 import { Passes } from './passes.ts'
 import { Setup } from './setup.ts'
@@ -73,6 +75,8 @@ export class Runtime extends Service implements SourceHost {
   readonly ready: Promise<void>
   private readonly board = new HealthBoard()
   private readonly runtimeHealth = this.board.claim('runtime', { state: 'starting', detail: '' })
+  private readonly mcpHealth = this.board.claim('mcp', { state: 'starting', detail: '' })
+  private mcp?: McpEndpoint
   readonly masterId: string
   private readonly sourceLinks = new TextCache(200_000)
   private readonly stopped = new AbortController()
@@ -121,7 +125,7 @@ export class Runtime extends Service implements SourceHost {
       const sessions = this.sessions = new Sessions({ context: ctx, store, prompts, effects, health: board.claim('models'), masterId,
         lifetime: this.lifetime,
         closing: () => this.closing(), environment,
-        tools: (agent, ticket) => ticket ? executorTools(this.toolHost, ticket) : mainTools(this.toolHost, agent) })
+        tools: (agent, ticket) => ticket ? executorTools(this.toolHost, ticket) : mainTools(this.toolHost, { id: agent.id, agent }) })
       const policyChanged: EngineForSettings['policyChanged'] = (from, to, effects) => { this.engine.policyChanged(from, to, effects) }
       this.settings = new Settings({ store, sources, engine: { policyChanged }, health: board, context: ctx, lifetime: this.lifetime, sessions,
         sourceHost: this, setup, requestPass: () => { this.passes.request() } })
@@ -171,6 +175,8 @@ export class Runtime extends Service implements SourceHost {
     }
   }
   get health(): Readonly<Record<string, Health>> { return this.board.all }
+  /** The port the MCP endpoint actually listens on, or undefined while it is stopped, disabled, or failed to bind. */
+  get mcpPort(): number | undefined { return this.mcp?.port }
   /** Aborted when dsh-superagent stops or loses its state directory lock, cancelling running reads and subprocesses. */
   get lifetime(): AbortSignal { return this.stopped.signal }
   context(kind: { kind: string; health: readonly string[] }): SourceContext { return sourceContextOf(this.sourceDeps, kind) }
@@ -208,6 +214,7 @@ export class Runtime extends Service implements SourceHost {
     this.sessions.install()
     this.executor.install()
     await this.sessions.ensure(this.masterId, this.machine.stateDir, 'dsh-superagent orchestrator', 'orchestrator')
+    await this.startMcp()
     for (const id of this.settings.syncable()) await this.settings.sync(id).catch(() => { /* sync() records its failure in health. */ })
     // If stop() was called while awaiting setup, session creation, or policy sync, do not start background loops.
     if (this.closing()) return
@@ -215,6 +222,22 @@ export class Runtime extends Service implements SourceHost {
     this.passes.start()
     this.effects.start()
     this.runtimeHealth.set({ state: 'ready', detail: 'Orchestrator is ready', at: now() })
+  }
+  /** Starts the loopback MCP endpoint. A busy port becomes a health error; it never blocks the orchestrator. */
+  private async startMcp(): Promise<void> {
+    if (!this.machine.mcpEnabled) {
+      this.mcpHealth.set({ state: 'paused', detail: 'The MCP endpoint is off (mcpEnabled is false)', at: now() })
+      return
+    }
+    const endpoint = new McpEndpoint({ id: this.masterId, port: this.machine.mcpPort, health: this.mcpHealth,
+      tools: mcpTools(this.toolHost, this.masterId), log: (message, error) => { this.ctx.logger.warn('%s: %s', message, String(error)) } })
+    try {
+      await endpoint.start()
+      this.mcp = endpoint
+    } catch (error) {
+      this.mcpHealth.set({ state: 'error', at: now(),
+        detail: `The MCP endpoint could not listen on 127.0.0.1:${this.machine.mcpPort}: ${error instanceof Error ? error.message : String(error)}` })
+    }
   }
   private httpHost(): HttpHost {
     const runtime = this
@@ -230,6 +253,8 @@ export class Runtime extends Service implements SourceHost {
   private async shutdown(): Promise<void> {
     this.closingFlag = true; const passes = this.passes.stop(); this.stopped.abort()
     try {
+      await this.mcp?.stop()
+      this.mcp = undefined
       this.assessor.stop()
       const ids = [this.masterId, ...this.store.tickets.list().map(ticket => workerSessionId(ticket.id))]
       const agents = ids.map(id => this.ctx.agents.get(id as SessionId)).filter((agent): agent is Agent => agent !== undefined)
