@@ -1,33 +1,33 @@
-# 000 Philosophy
+# 000 理念
 
-dsh-superagent is a framework, and also a way of working with an agent. Its core principle:
+dsh-superagent 是一个框架，也是一种与代理协作的工作方式。它的核心原则是：
 
-**Take as little human attention as possible, and give as much value as possible.**
+**尽可能少占用人的注意力，尽可能多地交付价值。**
 
-Every part of the project is judged by the attention it costs. A message, a notification, a question, a setting, a panel element and a paragraph of documentation each cost someone's attention, and each has to give more value than that, or it is removed.
+项目中的每一部分都用它所消耗的注意力来衡量。一条消息、一次通知、一个提问、一项设置、一个面板元素、一段文档，各自都消耗某个人的注意力，因此每一处都必须给出高于这份消耗的价值，否则就被移除。
 
-## What follows for the agent
+## 对代理意味着什么
 
-- **It acts only when asked, or when a written rule allows it.** A request counts only when it addresses the agent directly and comes from a person the team allowed: one on an allowed list, or anyone in a conversation the team opened to requests. Work nobody asked for needs a rule the team wrote, and starts in a mode that only records what the agent would have done.
-- **It speaks only when a person must act or can use a result.** It confirms a request once and names what it will do. It stays quiet while it works. It writes again when a result is ready, when it needs a decision, or when it cannot finish. Messages are short and go to the conversation where the request was made.
-- **It asks one concrete question at a time,** in a structured form, so the question reaches the person instead of staying inside a long report.
-- **It stops by impact, not by effort.** A local change goes as far as a reviewable result. A change that needs a design decision stops with a clear question.
-- **It reports honestly.** A draft is marked unfinished, a failure is reported as a failure, and a limit is never bypassed to avoid asking.
+- **只在被要求时行动，或只在书面规则允许时行动。** 只有直接指向代理、且来自团队允许的人（在允许名单上的人，或团队已开放请求的会话中的任何人）的请求才算数。没有人要求的工作需要团队写下的规则，并且要以一种只记录「代理本会做什么」的模式启动。
+- **只在有人必须行动或能用上结果时开口。** 它对一个请求只确认一次，并说明将要做什么。它在工作过程中保持安静。当结果就绪、需要决策或无法完成时，它再写一次。消息要短，并发送到提出请求的那个会话里。
+- **一次只问一个具体的问题，** 用结构化的形式提出，让问题直达当事人，而不是停留在冗长的报告里。
+- **按影响范围停止，而不是按投入多少停止。** 局部改动做到可评审的结果为止。需要设计决策的改动则带着一个明确的问题停下来。
+- **如实汇报。** 草稿标注为未完成，失败就报为失败，绝不为回避提问而绕过限制。
 
-## What follows for the design
+## 对设计意味着什么
 
-- **Few concepts.** The design has only its domain concepts, such as a Source, and their concrete implementations, such as GitHub and Feishu. A business need becomes an attribute of one of them, or a prompt the agent follows. The design does not add a concept for it.
-- **Few settings.** A default replaces a setting when one value suits almost every team. Behaviour that a team describes in words is prompt text, not a setting.
-- **A panel that shows only what needs a person.** It lists first what waits for a person. A healthy state takes no space.
-- **Documents read in order.** Each numbered document builds only on the ones before it, so a reader never needs a concept that has not been introduced yet.
+- **概念要少。** 设计里只有它的领域概念（例如来源 Source）以及它们的具体实现（例如 GitHub 和飞书）。一个业务需求会变成其中某个概念的属性，或者变成代理遵循的一段提示词。设计不会为它新增概念。
+- **设置要少。** 当某一个值几乎适用于所有团队时，就用默认值取代该项设置。团队用文字描述的行为属于提示词文本，不是设置项。
+- **面板只显示需要人处理的内容。** 它首先列出等待人处理的事项。健康状态不占任何空间。
+- **文档按顺序阅读。** 每份编号文档只建立在它之前的文档之上，因此读者永远不需要用到尚未引入的概念。
 
-## Responsibility
+## 责任
 
-The agent comments, opens pull requests and messages people under accounts your team sees every day. Every message it sends costs your colleagues' attention, and you are responsible for it. The more the agent can do, the more care its operator owes the team:
+代理用你们团队每天都看得见的账号发表评论、提交 Pull Request、给人发消息。它发出的每条消息都消耗同事的注意力，而这份责任在你身上。代理能做的事越多，它的运营者亏欠团队的谨慎就越多：
 
-- **Start narrow.** Begin with a short allowed list and with proactive work only recorded. Widen both once what the agent would have done looks right.
-- **Tune for less noise.** When the agent is noisy, make its prompts shorter and stricter, or pause it. Do not add more messages to explain the noise.
-- **Do not use it to produce volume.** Mass pull requests, broadcast messages and busywork cost the team more than they give.
-- **Own what it says.** Read what the agent posts in your name, and correct it in the prompts when it is wrong.
+- **窄范围起步。** 从一份很短的允许名单开始，主动式工作只做记录。等代理本会做的事看起来正确之后，再放宽这两项。
+- **为更少噪音而调优。** 当代理太吵时，把它的提示词改得更短、更严格，或者暂停它。不要靠添加更多消息去解释噪音。
+- **不要用它制造数量。** 批量 Pull Request、广播消息和没必要的琐碎工作，给团队带来的成本大于收益。
+- **为它说的话负责。** 阅读代理以你的名义发布的内容，发现错误就在提示词里纠正。
 
-The goal is the right help at the right time, and nothing at any other time.
+目标是：在正确的时间给出正确的帮助，在其他任何时间都不打扰。

@@ -1,10 +1,10 @@
-# 007 Architecture
+# 007 架构
 
-This is the developer guide to the implementation. It maps the concepts in [001 Domain model](001-domain.md) through [006 Deployment](006-deployment.md) to classes, interfaces and files. Start with the runtime and Engine, then use the module and test tables as a code index.
+这是实现的开发者指南。它把 [001 领域模型](001-domain.md) 到 [006 部署](006-deployment.md) 中的概念映射到类、接口与文件。先从运行时与引擎开始，然后把模块表和测试表当作代码索引使用。
 
-## Core classes and glue
+## 核心类与粘合层
 
-Core classes own domain concepts and external boundaries behind small interfaces. Glue translates tool arguments, HTTP requests, Source payloads and DeepSeek Harness events into calls to those classes, then turns results into cards, views and messages.
+核心类在小接口背后持有领域概念与外部边界。粘合层把工具参数、HTTP 请求、来源（Source）负载和 DeepSeek Harness 事件翻译成对这些类的调用，再把结果变成卡片、视图与消息。
 
 ```mermaid
 flowchart TB
@@ -24,597 +24,597 @@ flowchart TB
   effects --> store
 ```
 
-`Runtime` (`src/app/runtime.ts`) constructs the application, supplies dependencies, and owns startup and shutdown. `Engine` constructs its own internal parts. The Executor and Assessor call back into the Engine, so Runtime gives them getters rather than requiring construction in a circular order.
+`Runtime`（`src/app/runtime.ts`）构造应用、提供依赖，并负责启动与关闭。`Engine` 构造自己的内部部件。执行器与评估器会回调引擎，因此运行时交给它们的是 getter，而不要求按会形成循环的顺序构造。
 
-### Runtime
+### 运行时
 
-`Runtime` is the composition root; it contains no domain rules. Its constructor locks the state directory, opens the Store and builds each component. If construction fails, it closes the Store and releases the lock.
+`Runtime` 是组合根；它不包含领域规则。它的构造函数锁定状态目录、打开存储（Store）并构建每个组件。若构造失败，它会关闭存储并释放锁。
 
-Startup registers management routes and runs Setup. After setup resolves, it installs Session and Executor hooks, ensures the main Session exists, starts Policy syncs, resumes interrupted Assignments, and starts passes and effects. `ready` marks completion of startup.
+启动时注册管理路由并运行 Setup。Setup 解析完成后，它安装会话与执行器钩子、确保主会话存在、启动策略同步、恢复被中断的任务分派，并启动轮次与副作用。`ready` 标记启动完成。
 
-Shutdown cancels turns, waits for passes, effects and agents, restores the process environment, closes the Store and releases the lock. Source plugins inject Runtime as the `orchestrator` service through the narrow `SourceHost` interface.
+关闭时取消回合、等待轮次、副作用与智能体，恢复进程环境，关闭存储并释放锁。来源插件通过窄接口 `SourceHost` 把运行时注入为 `orchestrator` 服务。
 
-| Part | Module | Does |
+| 部件 | 模块 | 作用 |
 | --- | --- | --- |
-| Setup | `src/app/setup.ts` | Resolves the repository and the accounts by probing their CLIs the way worker shells run them, writes and applies the workers' environment and command shims, and keeps the setup problems; Settings checks a changed account through it, and restarts through it, which runs setup again |
-| Passes | `src/app/passes.ts` | One pass at a time, every two seconds and whenever a command asks: the due effects, then `Engine.evaluateDue`; a Source's Trigger reaches the Engine through it |
-| Outbox | `src/app/outbox.ts` | The Engine's `Outbox` port, and the only writer of the receipts: `send` keeps a message's receipt and queues its `reply` effect in one transaction, and the effect's handler sends it through `SourceRegistry.send`; a message waits while its Source is off, and is dropped when the conversation is gone or not listened to |
-| Notices | `src/app/notices.ts` | Converts domain events and worker activity into main-Session messages. `eventNotice` handles domain notices; `reportRelay` forwards questions immediately, keeps ordinary progress on its Ticket, and relays other reports; `followupRelay` names the Tickets that own a human follow-up. Relays arriving during a turn are delivered together at its next step through the DeepSeek Harness inbox |
+| Setup | `src/app/setup.ts` | 按 worker shell 的实际运行方式探测各 CLI，解析仓库与账号，写入并应用 worker 的环境与命令 shim，并保留 setup 问题；设置通过它检查变更后的账号，也通过它重启，重启会再次运行 setup |
+| Passes | `src/app/passes.ts` | 一次只跑一个轮次，每两秒一次，并在任何命令要求时运行：先处理到期副作用，再调用 `Engine.evaluateDue`；来源的触发通过它到达引擎 |
+| Outbox | `src/app/outbox.ts` | 引擎的 `Outbox` 端口，也是回执的唯一写入者：`send` 在同一事务中保存消息回执并排队其 `reply` 副作用，副作用的处理器通过 `SourceRegistry.send` 发送；来源关闭时消息等待，会话不存在或未被监听时消息被丢弃 |
+| Notices | `src/app/notices.ts` | 把领域事件与 worker 活动转换成主会话消息。`eventNotice` 处理领域通知；`reportRelay` 立即转发问题、把普通进度留在其工单上，并转发其他汇报；`followupRelay` 指出拥有人工跟进的工单。回合进行中到达的转发会在下一步通过 DeepSeek Harness 收件箱一起投递 |
 
-### Engine
+### 引擎
 
-`Engine` (`src/core/engine.ts`) is the only writer of Triggers, Threads, Decisions, Tickets and Assignments. It receives these ports from `src/core/ports.ts`: `Repositories`, a current-Policy getter, `SourceScope`, `Assessor`, `Executor` and `Outbox`. Optional dependencies are `prepareTicket`, `now` and `emit`.
+`Engine`（`src/core/engine.ts`）是触发、线程、决策、工单与任务分派的唯一写入者。它从 `src/core/ports.ts` 接收这些端口：`Repositories`、当前策略 getter、`SourceScope`、`Assessor`、`Executor` 与 `Outbox`。可选依赖是 `prepareTicket`、`now` 与 `emit`。
 
-All Engine methods are synchronous. Each command changes its aggregates in one transaction. `evaluateDue` uses a separate transaction for each Eval or Ticket it changes. Ports enqueue external work inside the transaction; adapters perform it after commit. Invalid requests throw `UserError`.
+所有引擎方法都是同步的。每个命令在一个事务中修改其聚合。`evaluateDue` 为它修改的每个评估或工单使用单独的事务。端口在事务内排队外部工作；适配器在提交后执行。无效请求抛出 `UserError`。
 
-The Engine exposes one entry point and delegates to five internal parts. It owns each command's transaction. Commands spanning parts, such as `attach`, `evaluateDue` and `policyChanged`, call the parts in sequence.
+引擎暴露一个入口，并委派给五个内部部件。它持有每个命令的事务。跨部件的命令，例如 `attach`、`evaluateDue` 与 `policyChanged`，按顺序调用这些部件。
 
-Each part extends `EnginePart` (`src/core/part.ts`), which provides options and shared reads. Dependencies between the parts flow in one direction:
+每个部件都扩展 `EnginePart`（`src/core/part.ts`），后者提供选项与共享读取。部件之间的依赖单向流动：
 
-| Part | Responsibility | Depends on |
+| 部件 | 职责 | 依赖于 |
 | --- | --- | --- |
-| `Intake` | A Source's Trigger: stored once with its disposition, recorded on its Threads and their correlations, fanned out to the subscribed Tickets and, unless it is a person's message that reached one, queued for Eval on its primary Thread | Tickets |
-| `Evals` | The Evals of Threads: batching, the gate's strength, actor and basis with the Trigger that gave them (`primary`), the deadline from the candidate's delivery and its shift by a pause, the requeue of an expired Eval, candidates, replays and hand-backs, the requeue on a Policy change, and the Decision each ends with: accept, stop, ignore or unavailable | Tickets |
-| `Tickets` | The Ticket lifecycle: creation from an accept with its Mandate, Subscriptions and first Assignment, the Threads it follows and their closes (`followsDone`), attached Threads and Threads followed for context, Inputs and notes, resume and the messages a resume refuses, retry, restart, stop and end, the Subscriptions it drops, and the notice of a Policy change to the Tickets it bears on | Replies |
-| `Assignments` | What the Executor and its workers report: an Assignment started, Inputs reached it or failed to, a restart interrupted it, and a worker's Report with its question for a person | Tickets, Replies |
-| `Replies` | Channel writes through the `Outbox`: the acknowledgement, the answer, the result and the attention message, each by the rule that allows it | Nothing |
+| `Intake` | 来源的触发：连同其处置结果只存储一次，记录在其线程及其关联上，扇出给订阅的工单，并且，除非它是到达某个工单的人的消息，否则在其主线程上排队等待评估 | Tickets |
+| `Evals` | 线程的评估：批处理、门禁的强度、参与者与依据及其来源触发（`primary`）、从候选投递起算的截止时间及其因暂停而产生的顺延、过期评估的重新排队、候选、重放与交回、策略变更时的重新排队，以及每次评估最终形成的决策：接受、停止、忽略或不可用 | Tickets |
+| `Tickets` | 工单生命周期：由一次接受创建及其授权、订阅与首个任务分派、它跟随的线程及其关闭（`followsDone`）、附加线程与为上下文而跟随的线程、输入与备注、恢复及恢复所拒绝的消息、重试、重启、停止与结束、它放弃的订阅，以及策略变更通知它所涉及的工单 | Replies |
+| `Assignments` | 执行器及其 worker 汇报的内容：任务分派已开始、输入已到达或未能到达、重启中断了它，以及 worker 的汇报及其向人提出的问题 | Tickets、Replies |
+| `Replies` | 通过 `Outbox` 的渠道写入：确认、答复、结果与提醒消息，各自按允许它的规则发送 | 无 |
 
-Commands use imperative names such as `stopTicket`; facts reported by adapters use past-tense names such as `assignmentStarted`. The query `candidate` uses a noun.
+命令使用祈使名称，例如 `stopTicket`；适配器上报的事实使用过去时名称，例如 `assignmentStarted`。查询 `candidate` 使用名词。
 
-Callers receive only their role's `Pick` of the Engine: `EngineForSources`, `EngineForMainSession`, `EngineForPeople`, `EngineForSettings` or `EngineForExecutor`.
+调用方只收到其角色对应的引擎 `Pick`：`EngineForSources`、`EngineForMainSession`、`EngineForPeople`、`EngineForSettings` 或 `EngineForExecutor`。
 
-| Role | Method | Effect |
+| 角色 | 方法 | 效果 |
 | --- | --- | --- |
-| Sources | `receive(trigger)` | Stores a Trigger once and answers `stored`, `duplicate`, or `filtered` when no Source receives it; fans it out to the Tickets subscribed to its Threads, where a person's message resumes an ended Ticket at once unless processing is paused, and queues it for Eval on its primary Thread, unless it is a person's message that reached a Ticket, which stays that Ticket's |
-| Sources | `bindThread(ticketId, thread, own)` | Makes an open Ticket follow one of the Source's Threads, such as a pull request's, `own` when the Ticket opened it; a closed Thread bound again is open again. The Threads' closes, not a `ready` Report, end the Ticket |
-| Sources | `threadClosed(thread, outcome, at)` | A Thread closed: each open Ticket that follows it records the close, and ends once it is done with the Threads it follows (`followsDone`): no Thread it opened is open, or, when it opened none, every Thread it follows closed. It ends `merged` or `closed` as the latest of those closes did, unless work resumed after the close has not reported `ready`, or its Executor took up, by acknowledging or answering it, a person's follow-up it decides after its latest Report other than `progress`, or the end of its last turn; a `dropped` Report then ends it as the close did |
-| Main Session | `candidate(triggerId)` | The Eval that holds a Trigger, as its assessor sees it |
-| Main Session | `candidateDelivered(evalId)` | The Eval's candidate reached the main Session: its deadline counts from now |
-| Main Session | `decide(triggerId, outcome)` | Records an Eval Decision, or a direct Decision for an explicit request. Accept creates the Ticket, Mandate, Assignment, Subscriptions and acknowledgement atomically. An inferred candidate ignored from its card records `ignoredFromCard` before the supplied reason. While `followupOwners` still owns a human follow-up, only stop is allowed |
-| Main Session | `attach(ticketId, triggerId, note?)` | Routes a Trigger to a Ticket it points at, whose Executor then decides it as a follow-up, and ends the Eval that holds it, whose other Triggers wait for a fresh Eval; an ended Ticket resumes under its Mandate at once unless processing is paused. A follow-up an Executor still decides is refused, as is one routed back to the Ticket that handed it back |
-| Main Session | `requestStatus(ticketId)` | Asks a waiting Executor Session for its status, and answers whether it asked |
-| Main Session | `note(ticketId, text)` | Gives a Ticket's Executor a fact from other work as a text Input, which grants nothing |
-| Main Session, Executor | `reply(request)` | Queues a message for the Channel its purpose names: `acknowledgement`, `answer`, `result` or `attention` |
-| People | `stopTicket(ticketId, reason?)` | A person's stop, which withdraws the Mandate |
-| People | `retryTicket(ticketId)` | Ends the stalled Assignment of a Ticket that waits for a person after a `failed` or `blocked` Report, or whose Input delivery failed (`canRetry`), and starts a new one |
-| People | `reevaluate(triggerId)` | Queues a stored Trigger for a fresh Eval |
-| People | `unsubscribe(thread)` | Drops every Subscription on a Thread, and the Tickets that followed it follow it no more; each keeps deciding the follow-ups it received there |
-| People | `dismiss(decisionId)` | Dismisses the problem an `unavailable` Decision shows, which the Decision records |
-| Executor | `assignmentStarted(ticketId, assignmentId)` | An Assignment runs; its waiting Inputs go out |
-| Executor | `inputsDelivered(ticketId, assignmentId, inputIds)` | Inputs reached the Assignment's Executor Session, where each waits for a step to take it |
-| Executor | `inputsRead(ticketId, inputIds)` | The Executor Session took the messages that carry these Inputs into its history (a `user/message` Session event), from which its model has them; a step that claimed them and was cancelled or failed before does not count. Each counts as read once a Report or the end of a turn follows, also after a restart, and its Ticket's end does not let go of it; an Input delivered before reads were recorded counts as read once a Report or the end of a turn followed its delivery |
-| Executor | `turnEnded(ticketId, assignmentId)` | A turn of the Executor Session ended, also after a Report, once nothing runs for it in the background or as it hands off to a person. What a step took before, it read (`inputsRead`) |
-| Executor | `deliveryFailed(ticketId, assignmentId, error)` | Delivering Inputs failed; the Ticket shows it until a delivery succeeds, a new Assignment starts or the Ticket ends |
-| Executor | `report(ticketId, report)` | Records a Report and its question for a person; `dropped` ends the Ticket, and `ready` completes one that follows no Thread, and ends one done with the Threads it follows as they ended |
-| Executor | `markUnrelated(ticketId, thread, reason)` | Drops only that Ticket's Subscription to an attached Thread it found unrelated, and hands back, with the reason, the follow-ups there that the Ticket decides |
-| Executor | `followForContext(ticketId, thread)` | Subscribes an open Ticket to a related Thread for context: its messages reach the Ticket but lend it no follow-up strength and do not resume it |
-| Executor | `handback(ticketId, triggerId, reason)` | Records that the Ticket hands back a Trigger that reached it, with the reason its candidate carries, and queues it for a fresh Eval once no other Ticket decides it, if this Ticket did; it answers whether it queued it. A Ticket hands back each Trigger once and keeps its Subscription |
-| Executor | `assignmentInterrupted(ticketId, assignmentId)` | An Assignment was running when the host stopped: one interrupted mid-work, or one that received an Input after its latest Report, starts again with a recovery note and the Inputs delivered to it that its Executor Session did not take, as a retry does; one that had reported since keeps its Session. The DshExecutor reports each at start (`resume`), oldest Ticket first, and queues again a launch that waits |
-| Passes | `evaluateDue()` | Unless processing is paused: starts the Evals of the Threads whose queued Triggers wait, one per Thread with the Triggers queued meanwhile as one batch; queues the Triggers of an Eval past its deadline again, twice in a row, and records it `unavailable` the third time; and resumes the ended Tickets a person's message reached during a pause, if their Mandates still hold. An Eval whose candidate has not reached the main Session does not expire. While processing is paused, no Eval expires, and once it resumes each deadline moves later by the pause's length |
-| Settings | `policyChanged(from, to, effects)` | Tells each live Ticket the change bears on how (`policyEffects` in `src/policy.ts`: a rule it was accepted under changed or no longer applies, its requester may no longer start work, or proactive work is no longer accepted), and restarts the Evals in progress under the new version |
+| Sources | `receive(trigger)` | 只存储一次触发，并回答 `stored`、`duplicate`，或在没有任何来源接收它时回答 `filtered`；把它扇出给订阅其线程的工单，其中人的消息会立即恢复已结束的工单，除非处理已暂停；并在其主线程上排队等待评估，除非它是到达某个工单的人的消息，那种消息留在该工单 |
+| Sources | `bindThread(ticketId, thread, own)` | 让打开的工单跟随来源的某个线程，例如拉取请求的线程，若该工单打开了它则 `own` 为真；再次绑定的已关闭线程会重新打开。结束工单的是这些线程的关闭，而不是一次 `ready` 汇报 |
+| Sources | `threadClosed(thread, outcome, at)` | 某个线程已关闭：每个跟随它的打开工单记录这次关闭，并在它与其跟随的线程都处理完毕（`followsDone`）时结束：它打开的线程都未打开，或者，若它没有打开任何线程，则它跟随的每个线程都已关闭。它按这些关闭中最新的一个结束为 `merged` 或 `closed`，除非关闭后恢复的工作尚未汇报 `ready`，或其执行器在其最新一次非 `progress` 的汇报之后决定接手某个人工跟进（通过确认或答复它），或其最后一个回合结束；随后一次 `dropped` 汇报会像那次关闭一样结束它 |
+| Main Session | `candidate(triggerId)` | 持有某个触发的评估，按其评估器所见的样子 |
+| Main Session | `candidateDelivered(evalId)` | 该评估的候选已到达主会话：其截止时间从此刻起算 |
+| Main Session | `decide(triggerId, outcome)` | 记录一次评估决策，或为显式请求记录一次直接决策。接受会原子地创建工单、授权、任务分派、订阅与确认。从卡片上被忽略的推断候选，会在给出的原因之前记录 `ignoredFromCard`。当 `followupOwners` 仍拥有人工跟进时，只允许停止 |
+| Main Session | `attach(ticketId, triggerId, note?)` | 把触发路由到它指向的工单，该工单的执行器随后把它当作跟进进行决策，并结束持有它的评估，该评估的其他触发等待新的评估；已结束的工单会立即在其授权下恢复，除非处理已暂停。执行器仍在决策的跟进会被拒绝，被路由回交回它的那个工单的跟进也会被拒绝 |
+| Main Session | `requestStatus(ticketId)` | 向等待中的执行器会话询问其状态，并回答是否已询问 |
+| Main Session | `note(ticketId, text)` | 把来自其他工作的事实作为文本输入交给工单的执行器，这不授予任何权限 |
+| Main Session, Executor | `reply(request)` | 为其用途指定的渠道排队一条消息：`acknowledgement`、`answer`、`result` 或 `attention` |
+| People | `stopTicket(ticketId, reason?)` | 人的停止，会撤回授权 |
+| People | `retryTicket(ticketId)` | 结束工单中停摆的任务分派——该工单在一次 `failed` 或 `blocked` 汇报后等待人，或其输入投递失败（`canRetry`）——并启动新的任务分派 |
+| People | `reevaluate(triggerId)` | 把已存储的触发排队等待新的评估 |
+| People | `unsubscribe(thread)` | 放弃某个线程上的每个订阅，跟随它的工单不再跟随它；每个工单继续决策它在该线程收到的跟进 |
+| People | `dismiss(decisionId)` | 消除 `unavailable` 决策所显示的问题，该问题由该决策记录 |
+| Executor | `assignmentStarted(ticketId, assignmentId)` | 任务分派开始运行；其等待中的输入发出 |
+| Executor | `inputsDelivered(ticketId, assignmentId, inputIds)` | 输入到达任务分派的执行器会话，每个输入在那里等待某个步骤取走它 |
+| Executor | `inputsRead(ticketId, inputIds)` | 执行器会话把携带这些输入的消息纳入其历史（一个 `user/message` 会话事件），其模型由此拥有它们；此前已取走它们但被取消或失败的步骤不算。每个输入在随后出现一次汇报或一次回合结束时计为已读，重启后亦然，其工单结束也不会释放它；在读取记录之前投递的输入，在投递后出现一次汇报或回合结束时计为已读 |
+| Executor | `turnEnded(ticketId, assignmentId)` | 执行器会话的一个回合结束，汇报之后亦然，一旦没有东西为它在后台运行或它正交接给人。步骤此前取走的内容即为其已读（`inputsRead`） |
+| Executor | `deliveryFailed(ticketId, assignmentId, error)` | 投递输入失败；工单会显示该问题，直到一次投递成功、新的任务分派开始或工单结束 |
+| Executor | `report(ticketId, report)` | 记录一次汇报及其向人提出的问题；`dropped` 结束工单，`ready` 完成不跟随任何线程的工单，并按线程结束的方式结束已完成其所跟随线程的工单 |
+| Executor | `markUnrelated(ticketId, thread, reason)` | 只放弃该工单对某个附加线程的订阅（它认为该线程不相关），并连同原因交回该工单在该处决策的跟进 |
+| Executor | `followForContext(ticketId, thread)` | 让打开的工单为上下文订阅相关线程：该线程的消息到达工单，但不给它跟进强度，也不会恢复它 |
+| Executor | `handback(ticketId, triggerId, reason)` | 记录工单交回一个到达它的触发，及其候选携带的原因，并在没有其他工单决策它时把它排队等待新的评估（若本工单曾决策它）；它回答是否已排队。工单对每个触发只交回一次，并保留其订阅 |
+| Executor | `assignmentInterrupted(ticketId, assignmentId)` | 宿主停止时正在运行的任务分派：工作中途被中断的，或在最新汇报之后收到输入的，会带着恢复说明和已投递给它但其执行器会话未取走的输入重新开始，如同重试；此后已汇报过的任务分派保留其会话。DshExecutor 在启动时按最旧工单优先的顺序报告每一个（`resume`），并再次排队等待中的启动 |
+| Passes | `evaluateDue()` | 除非处理已暂停：为有排队触发等待的线程启动评估，每个线程一次，把期间排队的触发作为一个批次；把超过截止时间的评估的触发再次排队两次，第三次记录为 `unavailable`；并恢复暂停期间人的消息到达的已结束工单，若其授权仍然有效。候选尚未到达主会话的评估不会过期。处理暂停期间没有评估过期，一旦恢复，每个截止时间按暂停时长顺延 |
+| Settings | `policyChanged(from, to, effects)` | 告诉每个活动工单该变更如何影响它（`src/policy.ts` 中的 `policyEffects`：它被接受时所依据的规则发生变化或不再适用、其请求者可能不再能启动工作，或主动工作不再被接受），并在新版本下重启进行中的评估 |
 
-The Engine keeps batching, authorization, fan-out, resume and attention lifecycle rules private. Several shared predicates make these rules consistent:
+引擎把批处理、授权、扇出、恢复与提醒生命周期规则保持为私有。若干共享谓词使这些规则保持一致：
 
-- `waitsForPerson` (`src/core/model.ts`): the latest Assignment reported `blocked` or `failed`, and no human message has arrived since. Automatic Inputs and failed launches remain held while this is true.
-- `followupOwners`: the Tickets still responsible for a human follow-up received on their own Threads. A Ticket can be live or ended without a human stop and waiting to resume. Handing back the message ends that ownership.
-- `settled`: a Decision resolved the request; stop, unavailable, routed and refused-stop Decisions do not count.
-- `ticketStage` (`src/core/stage.ts`): implements the stage table in [003 Execution](003-execution.md).
+- `waitsForPerson`（`src/core/model.ts`）：最新的任务分派汇报了 `blocked` 或 `failed`，且此后没有人的消息到达。此条件为真时，自动输入与失败的启动继续被搁置。
+- `followupOwners`：仍对其自身线程上收到的人工跟进负责的工单。工单可以是活动的，或是未经人工停止而结束并等待恢复的。交回该消息会结束该归属。
+- `settled`：某个决策已解决该请求；停止、不可用、已路由与被拒绝的停止决策不算。
+- `ticketStage`（`src/core/stage.ts`）：实现 [003 执行](003-execution.md) 中的阶段表。
 
-When a Ticket ends, unread follow-ups return to Eval unless another Ticket still owns them or another disposition settled them. Acknowledged, answered and handed-back messages are excluded. For older records without acknowledgement dispositions, the outbox receipt supplies that fact. A final Report also covers messages waiting when the Assignment began, including the message that resumed it. The message that stopped a Ticket is not automatically re-evaluated.
+当工单结束时，未读的跟进会返回评估，除非另一个工单仍拥有它们，或另一种处置已解决它们。已确认、已答复与已交回的消息被排除。对于没有确认处置的旧记录，发件箱回执提供该事实。最终汇报也覆盖任务分派开始时等待的消息，包括恢复它的那条消息。停止工单的那条消息不会被自动重新评估。
 
-After a change, the Engine emits an event from `DomainEvents` in `src/core/ports.ts`:
+变更之后，引擎发出一个来自 `src/core/ports.ts` 中 `DomainEvents` 的事件：
 
-`trigger.received`, `eval.started`, `decision.recorded`, `ticket.created`, `ticket.resumed`, `ticket.ended`, `assignment.started`, `assignment.ended`, `thread.subscribed`, `thread.unsubscribed`, `trigger.requeued`, or `policy.changed`.
+`trigger.received`、`eval.started`、`decision.recorded`、`ticket.created`、`ticket.resumed`、`ticket.ended`、`assignment.started`、`assignment.ended`、`thread.subscribed`、`thread.unsubscribed`、`trigger.requeued` 或 `policy.changed`。
 
-Runtime turns `ticket.ended`, `trigger.requeued` and `thread.unsubscribed` into notices. A human `trigger.received` delivered to Tickets becomes a follow-up relay. `pullEndNotices` sends one chat notice, using a stable id, when a Ticket ends merged or closed. Other events currently have no consumer.
+运行时会 `ticket.ended`、`trigger.requeued` 与 `thread.unsubscribed` 变成通知。一条投递给工单的人的消息，其 `trigger.received` 会变成跟进转发。`pullEndNotices` 在工单以合并或关闭结束时发送一条聊天通知，使用稳定 id。其他事件目前没有消费者。
 
-### Model
+### 模型
 
-`src/core/model.ts` holds the domain types, and `src/core/stage.ts` the Ticket stages. A Decision records why as `reason`, a list of `Reason`s (`src/core/reasons.ts`): each a `code` with its `values` and, for one Trigger of a batch, its `triggerId`.
+`src/core/model.ts` 持有领域类型，`src/core/stage.ts` 持有工单阶段。决策把原因记录为 `reason`，即一组 `Reason`（`src/core/reasons.ts`）：每个都是一个 `code` 及其 `values`，对一个批次中的某个触发则是其 `triggerId`。
 
-The core's codes, such as `timeout`, `policyChanged`, `routed` and `startedTicket`, are `REASONS`, with the English that agents read through `reasonText`; a gate or a Source scope gives its own, such as `not_a_member`; and `said` carries words an assessor or a person wrote. The panel words each code by `reason.<code>`, and a Trigger a Source filtered records the Source's code the same way.
+核心的代码，例如 `timeout`、`policyChanged`、`routed` 与 `startedTicket`，属于 `REASONS`，带有智能体通过 `reasonText` 读取的英文；门禁或来源作用域给出自己的代码，例如 `not_a_member`；`said` 携带评估器或人写下的话。面板用 `reason.<code>` 表述每个代码，被来源过滤的触发也以同样方式记录来源的代码。
 
-A Ticket keeps each fact once. It is open while it has no `ended`, which records when, by whom, why and with what outcome it ended; what it last said is its latest Assignment Report (`latestReport`); and its Executor Session is named after it (`workerSessionId` in `src/executor/dsh.ts`).
+工单对每个事实只保留一次。它在没有 `ended` 时是打开的，`ended` 记录何时、由谁、为什么以及以什么结果结束；它最后说的是其最新的任务分派汇报（`latestReport`）；其执行器会话以它命名（`src/executor/dsh.ts` 中的 `workerSessionId`）。
 
-Its fields are typed: `origin`, the admissible Trigger that gave its Eval's batch its strength and the batch itself (`triggerId`, `triggerIds`); `execution`, what the Executor chose (`name`, `directory` and `assignment`); `delivery`, the last failed Input delivery (`error`, `at`), until a delivery succeeds, a new Assignment starts or the Ticket ends; and `follows`, the Threads a Source made it follow, each `{thread, own, closed?}`: `own` when the Ticket opened it, and `closed` with `at` and `outcome` once it closed. Tickets alone writes `follows`; the GitHub Source reads its pull requests with `pullsOf` and `pullOf` (`src/sources/github-pull.ts`).
+其字段是有类型的：`origin`，为评估批次提供强度以及批次本身的可准入触发（`triggerId`、`triggerIds`）；`execution`，执行器选择的内容（`name`、`directory` 与 `assignment`）；`delivery`，最近一次失败的输入投递（`error`、`at`），直到一次投递成功、新的任务分派开始或工单结束；以及 `follows`，来源让它跟随的线程，每个为 `{thread, own, closed?}`：工单打开它时 `own` 为真，关闭后带有 `at` 与 `outcome`。只有工单写入 `follows`；GitHub 来源用 `pullsOf` 与 `pullOf` 读取其拉取请求（`src/sources/github-pull.ts`）。
 
-An Input that carries a Trigger records whether a person wrote it, which `waitsForPerson` reads. A Thread also lists in `context` the subscribed Tickets that follow it only for context, and counts in `expired` the Evals of its queued Triggers that expired in a row; an Evaluation records its `primary` Trigger and when its candidate was `delivered`.
+携带触发的输入记录它是否由人写下，`waitsForPerson` 会读取该值。线程还在 `context` 中列出只为上下文而跟随它的已订阅工单，并在 `expired` 中统计其排队触发的评估连续过期次数；一次评估记录其 `primary` 触发以及其候选何时被 `delivered`。
 
-A Trigger's disposition records the Tickets it reached, by fan-out or attachment, a person's requeue, each Ticket that handed it back, with the reason, and each Ticket whose Executor acknowledged or answered it.
+触发的处置按扇出或附加记录它到达的工单、人的重新排队、每个交回它的工单及其原因，以及每个其执行器确认或答复过它的工单。
 
-A Mandate's `basis` (`MandateBasis`) records how the gate admitted its Trigger. Revalidation reads the receiving `source`, `scope` and `row`, the listed `sender`, matched `rules`, and `via`:
+授权的 `basis`（`MandateBasis`）记录门禁如何准入其触发。重新校验读取接收的 `source`、`scope` 与 `row`，列出的 `sender`，匹配的 `rules`，以及 `via`：
 
-| `via` | Admission basis |
+| `via` | 准入依据 |
 | --- | --- |
-| `addressed` | An allowed sender addressed the agent |
-| `followup` | A message arrived on a Thread with Tickets |
-| `admission` | An admission-table cell; `observation` marks an inferred candidate |
-| `bot` | A listed bot produced an inferred candidate |
+| `addressed` | 一个允许的发送者向智能体发起了消息 |
+| `followup` | 一条消息到达了带有工单的线程 |
+| `admission` | 一个准入表单元格；`observation` 标记推断的候选 |
+| `bot` | 一个列出的机器人产生了推断的候选 |
 
-Trigger and Thread `meta` belong to the Source. The core does not interpret them.
+触发与线程的 `meta` 属于来源。核心不解释它们。
 
-### Policy
+### 策略
 
-`src/policy.ts` defines settings schemas, authorization and assessment rules. `settingsPolicy(settings, scope)` returns a fresh, stateless `Policy` on each use:
+`src/policy.ts` 定义设置 schema、授权与评估规则。`settingsPolicy(settings, scope)` 每次使用时返回一个新的、无状态的 `Policy`：
 
-- `version`, `paused` and `evalTimeoutMs` describe its current state.
-- `gate(trigger, thread, tickets)` returns admission strength and basis.
-- `revalidate(mandate)` checks whether an existing Mandate still holds.
-- `admitsInferred(rules)` permits proactive acceptance only in auto mode with enabled matching rules.
+- `version`、`paused` 与 `evalTimeoutMs` 描述其当前状态。
+- `gate(trigger, thread, tickets)` 返回准入强度与依据。
+- `revalidate(mandate)` 检查现有授权是否仍然有效。
+- `admitsInferred(rules)` 仅在自动模式且匹配规则启用时允许主动接受。
 
-`assessmentOutcome(assessment, settings, strength)` converts the model's assessment to an Engine outcome. It requires a judgement for every enabled rule, settled direction, a matching rule and evidence of intent. Outside auto mode, an inferred accept becomes a “would accept” record.
+`assessmentOutcome(assessment, settings, strength)` 把模型的评估转换为引擎结果。它要求对每个启用的规则作出判断、方向已确定、存在匹配规则以及意图证据。在自动模式之外，推断出的接受会变成一条“将会接受”记录。
 
-`policyEffects(tickets, old, now, scope)` identifies which open Tickets a change affects and how. `Engine.policyChanged` notifies only those Tickets. `policyVersion` hashes rules, accept mode and the Sources' Policy parts, including bot lists.
+`policyEffects(tickets, old, now, scope)` 识别变更影响哪些打开的工单以及如何影响。`Engine.policyChanged` 只通知那些工单。`policyVersion` 对规则、接受模式以及各来源的策略部分（包括机器人列表）做哈希。
 
-### Store
+### 存储
 
-`Store` (`src/app/store.ts`) owns one SQLite database. Runtime acquires the directory lock before opening it, preventing a second process from migrating or writing the same state.
+`Store`（`src/app/store.ts`）拥有一个 SQLite 数据库。运行时在打开它之前获取目录锁，防止第二个进程迁移或写入同一状态。
 
-Its interfaces are grouped by purpose:
+其接口按用途分组：
 
-- **Domain repositories:** `atomic`, plus `triggers`, `threads`, `tickets` and `decisions`, each with `get`, `save` and list queries. Indexed working sets are `threads.active()`, `tickets.open()`, `tickets.active()` and `read.subscribedThreads`.
-- **Read queries:** `read` serves views, tools and Source polls through methods such as `threadTriggers`, `triggerStats`, `search` and `droppedReplies`. These methods never write.
-- **Source metadata:** `threads.describe` and `threads.patchMeta` update Source-owned Thread metadata.
-- **Settings:** `settings`, `saveSettings`, `blockRevision` and `settingsHistory`. Settings and prompts use numbered `Versions` (`src/app/versions.ts`).
-- **Outbox receipts:** `replyStatus` and `receipts`, written only by Outbox. Receipt operations are `get`, `waiting`, `behind`, `add`, `settle` and `withdraw`. `behind` checks whether an earlier message for the same Ticket and conversation is waiting with fewer than three failures. A withdrawn message settles with `channelGone` or `channelIgnored`. Read queries expose failed and dropped replies through `failingReplies`, `droppedReplies` and `droppedSince`.
-- **Typed key-value records:** `get`, `set`, `delete` and `keys`, using entries from `KV`.
+- **领域仓储：** `atomic`，以及 `triggers`、`threads`、`tickets` 与 `decisions`，每个都有 `get`、`save` 与列表查询。带索引的工作集是 `threads.active()`、`tickets.open()`、`tickets.active()` 与 `read.subscribedThreads`。
+- **读取查询：** `read` 通过 `threadTriggers`、`triggerStats`、`search` 与 `droppedReplies` 等方法为视图、工具与来源轮询服务。这些方法从不写入。
+- **来源元数据：** `threads.describe` 与 `threads.patchMeta` 更新来源拥有的线程元数据。
+- **设置：** `settings`、`saveSettings`、`blockRevision` 与 `settingsHistory`。设置与提示词使用带编号的 `Versions`（`src/app/versions.ts`）。
+- **发件箱回执：** `replyStatus` 与 `receipts`，只由发件箱写入。回执操作是 `get`、`waiting`、`behind`、`add`、`settle` 与 `withdraw`。`behind` 检查同一工单与同一会话的更早消息是否在等待且失败次数少于三次。被撤回的消息以 `channelGone` 或 `channelIgnored` 结算。读取查询通过 `failingReplies`、`droppedReplies` 与 `droppedSince` 暴露失败与丢弃的回复。
+- **带类型的键值记录：** `get`、`set`、`delete` 与 `keys`，使用 `KV` 中的条目。
 
-`afterCommit` runs an action only after the transaction commits, never after rollback. Runtime reads records in their stored shape; the schema 11 migration converts older supported records at startup.
+`afterCommit` 只在事务提交后运行动作，绝不在回滚后运行。运行时按其存储形态读取记录；schema 11 迁移在启动时转换较早受支持的记录。
 
-### Effects
+### 副作用
 
-`Effects` (`src/app/effects.ts`) is the durable side-effect queue. A command calls `enqueue(kind, key, payload)` inside its transaction; execution begins only after commit.
+`Effects`（`src/app/effects.ts`）是持久化的副作用队列。命令在其事务内调用 `enqueue(kind, key, payload)`；执行只在提交后开始。
 
-Each kind/key pair has one row. Enqueuing the same waiting key replaces its payload and makes it due immediately without changing queue order. `handle(kind, run, options)` registers one handler per kind. It processes due rows oldest first, up to the concurrency limit.
+每个 kind/key 对占一行。对同一等待键再次入队会替换其负载并使其立即到期，而不改变队列顺序。`handle(kind, run, options)` 为每种 kind 注册一个处理器。它按最旧优先处理到期行，最多到并发上限。
 
-Failures retry with exponential backoff. Throwing `Later` defers work without counting a failure, for example when no worker slot is available. `start` begins processing after setup, `drain` stops it during shutdown while preserving pending rows, and `pending`/`idle` expose queue state.
+失败按指数退避重试。抛出 `Later` 会推迟工作而不计为失败，例如没有可用 worker 槽位时。`start` 在 setup 后开始处理，`drain` 在关闭期间停止处理并保留待处理行，`pending`/`idle` 暴露队列状态。
 
-| Kind | Handler | Does | At once | Retry |
+| 类型 | 处理器 | 作用 | 并发 | 重试 |
 | --- | --- | --- | --- | --- |
-| `assessment` | MasterAssessor | Steers an Eval's candidate card into the main Session's turn, then tells the Engine it was delivered, which starts the Eval's deadline | 4, none while paused | 2 s doubling to 60 s |
-| `launch` | DshExecutor | Launches a pending Assignment: prepare command, Executor Session, assignment message | The free worker slots, none while paused | A passing failure of the model provider or the network runs again after 5 s doubling to 300 s, three times; any other failure, and a failed prepare command, fails its Ticket. One held by a pause or by full worker slots tries again after 5 s |
-| `delivery` | DshExecutor | Hands a Ticket's waiting Inputs to its running Assignment, in order | 4, none while paused | 2 s doubling to 60 s; one that waits for a worker slot tries again after 2 s |
-| `relay` | Sessions | Steers a worker's report or question, or a person's follow-up, into the main Session's turn | 1, in queue order | 2 s doubling to 60 s |
-| `notice` | Sessions | Injects a notice into the main Session without waking it | 1, in queue order | 2 s doubling to 60 s |
-| `reply` | Outbox | Sends a message for a Channel through its Source, after the earlier messages of its Ticket to its conversation that have not failed three times; withdrawing the message cancels it | 1, none while paused | 5 s doubling to 300 s; one whose Source is off, or behind an earlier message, tries again after 5 s |
+| `assessment` | MasterAssessor | 把评估的候选卡片引入主会话的回合，然后告诉引擎它已投递，从而启动该评估的截止时间 | 4，暂停时为 0 | 2 秒起，翻倍至 60 秒 |
+| `launch` | DshExecutor | 启动待处理的任务分派：准备命令、执行器会话、任务分派消息 | 空闲 worker 槽位数，暂停时为 0 | 模型提供方或网络的短暂失败在 5 秒后重试，翻倍至 300 秒，共三次；其他任何失败，以及准备命令失败，会使其工单失败。因暂停或 worker 槽位已满而被搁置的，在 5 秒后重试 |
+| `delivery` | DshExecutor | 按顺序把工单等待中的输入交给其正在运行的任务分派 | 4，暂停时为 0 | 2 秒起，翻倍至 60 秒；等待 worker 槽位的在 2 秒后重试 |
+| `relay` | Sessions | 把 worker 的汇报或问题，或人的跟进，引入主会话的回合 | 1，按队列顺序 | 2 秒起，翻倍至 60 秒 |
+| `notice` | Sessions | 向主会话注入通知而不唤醒它 | 1，按队列顺序 | 2 秒起，翻倍至 60 秒 |
+| `reply` | Outbox | 通过来源为某个渠道发送消息，在其工单发往该会话且未失败三次的更早消息之后；撤回消息会取消它 | 1，暂停时为 0 | 5 秒起，翻倍至 300 秒；来源关闭或排在更早消息之后的，在 5 秒后重试 |
 
-Each kind has a health entry under its name. It reports an error once one of its effects failed three times in a row, except `delivery`, whose failures show on their Ticket instead. Relays keep their order, and so do notices; a failed one holds back the later ones of its kind.
+每种 kind 都在其名称下有一个健康条目。当它的某个副作用连续失败三次时报告错误，`delivery` 除外，其失败显示在其工单上。转发保持顺序，通知也是如此；失败的会挡住同类的后续项。
 
-### Sources
+### 来源
 
-Sources extend the host through `SourceKind`, defined in `src/sources/kind.ts`. A kind declares its identity, title, description, configuration `schema` and `fields`, derived `facts`, and `health` entries. Optional behavior includes `scope`, a `channel` (`allowed`, `send`, `link`), `threadContext`, `find`, `policy`, `environment` and `refreshLabels`.
+来源通过 `SourceKind` 扩展宿主，定义在 `src/sources/kind.ts`。kind 声明其标识、标题、描述、配置 `schema` 与 `fields`、派生 `facts` 以及 `health` 条目。可选行为包括 `scope`、`channel`（`allowed`、`send`、`link`）、`threadContext`、`find`、`policy`、`environment` 与 `refreshLabels`。
 
-`SourceRegistry` (`registry.ts`) owns registered kinds and stored instances, and implements the Engine's `SourceScope`. Registration claims health entries on `HealthBoard`; duplicate claims and reserved `sync:` names are refused. A SourceContext writes only through its registration's claimed entries, so reports after unregistration do nothing.
+`SourceRegistry`（`registry.ts`）拥有已注册的 kind 与已存储的实例，并实现引擎的 `SourceScope`。注册会在 `HealthBoard` 上认领健康条目；重复认领与保留的 `sync:` 名称会被拒绝。SourceContext 只通过其注册所认领的条目写入，因此注销后的报告不会产生效果。
 
-Registry configuration methods include `kind`, `instances`, `instance`, `validate`, `validatePolicy`, `policyPart`, `channelAllowed`, `declarations`, `environments`, `find` and `scope`. `find` asks each kind that supports search.
+注册表的配置方法包括 `kind`、`instances`、`instance`、`validate`、`validatePolicy`、`policyPart`、`channelAllowed`、`declarations`、`environments`、`find` 与 `scope`。`find` 询问每个支持搜索的 kind。
 
-Generic code accesses Source behavior through the registry. `send(message, commands)` calls the kind's Channel and returns `sent`, `gone` or `waiting` if the kind is not installed. `link` resolves its Channel link. `threadContext` pairs a kind's reader with its configuration, or returns nothing when the kind has no reader. Invalid stored configuration disables the instance.
+通用代码通过注册表访问来源行为。`send(message, commands)` 调用 kind 的渠道并返回 `sent`、`gone`，若 kind 未安装则返回 `waiting`。`link` 解析其渠道链接。`threadContext` 把 kind 的读取器与其配置配对，若 kind 没有读取器则返回空。无效的已存储配置会禁用该实例。
 
-Plugins receive `SourceHost`: the registry and `context(kind)`. The kind itself uses a narrower `SourceContext`, built by `sourceContextOf` in `src/app/source-context.ts`.
+插件接收 `SourceHost`：注册表与 `context(kind)`。kind 自身使用更窄的 `SourceContext`，由 `src/app/source-context.ts` 中的 `sourceContextOf` 构建。
 
-That context supplies deployment and commands, setup readiness (`ready`, `configured`, `problem`), configuration, `receive`, `atomic`, and typed `state`. It also exposes Thread reads and metadata writes, Ticket reads and binding/closure commands, Trigger reads, `notify` through Outbox, and `report` for declared health entries.
+该上下文提供部署与命令、setup 就绪状态（`ready`、`configured`、`problem`）、配置、`receive`、`atomic` 以及带类型的 `state`。它还暴露线程读取与元数据写入、工单读取与绑定/关闭命令、触发读取、通过发件箱的 `notify`，以及针对已声明健康条目的 `report`。
 
 ### DshExecutor
 
-`DshExecutor` (`src/executor/dsh.ts`) provides one Session and directory per Ticket. `start` and `deliver` enqueue `launch` and `delivery` effects. `stop` cancels the turn through `Store.afterCommit`, so a rolled-back end does not stop the worker.
+`DshExecutor`（`src/executor/dsh.ts`）为每个工单提供一个会话与目录。`start` 与 `deliver` 会将 `launch` 与 `delivery` 副作用入队。`stop` 通过 `Store.afterCommit` 取消回合，因此回滚的结束不会停止 worker。
 
-`prepare(ticket, outcome)` supplies the Engine's `prepareTicket` hook: short name, directory and `ticketExecution` assignment text. `workerSessionId(ticket.id)` derives the Session id.
+`prepare(ticket, outcome)` 提供引擎的 `prepareTicket` 钩子：短名称、目录与 `ticketExecution` 任务分派文本。`workerSessionId(ticket.id)` 推导会话 id。
 
-`WorkerSlots` reserves capacity before a launch or a delivery that wakes an idle worker. A human message can use one slot beyond `maxWorkers`, and wakes have priority over launches. `activeCount` supplies panel load.
+`WorkerSlots` 在启动或唤醒空闲 worker 的投递之前预留容量。人的消息可以使用超出 `maxWorkers` 的一个槽位，唤醒优先于启动。`activeCount` 提供面板负载。
 
-Transient provider and network failures get three retries. Launches use effect backoff; failed turns receive continuation messages after 15, 30 and 60 seconds. `inputMessage` renders each Input from current Ticket state, and `mandateInstructions` adds the matched-rule limits for inferred work.
+模型提供方与网络的短暂失败获得三次重试。启动使用副作用退避；失败的回合在 15、30 与 60 秒后收到继续消息。`inputMessage` 根据当前工单状态渲染每个输入，`mandateInstructions` 为推断工作添加匹配规则的限制。
 
-`install` subscribes to Session events; `dispose` unsubscribes. A turn end normally reports waiting, except after readiness or while human action is required. Errors report failed. At startup, `resume` reports interrupted Assignments through `assignmentInterrupted` and requeues pending launches that do not wait for a person, oldest Ticket first.
+`install` 订阅会话事件；`dispose` 取消订阅。回合结束通常汇报等待，就绪之后或需要人工操作时除外。错误汇报失败。启动时，`resume` 通过 `assignmentInterrupted` 报告被中断的任务分派，并重新排队不等待人的待处理启动，最旧工单优先。
 
 ### MasterAssessor
 
-`MasterAssessor` (`src/app/assessment.ts`) lets the main Session assess proactive candidates. `request` queues an assessment effect; `release` drops cached state when its Eval ends.
+`MasterAssessor`（`src/app/assessment.ts`）让主会话评估主动候选。`request` 排队一个评估副作用；`release` 在其评估结束时丢弃缓存状态。
 
-Its `context`, `read` and `decide` methods serve `orchestrator_eval`, `orchestrator_eval_read` and `orchestrator_eval_decide`. They provide bounded Thread context through `SourceRegistry.threadContext`, repository context, and decision submission. A kind without a context reader supplies only the Trigger and batch.
+其 `context`、`read` 与 `decide` 方法服务于 `orchestrator_eval`、`orchestrator_eval_read` 与 `orchestrator_eval_decide`。它们通过 `SourceRegistry.threadContext` 提供有界线程上下文、仓库上下文以及决策提交。没有上下文读取器的 kind 只提供触发与批次。
 
-`assessmentOutcome` converts the model's answer for `Engine.decide`. Evals checks inferred acceptance against the current Policy again.
+`assessmentOutcome` 转换模型为 `Engine.decide` 给出的答案。评估器会再次根据当前策略检查推断的接受。
 
-### Settings
+### 设置
 
-`Settings` (`src/app/settings.ts`) reads and writes revisioned settings blocks. `current` and `view` read them; `save(block, value, revision, origin)` validates a save; `pause(paused, origin)` changes the separate `paused` setting.
+`Settings`（`src/app/settings.ts`）读写带修订号的设置块。`current` 与 `view` 读取它们；`save(block, value, revision, origin)` 校验一次保存；`pause(paused, origin)` 更改单独的 `paused` 设置。
 
-Every save declares its origin: `panel`, `tool` or `sync`. Only `panel` can change the execution environment or fields listed in `SETUP_FIELDS` (`src/deployment.ts`).
+每次保存都声明其来源：`panel`、`tool` 或 `sync`。只有 `panel` 可以更改执行环境或 `SETUP_FIELDS`（`src/deployment.ts`）中列出的字段。
 
-A Policy-version change calculates `policyEffects`, records which Tickets were notified, and calls `Engine.policyChanged`. `syncable` and `sync(id)` refresh a Source's Policy part. `refreshLabels(id)` refreshes display names.
+策略版本变更会计算 `policyEffects`、记录通知了哪些工单，并调用 `Engine.policyChanged`。`syncable` 与 `sync(id)` 刷新来源的策略部分。`refreshLabels(id)` 刷新显示名称。
 
-### Prompts
+### 提示词
 
-`Prompts` (`src/app/prompts.ts`) stores configurations as `Versions`. `current`, `version` and `history` read them; `validate`, `preview` and `save(value, baseRevision, source)` check and save them. `compose` and `skills` build Session text.
+`Prompts`（`src/app/prompts.ts`）把配置存储为 `Versions`。`current`、`version` 与 `history` 读取它们；`validate`、`preview` 与 `save(value, baseRevision, source)` 检查并保存它们。`compose` 与 `skills` 构建会话文本。
 
-`builtInParts` lists override keys, roles, default text and required template placeholders. Each override stores team `text` and a `base`: the `builtInBase` key of its original default. Saves preserve that default under `KV.prompts.builtIn`. `defaultChanged` then reports changed defaults, their old text when available, and removed parts.
+`builtInParts` 列出覆盖键、角色、默认文本与必需的模板占位符。每个覆盖存储团队 `text` 与一个 `base`：其原始默认值的 `builtInBase` 键。保存会把该默认值保留在 `KV.prompts.builtIn` 下。`defaultChanged` 随后报告已变更的默认值、可用时的旧文本，以及被移除的部分。
 
-Validation inherits an omitted base from the saved override, drops removed parts already present in saved data, and rejects blank text or other unknown keys. This allows the save tool to round-trip a configuration it read. `environmentSection` and `policySection` substitute template values once, using own keys only. Configurations without overrides use defaults.
+校验会从已保存的覆盖继承省略的 base，丢弃已保存数据中已存在的被移除部分，并拒绝空白文本或其他未知键。这允许保存工具对它读取的配置做往返。`environmentSection` 与 `policySection` 只使用自有键，一次性替换模板值。没有覆盖的配置使用默认值。
 
-### Sessions
+### 会话
 
-`Sessions` (`src/app/sessions.ts`) manages DeepSeek Harness Sessions for both roles. `ensure` creates a Session with its role's model. `install` follows agent events and registers prompts, skills and tools for managed Sessions.
+`Sessions`（`src/app/sessions.ts`）管理两种角色的 DeepSeek Harness 会话。`ensure` 用其角色的模型创建会话。`install` 跟随智能体事件，并为受管会话注册提示词、技能与工具。
 
-`prompt` delivers once per request id. `relay` and `notify` enqueue main-Session messages handled by the `relay` and `notice` effects. `src/app/notices.ts` defines their content; `delivery` checks whether a message arrived.
+`prompt` 每个请求 id 投递一次。`relay` 与 `notify` 排队由 `relay` 与 `notice` 副作用处理的主会话消息。`src/app/notices.ts` 定义其内容；`delivery` 检查消息是否到达。
 
-Each model request binds the Session to the current prompt revision. The revisions it used are stored durably: `promptVersion` identifies the active one and `mayRead` restricts which versions a worker can inspect. Registrations are tracked in one map per agent.
+每次模型请求都会把会话绑定到当前提示词修订。它使用的修订被持久存储：`promptVersion` 标识活动修订，`mayRead` 限制 worker 可以检查哪些版本。注册记录按每个智能体一个映射跟踪。
 
-`status` and `promptVersion` serve prompt pages. Saves go through `Prompts.save` and notify the main Session. `modelRetry` exposes model-budget retry state.
+`status` 与 `promptVersion` 服务提示词页面。保存通过 `Prompts.save` 进行并通知主会话。`modelRetry` 暴露模型预算重试状态。
 
-### Glue
+### 粘合层
 
-| Glue | Translates |
+| 粘合层 | 翻译内容 |
 | --- | --- |
-| `src/app/runtime.ts` | The composition root: builds the parts with the interfaces they use, registers the routes and the Source host, and starts and stops dsh-superagent |
-| `src/app/notices.ts` | Domain events and worker reports into notices and relays for the main Session |
-| `src/app/tools/main.ts`, `src/app/tools/executor.ts` | Tool arguments of the main Session and the Executor Sessions into calls of the core classes, and their results into cards |
-| `src/app/http.ts`, `src/app/views/`, `src/app/api.ts` | HTTP requests into calls, and Store reads into the panel's views; `api.ts` types every route for the panel |
-| `src/app/resources.ts`, `src/app/links.ts`, `src/app/cards.ts` | Resource names into reads, source messages into links, records into compact cards for models |
-| `src/sources/github*.ts`, `src/sources/feishu*.ts`, `src/sources/poll.ts` | GitHub and Feishu payloads into Triggers and Thread facts, and messages into CLI calls |
-| `src/deployment.ts`, `src/setup.ts`, `src/infra/` | Setup probes and problems, CLI transport, the agent's process environment |
+| `src/app/runtime.ts` | 组合根：用各部分使用的接口构建它们，注册路由与来源宿主，并启动和停止 dsh-superagent |
+| `src/app/notices.ts` | 把领域事件与 worker 汇报翻译成主会话的通知与转发 |
+| `src/app/tools/main.ts`、`src/app/tools/executor.ts` | 把主会话与执行器会话的工具参数翻译成核心类的调用，并把结果翻译成卡片 |
+| `src/app/http.ts`、`src/app/views/`、`src/app/api.ts` | 把 HTTP 请求翻译成调用，把存储读取翻译成面板视图；`api.ts` 为面板标注每条路由的类型 |
+| `src/app/resources.ts`、`src/app/links.ts`、`src/app/cards.ts` | 把资源名称翻译成读取，把来源消息翻译成链接，把记录翻译成给模型的紧凑卡片 |
+| `src/sources/github*.ts`、`src/sources/feishu*.ts`、`src/sources/poll.ts` | 把 GitHub 与飞书负载翻译成触发与线程事实，把消息翻译成 CLI 调用 |
+| `src/deployment.ts`、`src/setup.ts`、`src/infra/` | setup 探测与问题、CLI 传输、智能体的进程环境 |
 
-## Dependency rules
+## 依赖规则
 
-- **Explicit, narrow dependencies.** Each class receives an interface that names what it uses, mostly as `Pick` types of other classes: `ExecutorHost`, `AssessorHost`, `SessionsHost`, `SettingsHost`, `SetupHost`, `PassesHost` and `OutboxHost` for the core classes, and `HttpHost`, `MainToolsHost`, `ExecutorToolsHost`, `ResourceHost`, `LinkHost` and `SourceContextDeps` for the glue, with the Engine as the `Pick` of the role that calls it. The Runtime passes itself only behind such an interface. A Source plugin injects the `orchestrator` service, which its type names as a `SourceHost`: the registry and `context(kind)`; its kind's code sees only its `SourceContext`.
-- **What may import what.** `src/core` imports nothing outside itself apart from Node's hashing, and does no I/O. `src/sources` imports nothing from `src/app`. The panel imports only types from the host side, and the plain values of `src/admission.ts`, `src/limits.ts`, `src/setup.ts`, `src/navigation.ts`, `src/sources/host.ts`, `src/core/errors.ts`, `src/core/reasons.ts` and the filter lists of `src/app/api.ts`.
-- **One writer per state.** Each kind of state has one writer, and the others read it or ask that writer.
+- **显式、窄依赖。** 每个类接收一个命名其所用内容的接口，多数是其他类的 `Pick` 类型：核心类使用 `ExecutorHost`、`AssessorHost`、`SessionsHost`、`SettingsHost`、`SetupHost`、`PassesHost` 与 `OutboxHost`，粘合层使用 `HttpHost`、`MainToolsHost`、`ExecutorToolsHost`、`ResourceHost`、`LinkHost` 与 `SourceContextDeps`，引擎则以调用它的角色的 `Pick` 形式出现。运行时只在这样的接口之后传递自身。来源插件注入 `orchestrator` 服务，其类型命名为 `SourceHost`：注册表与 `context(kind)`；其 kind 的代码只看到自己的 `SourceContext`。
+- **什么可以导入什么。** `src/core` 除 Node 的哈希外不导入自身之外的内容，也不做 I/O。`src/sources` 不导入 `src/app` 的任何内容。面板只从宿主侧导入类型，以及 `src/admission.ts`、`src/limits.ts`、`src/setup.ts`、`src/navigation.ts`、`src/sources/host.ts`、`src/core/errors.ts`、`src/core/reasons.ts` 的纯值和 `src/app/api.ts` 的过滤列表。
+- **每种状态一个写入者。** 每种状态只有一个写入者，其他方读取它或询问该写入者。
 
-  | State | Writer |
+  | 状态 | 写入者 |
   | --- | --- |
-  | Triggers, Threads, Decisions, Tickets, Assignments | Engine |
-  | A Source's read positions, and the meta it keeps on its Threads (`label`, `url`, `facts` and its own keys) | That Source, through `SourceContext` |
-  | Settings and their history | Settings |
-  | Prompt versions | Prompts |
-  | Effect rows | Effects |
-  | Outbox receipts | The Outbox: the Engine's messages and Sources' `notify` go through its `send`, and its `reply` effects mark them |
-  | A health entry | The part that claimed it on the `HealthBoard` (`src/infra/health.ts`), which refuses a second claim: `runtime` the Runtime, which Passes report through, `evals` the Runtime after each pass, `models` Sessions, each effect kind Effects, `worker` the DshExecutor, a Source kind's entries the SourceRegistry for that kind's Source, `sync:<id>` Settings |
+  | 触发、线程、决策、工单、任务分派 | Engine |
+  | 来源的读取位置，以及它在其线程上保留的 meta（`label`、`url`、`facts` 及其自有键） | 该来源，通过 `SourceContext` |
+  | 设置及其历史 | Settings |
+  | 提示词版本 | Prompts |
+  | 副作用行 | Effects |
+  | 发件箱回执 | 发件箱：引擎的消息与来源的 `notify` 经由其 `send`，其 `reply` 副作用标记它们 |
+  | 健康条目 | 在 `HealthBoard`（`src/infra/health.ts`）上认领它的部件，第二次认领会遭拒绝：`runtime` 为运行时（轮次通过它上报），`evals` 为每次轮次后的运行时，`models` 为会话，每种副作用 kind 为 Effects，`worker` 为 DshExecutor，来源 kind 的条目为该 kind 的来源对应的 SourceRegistry，`sync:<id>` 为设置 |
 
-  A Source changes a Ticket only through `SourceContext.tickets.bindThread` and `threadClosed`, which call the Engine.
-- **Requests and facts.** A method that asks for something is named by an imperative verb and its object, such as `stopTicket` or `bindThread`, and may be refused; a method that records what an adapter did is named in the past tense, such as `assignmentStarted` or `deliveryFailed`. Each host receives the Engine as the role type it needs.
-- **Typed fields, and Source data under the Source.** The code reads typed fields of Tickets and Mandates. A Source keeps nothing on a Ticket: which of its Threads a Ticket follows is the Ticket's `follows`, and what it keeps about a Trigger or a Thread is in their `meta`.
-- **Fixed refusals.** A refusal a person or an agent can cause is a `UserError(code, values)` from `USER_ERRORS` in `src/core/errors.ts`. The management API answers a `missing` code with 404 and the others with 400, and the panel words each code in its language. Setup problems are `SetupError` codes (`src/setup.ts`) and fixed health texts `HealthCode`s (`src/sources/host.ts`), worded the same way.
-### Source-specific dependencies
+  来源只通过 `SourceContext.tickets.bindThread` 与 `threadClosed` 更改工单，这两个方法调用引擎。
+- **请求与事实。** 请求某物的方法用祈使动词及其宾语命名，例如 `stopTicket` 或 `bindThread`，且可以被拒绝；记录适配器所做之事的方法用过去时命名，例如 `assignmentStarted` 或 `deliveryFailed`。每个宿主以其需要的角色类型接收引擎。
+- **带类型字段，来源数据在来源下。** 代码读取工单与授权的带类型字段。来源不在工单上保留任何东西：工单跟随它的哪些线程是工单的 `follows`，它关于触发或线程保留的内容在其 `meta` 中。
+- **固定拒绝。** 人或智能体可以造成的拒绝是来自 `src/core/errors.ts` 中 `USER_ERRORS` 的 `UserError(code, values)`。管理 API 对 `missing` 代码回答 404，对其他代码回答 400，面板用其语言表述每个代码。Setup 问题是 `SetupError` 代码（`src/setup.ts`）与固定健康文本 `HealthCode`（`src/sources/host.ts`），以同样方式表述。
+### 来源特有的依赖
 
-Some generic modules still refer directly to GitHub or Feishu:
+一些通用模块仍直接引用 GitHub 或飞书：
 
-- Outbox applies the Feishu chat word limit.
-- `src/app/links.ts` resolves Feishu message links and `repliedTo`. It and Runtime read settings with `feishuSettings`.
-- `src/app/resources.ts` reads the `feishu/` and `github/` originals; `src/app/cards.ts` uses `pullOf` for Ticket cards.
-- Runtime sends `pullEndNotices` for merged or closed Tickets.
-- Executor tools bind reported pull requests with `readPull` and `claimPull`, using the GitHub context exposed by Runtime.
-- MasterAssessor reads repository files with `readRepositoryPath`.
-- Sessions and Prompts register built-in skills only for GitHub and Feishu. Migration converts their schema-10 records.
-- Setup probes only GitHub and Feishu account fields (`SETUP_FIELDS`). Only those Sources receive account setup problems through `SourceContext.problem`.
+- 发件箱应用飞书聊天字数限制。
+- `src/app/links.ts` 解析飞书消息链接与 `repliedTo`。它与运行时用 `feishuSettings` 读取设置。
+- `src/app/resources.ts` 读取 `feishu/` 与 `github/` 原始记录；`src/app/cards.ts` 对工单卡片使用 `pullOf`。
+- 运行时为已合并或关闭的工单发送 `pullEndNotices`。
+- 执行器工具用 `readPull` 与 `claimPull` 绑定上报的拉取请求，使用运行时暴露的 GitHub 上下文。
+- MasterAssessor 用 `readRepositoryPath` 读取仓库文件。
+- 会话与提示词只为 GitHub 与飞书注册内置技能。迁移转换它们的 schema-10 记录。
+- Setup 只探测 GitHub 与飞书账号字段（`SETUP_FIELDS`）。只有这些来源通过 `SourceContext.problem` 收到账号 setup 问题。
 
 
-## Modules
+## 模块
 
-| Path | Responsibility |
+| 路径 | 职责 |
 | --- | --- |
-| `src/index.ts` | The main plugin entry: reads the machine settings, starts the Runtime, and gives it the restart that a save of a Source's account uses |
-| `src/deployment.ts` | The plugin `Config` and `Machine`; `resolveDeployment` and `resolveFeishuBot` read the repository and the accounts from the Source settings, each CLI run as Executor shells run it; `SETUP_FIELDS` lists the Source fields setup reads. The code names no person, account or organization |
-| `src/setup.ts` | Setup problems: `SetupError`, with a code, the place that fixes it and the English text the log, the main Session and the panel share |
-| `src/policy.ts` | The Policy: the settings schemas by block, the Policy version, the gate and Mandate revalidation |
-| `src/admission.ts` | The admission table's values, each cell's options and defaults, shared with the panel |
-| `src/limits.ts` | The limits of the values a person sets, which the settings schemas check and the panel's fields offer |
-| `src/kv.ts` | `KV`: every family of `kv` records with its key, its value's type and its owner, and the `Key` and `Family` types the Store and `SourceContext.state` take |
-| `src/navigation.ts` | Opens a DeepSeek Harness Session from the panel once the host's catalog lists it |
-| `src/core/model.ts` | The domain types, among them the typed Ticket and `MandateBasis`, with `threadKey`, `ticketOutcome`, `reached`, `followupOwners`, `settled`, `waitsForPerson`, `liveTicket`, `runningAssignment`, `latestAssignment` and `latestReport` |
-| `src/core/ports.ts` | The ports: `Repositories`, `Policy`, `SourceScope`, `Assessor`, `Executor`, `Outbox`, and the domain events |
-| `src/core/engine.ts` | The Engine, the core's entry point, and the role interfaces `EngineForSources`, `EngineForMainSession`, `EngineForPeople`, `EngineForSettings` and `EngineForExecutor` |
-| `src/core/part.ts` | `EnginePart`, the base of the Engine's parts, and `EngineOptions` |
-| `src/core/intake.ts` | `Intake`: Triggers from Sources, to their Tickets and, unless a person's message reached one, to Eval |
-| `src/core/evals.ts` | `Evals`: the Evals of Threads and their Decisions |
-| `src/core/tickets.ts` | `Tickets`: the Ticket lifecycle, the Threads a Ticket follows, Subscriptions and Inputs |
-| `src/core/assignments.ts` | `Assignments`: the Executor's facts and its workers' Reports |
-| `src/core/replies.ts` | `Replies`: the Engine's Channel writes |
-| `src/core/stage.ts` | `ticketStage` and `canRetry`: the Ticket stages of [003 Execution](003-execution.md) |
-| `src/core/errors.ts` | `UserError` and `USER_ERRORS` |
-| `src/core/reasons.ts` | `Reason`, `REASONS` and `reasonText`: why the core recorded a Decision or set a Trigger aside, by code |
-| `src/core/ids.ts` | `key`: ids derived from their inputs, equal for equal inputs |
-| `src/core/memory.ts` | `MemoryRepositories`: the Store's repositories in memory, in the Store's order and with its nested rollback, for domain tests |
-| `src/core/index.ts` | The core's exports |
-| `src/app/runtime.ts` | The Runtime, the composition root, with its start and stop |
-| `src/app/setup.ts` | Setup, and `setupChanged`, whether a save changes a field setup reads |
-| `src/app/passes.ts` | Passes, the pass scheduler |
-| `src/app/outbox.ts` | The Outbox: the Engine's `Outbox` port, the receipts and the `reply` effects that send them |
-| `src/app/notices.ts` | The main Session's notices and relays: `eventNotice`, `reportRelay`, `resultRelay` and `followupRelay` |
-| `src/app/store.ts` | The Store, and `Receipt`, a message of the outbox |
-| `src/app/store-read.ts` | `storeReads`: the Store's read queries for the views, the tools and the Sources' polls, which never write |
-| `src/app/migration.ts` | The schema 11 migration: one step from schema 10 that writes every stored record in its current shape |
-| `src/app/effects.ts` | Effects |
-| `src/app/versions.ts` | `Versions`: a record kept as numbered snapshots with a pointer to the current one, for the settings and the prompts |
-| `src/app/cache.ts` | `TextCache`: texts kept in memory within a size, the least recently used dropped first |
-| `src/app/settings.ts` | Settings |
-| `src/app/settings-history.ts` | `policyHistory`: each saved settings revision with what it changed from the one before |
-| `src/app/prompts.ts` | Prompts, `builtInParts`, the built-in parts a team may override, and `promptParts`, the order of a role's prompt sections |
-| `src/app/context.ts` | The built-in prompt text, read from `prompts/`, and the transcript entries Sessions read |
-| `src/app/skill-files.ts` | Packaged text: `promptFile`, which joins a file's one-sentence lines into paragraphs, and the bundled skills |
-| `src/app/sessions.ts` | Sessions |
-| `src/app/delivery.ts` | `AgentDelivery`: delivers a message to a DeepSeek Harness agent once per request id, also across a restored Session |
-| `src/app/retry-health.ts` | `RetryHealth`: which Sessions wait on a model budget retry, for the `models` health entry |
-| `src/app/role-models.ts` | Resolves the Eval and Executor models, and seeds a new Session with its role's model |
-| `src/app/assessment.ts` | The MasterAssessor, the assessment schema and the window `orchestrator_eval` answers |
-| `src/app/execution-environment.ts` | The execution environment: its variables, a Ticket's values, the directory root and the lines of the prompt section, which `src/app/prompts.ts` fills into its template |
-| `src/app/source-context.ts` | `sourceContextOf`: each Source kind's `SourceContext` |
-| `src/app/links.ts` | `sourceLink`, the page of a Trigger's message, and `candidateCard` |
-| `src/app/cards.ts` | Compact cards of Triggers, Tickets, Threads and Decisions for models, the closed set of ticket card states `TICKET_STATES`, and `textPage` |
-| `src/app/resources.ts` | `RESOURCES` and `readResource`: what `orchestrator_read` reads, for each role |
-| `src/app/tools/tool.ts` | The `Tool` and `ToolScope` types, `readTool`, the `orchestrator_read` of both roles, and `AcknowledgementSchema` |
-| `src/app/tools/main.ts` | The main Session's tools |
-| `src/app/tools/executor.ts` | An Executor Session's tools |
-| `src/app/mcp-tools.ts` | Maps the main Session's tools onto MCP: `tools/list`, schema-checked `tools/call`, and structured failures |
-| `src/app/mcp.ts` | The loopback Streamable HTTP MCP endpoint: one transport per session, DNS rebinding protection, idle reclamation, and the `mcp` health entry |
-| `src/app/http.ts` | The `/orchestrator/api` routes: the same-origin check, request limits and one status per kind of failure |
-| `src/app/api.ts` | `Api`, every route with its parameters, query, body and response, and the filters of the lists; it imports only types, so the panel bundles it |
-| `src/app/views/text.ts` | The two forms of a view's text: `preview`, plain text on one line, and `markdown` without HTML; `plain` and `readable` |
-| `src/app/views/records.ts` | The rows the views share: Triggers, Tickets, Threads, Decisions and Channel links, and `ownersOf`, the owners of follow-ups as one request reads them |
-| `src/app/views/tickets.ts` | The Ticket lists by stage, a Ticket's page, the Mandate basis facts and the Executor's load |
-| `src/app/views/threads.ts` | The Thread lists, a Thread's timeline, the search and the Decision list |
-| `src/app/views/sources.ts` | The Source status: each Source instance's state, its last day's counts, and what it filtered and dropped in that day |
-| `src/app/views/settings.ts` | The settings page's view: each block with its revision, each Source's settings with its kind's form, and the execution environment |
-| `src/app/views/overview.ts` | The overview: Tickets that need a person, problems, the last day's flow and the Executor's load |
-| `src/executor/dsh.ts` | The DshExecutor, `WorkerSlots`, `ticketExecution`, `inputMessage` and `mandateInstructions` |
-| `src/executor/background.ts` | A worker's background work in DeepSeek Harness, the shell jobs its Session owns (`ctx.jobs`) and its subagents (`ctx.subagents`): `runningJobs`, `untilQuiet`, `killJobs`, `collectJobs`, `stopSubagents`, `stopBackground`, `until`, and `cancelled`, the workers whose turn a stop of their subagents cancelled |
-| `src/infra/commands.ts` | `Commands`, the CLI transport: `run`; `api` and `pages`, limited to the configured repository and validated; `lark` as the bot; `git`. `CliError` carries the code a command's output reports, such as a GitHub HTTP status, and a command that prints nothing fails with how it ended, never with its arguments; `validItems` skips and counts the malformed items of a list |
-| `src/infra/environment.ts` | The agent's process environment: command shims, the git configuration and credential helper, `runAsWorker`, and the checks of the environment and of a Ticket's directory |
-| `src/infra/paths.ts` | The package's root, where packaged files are |
-| `src/infra/text.ts` | Word counts and the chat message limit, `fill` and `sameName` |
-| `src/infra/health.ts` | The `HealthBoard`, every part's health entry, each claimed by its one writer |
-| `src/sources/kind.ts` | The `SourceKind` protocol |
+| `src/index.ts` | 主插件入口：读取机器设置，启动运行时，并向它提供保存来源账号时所用的重启能力 |
+| `src/deployment.ts` | 插件的 `Config` 与 `Machine`；`resolveDeployment` 与 `resolveFeishuBot` 从来源设置读取仓库与账号，每次 CLI 运行都按执行器 shell 的运行方式进行；`SETUP_FIELDS` 列出 setup 读取的来源字段。代码不指名任何个人、账号或组织 |
+| `src/setup.ts` | Setup 问题：`SetupError`，带有代码、修复它的位置，以及日志、主会话与面板共享的英文文本 |
+| `src/policy.ts` | 策略：按块划分的设置 schema、策略版本、门禁与授权重新校验 |
+| `src/admission.ts` | 准入表的值、每个单元格的选项与默认值，与面板共享 |
+| `src/limits.ts` | 人设置的值的限制，设置 schema 会检查它们，面板字段会提供这些限制 |
+| `src/kv.ts` | `KV`：每个 `kv` 记录族及其键、值类型与所有者，以及存储与 `SourceContext.state` 接收的 `Key` 与 `Family` 类型 |
+| `src/navigation.ts` | 当宿主的目录列出会话后，从面板打开一个 DeepSeek Harness 会话 |
+| `src/core/model.ts` | 领域类型，其中包括带类型的工单与 `MandateBasis`，以及 `threadKey`、`ticketOutcome`、`reached`、`followupOwners`、`settled`、`waitsForPerson`、`liveTicket`、`runningAssignment`、`latestAssignment` 与 `latestReport` |
+| `src/core/ports.ts` | 端口：`Repositories`、`Policy`、`SourceScope`、`Assessor`、`Executor`、`Outbox`，以及领域事件 |
+| `src/core/engine.ts` | 引擎，核心的入口，以及角色接口 `EngineForSources`、`EngineForMainSession`、`EngineForPeople`、`EngineForSettings` 与 `EngineForExecutor` |
+| `src/core/part.ts` | `EnginePart`，引擎各部件的基础，以及 `EngineOptions` |
+| `src/core/intake.ts` | `Intake`：来自来源的触发，送往其工单，并且，除非人的消息到达了某个工单，否则送往评估 |
+| `src/core/evals.ts` | `Evals`：线程的评估及其决策 |
+| `src/core/tickets.ts` | `Tickets`：工单生命周期、工单跟随的线程、订阅与输入 |
+| `src/core/assignments.ts` | `Assignments`：执行器的事实与其 worker 的汇报 |
+| `src/core/replies.ts` | `Replies`：引擎的渠道写入 |
+| `src/core/stage.ts` | `ticketStage` 与 `canRetry`：[003 执行](003-execution.md) 中的工单阶段 |
+| `src/core/errors.ts` | `UserError` 与 `USER_ERRORS` |
+| `src/core/reasons.ts` | `Reason`、`REASONS` 与 `reasonText`：核心记录一次决策或搁置一个触发的原因，按代码给出 |
+| `src/core/ids.ts` | `key`：由其输入派生的 id，相同输入得到相同 id |
+| `src/core/memory.ts` | `MemoryRepositories`：存储仓储的内存版本，保持存储的顺序与其嵌套回滚，用于领域测试 |
+| `src/core/index.ts` | 核心的导出 |
+| `src/app/runtime.ts` | 运行时，即组合根，及其启动与停止 |
+| `src/app/setup.ts` | Setup，以及 `setupChanged`，即一次保存是否更改了 setup 读取的字段 |
+| `src/app/passes.ts` | 轮次，即轮次调度器 |
+| `src/app/outbox.ts` | 发件箱：引擎的 `Outbox` 端口、回执，以及发送它们的 `reply` 副作用 |
+| `src/app/notices.ts` | 主会话的通知与转发：`eventNotice`、`reportRelay`、`resultRelay` 与 `followupRelay` |
+| `src/app/store.ts` | 存储，以及 `Receipt`，即发件箱的一条消息 |
+| `src/app/store-read.ts` | `storeReads`：存储为视图、工具与来源轮询提供的读取查询，它们从不写入 |
+| `src/app/migration.ts` | schema 11 迁移：从 schema 10 一步完成，把每条已存储记录写为其当前形态 |
+| `src/app/effects.ts` | 副作用 |
+| `src/app/versions.ts` | `Versions`：以带编号快照加当前指针保存的记录，用于设置与提示词 |
+| `src/app/cache.ts` | `TextCache`：在内存中按大小上限保存的文本，最先丢弃最久未使用的 |
+| `src/app/settings.ts` | 设置 |
+| `src/app/settings-history.ts` | `policyHistory`：每个已保存的设置修订及它相对前一个修订的变更 |
+| `src/app/prompts.ts` | 提示词、`builtInParts`（团队可覆盖的内置部分）以及 `promptParts`（角色提示词各节的顺序） |
+| `src/app/context.ts` | 内置提示词文本，从 `prompts/` 读取，以及会话读取的记录条目 |
+| `src/app/skill-files.ts` | 打包文本：`promptFile`（把文件每行一句连接成段落）与内置技能 |
+| `src/app/sessions.ts` | 会话 |
+| `src/app/delivery.ts` | `AgentDelivery`：每个请求 id 向 DeepSeek Harness 智能体投递一次消息，跨恢复的会话亦然 |
+| `src/app/retry-health.ts` | `RetryHealth`：哪些会话在等待模型预算重试，供 `models` 健康条目使用 |
+| `src/app/role-models.ts` | 解析评估与执行器模型，并用其角色的模型初始化新会话 |
+| `src/app/assessment.ts` | MasterAssessor、评估 schema，以及 `orchestrator_eval` 回答的窗口 |
+| `src/app/execution-environment.ts` | 执行环境：其变量、工单的值、目录根，以及提示词各节的文本行，`src/app/prompts.ts` 会把它们填入其模板 |
+| `src/app/source-context.ts` | `sourceContextOf`：每个来源 kind 的 `SourceContext` |
+| `src/app/links.ts` | `sourceLink`（触发消息的页面）与 `candidateCard` |
+| `src/app/cards.ts` | 为模型提供的触发、工单、线程与决策紧凑卡片，工单卡片状态的封闭集合 `TICKET_STATES`，以及 `textPage` |
+| `src/app/resources.ts` | `RESOURCES` 与 `readResource`：`orchestrator_read` 为每个角色读取的内容 |
+| `src/app/tools/tool.ts` | `Tool` 与 `ToolScope` 类型、`readTool`（两种角色的 `orchestrator_read`）以及 `AcknowledgementSchema` |
+| `src/app/tools/main.ts` | 主会话的工具 |
+| `src/app/tools/executor.ts` | 执行器会话的工具 |
+| `src/app/mcp-tools.ts` | 把主会话的工具映射到 MCP：`tools/list`、经 schema 校验的 `tools/call`，以及结构化失败 |
+| `src/app/mcp.ts` | 回环 Streamable HTTP MCP 端点：每个会话一个传输、DNS rebinding 防护、空闲回收，以及 `mcp` 健康条目 |
+| `src/app/http.ts` | `/orchestrator/api` 路由：同源检查、请求限制，以及每种失败一个状态 |
+| `src/app/api.ts` | `Api`：每条路由及其参数、查询、请求体与响应，以及列表的过滤器；它只导入类型，因此面板可以打包它 |
+| `src/app/views/text.ts` | 视图文本的两种形式：`preview`（单行纯文本）与 `markdown`（无 HTML）；`plain` 与 `readable` |
+| `src/app/views/records.ts` | 视图共享的行：触发、工单、线程、决策与渠道链接，以及 `ownersOf`（一次请求读取到的跟进所有者） |
+| `src/app/views/tickets.ts` | 按阶段划分的工单列表、工单页面、授权依据事实与执行器负载 |
+| `src/app/views/threads.ts` | 线程列表、线程时间线、搜索与决策列表 |
+| `src/app/views/sources.ts` | 来源状态：每个来源实例的状态、其最后一天的计数，以及它在那一天过滤和丢弃的内容 |
+| `src/app/views/settings.ts` | 设置页视图：每个块及其修订、每个来源的设置及其 kind 的表单，以及执行环境 |
+| `src/app/views/overview.ts` | 概览：需要人的工单、问题、最后一天的流转与执行器负载 |
+| `src/executor/dsh.ts` | DshExecutor、`WorkerSlots`、`ticketExecution`、`inputMessage` 与 `mandateInstructions` |
+| `src/executor/background.ts` | worker 在 DeepSeek Harness 中的后台工作，其会话拥有的 shell 作业（`ctx.jobs`）与其子智能体（`ctx.subagents`）：`runningJobs`、`untilQuiet`、`killJobs`、`collectJobs`、`stopSubagents`、`stopBackground`、`until`，以及 `cancelled`（其子智能体的停止取消了回合的 worker） |
+| `src/infra/commands.ts` | `Commands`，CLI 传输：`run`；`api` 与 `pages`（限于配置的仓库并经过校验）；`lark`（以机器人身份）；`git`。`CliError` 携带命令输出报告的代码，例如 GitHub HTTP 状态；不输出任何内容的命令以其结束方式失败，绝不以其参数失败；`validItems` 跳过并统计列表中的畸形项 |
+| `src/infra/environment.ts` | 智能体的进程环境：命令 shim、git 配置与凭证助手、`runAsWorker`，以及环境与工单目录的检查 |
+| `src/infra/paths.ts` | 包的根目录，即打包文件所在位置 |
+| `src/infra/text.ts` | 字数统计与聊天消息上限、`fill` 与 `sameName` |
+| `src/infra/health.ts` | `HealthBoard`，每个部件的健康条目，各自由其唯一写入者认领 |
+| `src/sources/kind.ts` | `SourceKind` 协议 |
 | `src/sources/registry.ts` | `SourceRegistry` |
-| `src/sources/host.ts` | `SourceHost`, `SourceContext`, `Health`, `health` and the fixed health texts |
-| `src/sources/poll.ts` | What GitHub and Feishu polling share: `POLL_HORIZON_MS`, `polled`, `cursorAt`, and `pollThreads`, which keeps a failure on its Thread as `pollError` |
-| `src/sources/github.ts` | The GitHub kind and plugin entry, exported as `./github-watch`: a poll round of notifications, the pull requests of open Tickets with their CI, and subscribed Threads |
-| `src/sources/github-trigger.ts` | GitHub comments, reviews, Issue bodies and CI changes as Triggers, and GitHub addresses |
-| `src/sources/github-pull.ts` | The pull request rules: which pull requests a Ticket follows (`claimPull`, `observePull`), the closes it reports to the Engine, and `pullEndNotices`, the chat notice of a Ticket that ended merged or closed |
-| `src/sources/github-channel.ts` | The GitHub Channel: comments and review thread replies, `sent` or `gone` |
-| `src/sources/github-read.ts` | CI snapshots, repository reads, the `github/` resources, and `githubThreadContext`: an Issue's or pull request's conversation by page |
-| `src/sources/feishu.ts` | The Feishu kind and plugin entry, exported as `./feishu-watch` |
-| `src/sources/feishu-trigger.ts` | Feishu messages as Triggers, by one rule for live events, history pages and topic pages |
-| `src/sources/feishu-loops.ts` | The Feishu loops: the event consumer, history recovery, chat names and polling of subscribed topics |
-| `src/sources/feishu-channel.ts` | The Feishu Channel: topic replies, `sent` or `gone` |
-| `src/sources/feishu-read.ts` | The `feishu/` reads of a Trigger's message, its root, parent and topic, and `feishuThreadContext`, which gives them to assessments with their images |
-| `src/sources/admission-context.ts` | The bounded window an assessment starts from: the first pages of a Trigger's Thread, read through its kind, and the messages around the Trigger |
-| `src/sources/feishu-image.ts` | Reads a Feishu message's image as an attachment for the assessing Session |
-| `src/client/index.tsx` | The client plugin entry: the sidebar entry, the main panel and the page in DeepSeek Harness's Plugin Manager |
-| `src/client/app.tsx` | The panel: header, search, glossary, tabs and the page of the current route |
-| `src/client/provider.tsx` | What every page reads from its host: copy, calls, navigation, notices, the state poll, and `restart`, which reads the state quickly while dsh-superagent restarts |
-| `src/client/api.ts` | Calls and polls of the management API, typed by `src/app/api.ts`, and the Decision filters of the Eval status |
-| `src/client/route.ts` | The tabs, the settings groups, the typed routes that `parseRoute` reads, and the route memory with the settings group opened last |
-| `src/client/overview.tsx` | The overview |
-| `src/client/source.tsx`, `trigger.tsx`, `eval.tsx`, `execution.tsx` | One file per stage: its status, and its settings where it has some |
-| `src/client/thread.tsx`, `ticket.tsx` | The record pages: a Thread with its timeline, and a Ticket with its authorization, Inputs and Assignments |
-| `src/client/settings.tsx` | The Settings tab: the group navigation and the group on screen |
-| `src/client/settings-kit.tsx` | The building blocks of settings blocks: the settings the stage groups share, `useBlockDraft`, the fields, among them a Source kind's, and the history of saves |
-| `src/client/prompts.tsx` | The Prompts settings: the page owns the view it read and its editor the draft, and the Edit, Full prompt and History tabs render from them; a built-in part's editor shows a changed default and keeps or drops the override |
-| `src/client/prompt-config.ts` | The prompt configuration by section, by the team sections, skill names, built-in parts (`part/<key>`, with `withOverride`) and part headings the prompt views give, and the line diff of the full prompt, as pure functions |
-| `src/client/deployment.tsx` | The Deployment settings, also shown in DeepSeek Harness's Plugin Manager |
-| `src/client/draft.tsx` | Settings drafts: `draftReducer`, their states and their merge with a newer saved revision, `saveBarText`, the save bar's line, and the save bar |
-| `src/client/controls.tsx` | Local copies of DeepSeek Harness's controls, which follow its markup, keyboard behaviour and design tokens, since the bundle does not import `@deepseek-ai/dsh-client-ui-primitives`; they read no context |
-| `src/client/widgets.tsx` | The small components the pages share, which read the panel's context: sections, page heads, load states, times, links, confirmed actions, the setup check and Markdown |
-| `src/client/rows.tsx` | The rows the pages share: a Ticket, a Thread and a Decision, a Thread's chip, and the folding of runs of automated messages |
-| `src/client/markdown.ts` | The Markdown subset of reports and questions, and the bare addresses in messages, as blocks and inline parts |
-| `src/client/text.ts` | Copy by key and the wording of domain values, reasons, senders and times |
-| `src/client/marks.ts` | The marks of the states the views classify: a Ticket's or a Thread's stage, a Source's state and a Decision's outcome, each as a dot, an icon, a tone and a label |
-| `src/client/locales.ts` | All copy in both languages, and the glossary of [001 Domain model](001-domain.md) |
-| `src/client/client.css`, `css.d.ts` | The panel's stylesheet, loaded as text |
+| `src/sources/host.ts` | `SourceHost`、`SourceContext`、`Health`、`health` 以及固定健康文本 |
+| `src/sources/poll.ts` | GitHub 与飞书轮询共享的内容：`POLL_HORIZON_MS`、`polled`、`cursorAt`，以及 `pollThreads`（把失败作为 `pollError` 留在其线程上） |
+| `src/sources/github.ts` | GitHub kind 与插件入口，导出为 `./github-watch`：一轮通知轮询、打开工单的拉取请求及其 CI，以及已订阅线程 |
+| `src/sources/github-trigger.ts` | GitHub 评论、评审、Issue 正文与 CI 变更作为触发，以及 GitHub 地址 |
+| `src/sources/github-pull.ts` | 拉取请求规则：工单跟随哪些拉取请求（`claimPull`、`observePull`）、它向引擎报告的关闭，以及 `pullEndNotices`（工单以合并或关闭结束时发送的聊天通知） |
+| `src/sources/github-channel.ts` | GitHub 渠道：评论与评审线程回复，`sent` 或 `gone` |
+| `src/sources/github-read.ts` | CI 快照、仓库读取、`github/` 资源，以及 `githubThreadContext`：按页读取 Issue 或拉取请求的对话 |
+| `src/sources/feishu.ts` | 飞书 kind 与插件入口，导出为 `./feishu-watch` |
+| `src/sources/feishu-trigger.ts` | 飞书消息作为触发，对实时事件、历史页与话题页使用同一条规则 |
+| `src/sources/feishu-loops.ts` | 飞书循环：事件消费者、历史恢复、聊天名称与已订阅话题的轮询 |
+| `src/sources/feishu-channel.ts` | 飞书渠道：话题回复，`sent` 或 `gone` |
+| `src/sources/feishu-read.ts` | 触发消息及其根、父与话题的 `feishu/` 读取，以及 `feishuThreadContext`，它把这些连同图片交给评估 |
+| `src/sources/admission-context.ts` | 评估起始的有界窗口：触发所在线程的前几页（通过其 kind 读取），以及触发周围的消息 |
+| `src/sources/feishu-image.ts` | 把飞书消息的图片读取为附件，供评估会话使用 |
+| `src/client/index.tsx` | 客户端插件入口：侧边栏条目、主面板，以及 DeepSeek Harness 插件管理器中的页面 |
+| `src/client/app.tsx` | 面板：页头、搜索、术语表、标签页与当前路由的页面 |
+| `src/client/provider.tsx` | 每个页面从宿主读取的内容：文案、调用、导航、通知、状态轮询，以及 `restart`（在 dsh-superagent 重启期间快速读取状态） |
+| `src/client/api.ts` | 管理 API 的调用与轮询，由 `src/app/api.ts` 标注类型，以及评估状态的决策过滤器 |
+| `src/client/route.ts` | 标签页、设置分组、`parseRoute` 读取的带类型路由，以及最后打开的设置分组的路由记忆 |
+| `src/client/overview.tsx` | 概览 |
+| `src/client/source.tsx`、`trigger.tsx`、`eval.tsx`、`execution.tsx` | 每个阶段一个文件：其状态，以及它有的设置 |
+| `src/client/thread.tsx`、`ticket.tsx` | 记录页面：带时间线的线程，以及带授权、输入与任务分派的工单 |
+| `src/client/settings.tsx` | 设置标签页：分组导航与屏幕上的分组 |
+| `src/client/settings-kit.tsx` | 设置块的构件：阶段分组共享的设置、`useBlockDraft`、字段（其中包括来源 kind 的字段），以及保存历史 |
+| `src/client/prompts.tsx` | 提示词设置：页面拥有它读取的视图，编辑器拥有草稿，编辑、完整提示词与历史标签页由它们渲染；内置部分的编辑器显示已变更的默认值，并保留或丢弃覆盖 |
+| `src/client/prompt-config.ts` | 按节划分的提示词配置、团队各节、技能名称、内置部分（`part/<key>`，带 `withOverride`）与提示词视图给出的部分标题，以及完整提示词的逐行差异，均以纯函数实现 |
+| `src/client/deployment.tsx` | 部署设置，也显示在 DeepSeek Harness 的插件管理器中 |
+| `src/client/draft.tsx` | 设置草稿：`draftReducer`、其状态及其与更新已保存修订的合并、`saveBarText`（保存栏的文本）以及保存栏 |
+| `src/client/controls.tsx` | DeepSeek Harness 控件的本地副本，遵循其标记、键盘行为与设计令牌，因为 bundle 不导入 `@deepseek-ai/dsh-client-ui-primitives`；它们不读取上下文 |
+| `src/client/widgets.tsx` | 页面共享的小组件，读取面板上下文：分节、页头、加载状态、时间、链接、需确认的操作、setup 检查与 Markdown |
+| `src/client/rows.tsx` | 页面共享的行：工单、线程与决策，线程的 chip，以及连续自动消息的折叠 |
+| `src/client/markdown.ts` | 汇报与问题的 Markdown 子集，以及消息中的裸地址，作为块与内联部分 |
+| `src/client/text.ts` | 按键取文案，以及领域值、原因、发送者与时间的措辞 |
+| `src/client/marks.ts` | 视图分类状态的标记：工单或线程的阶段、来源的状态与决策的结果，各自表示为点、图标、色调与标签 |
+| `src/client/locales.ts` | 两种语言的全部文案，以及 [001 领域模型](001-domain.md) 的术语表 |
+| `src/client/client.css`、`css.d.ts` | 面板样式表，以文本加载 |
 
-`src/sources/github.ts` and `src/sources/feishu.ts` are also the entries of the two Source plugins, built by `tsdown.config.ts` and exported in `package.json` as `./github-watch` and `./feishu-watch`. The bundle's `cordis.patch.yml` inserts the three plugins, with Feishu disabled.
+`src/sources/github.ts` 与 `src/sources/feishu.ts` 也是两个来源插件的入口，由 `tsdown.config.ts` 构建，并在 `package.json` 中导出为 `./github-watch` 与 `./feishu-watch`。bundle 的 `cordis.patch.yml` 插入这三个插件，其中飞书处于禁用状态。
 
-## Tests
+## 测试
 
-| Test | Covers |
+| 测试 | 覆盖内容 |
 | --- | --- |
-| `tests/core-engine.spec.ts` | Domain rules on in-memory repositories: receiving, Eval, fan-out, resume and stop, interrupted Assignments, the pause, Policy changes, reports and outcomes, attaching, replies, failed deliveries and dismissed problems |
-| `tests/stage.spec.ts` | The Ticket stages, row by row |
-| `tests/policy.spec.ts` | Source scope, the gate, the admission table, Mandate revalidation, the Policy version, settings migrations and assessment outcomes |
-| `tests/registry.spec.ts` | `SourceRegistry`: instances, validation, Policy parts, Channels and Thread context |
-| `tests/sources.spec.ts` | The Feishu and GitHub Sources on a `SourceContext`: translation, polls and read positions, the pull request rules, health |
-| `tests/commands.spec.ts` | CLI calls as the deployment's accounts, the Channels' answers, and repository-scoped GitHub calls |
-| `tests/feishu-read.spec.ts`, `tests/github-read.spec.ts` | Feishu and GitHub reads |
-| `tests/admission-context.spec.ts`, `tests/feishu-image.spec.ts` | The Thread window of assessments, and Feishu image reads |
-| `tests/assessment.spec.ts` | What the MasterAssessor keeps per Eval, and when it lets go |
-| `tests/background.spec.ts` | Waiting for a worker's shell jobs and subagents: an end that woke it, and a host that stops |
-| `tests/bundle-patch.spec.ts` | The bundle's patch, read as DeepSeek Harness reads it, and the agent preset of Executor Sessions it defines |
-| `tests/effects.spec.ts` | The effect queue: coalescing, limits, retries with backoff, health and shutdown |
-| `tests/passes.spec.ts` | Passes: one at a time, the ones asked for during a pass run as one after it, and the runtime health a failed pass reports |
-| `tests/outbox.spec.ts` | The Outbox on a running Runtime: messages wait while processing is paused or their Source is not installed |
+| `tests/core-engine.spec.ts` | 内存仓储上的领域规则：接收、评估、扇出、恢复与停止、被中断的任务分派、暂停、策略变更、汇报与结果、附加、回复、失败的投递与被消除的问题 |
+| `tests/stage.spec.ts` | 工单阶段，逐行 |
+| `tests/policy.spec.ts` | 来源作用域、门禁、准入表、授权重新校验、策略版本、设置迁移与评估结果 |
+| `tests/registry.spec.ts` | `SourceRegistry`：实例、校验、策略部分、渠道与线程上下文 |
+| `tests/sources.spec.ts` | `SourceContext` 上的飞书与 GitHub 来源：翻译、轮询与读取位置、拉取请求规则、健康 |
+| `tests/commands.spec.ts` | 以部署账号身份进行的 CLI 调用、渠道的应答，以及限定仓库的 GitHub 调用 |
+| `tests/feishu-read.spec.ts`、`tests/github-read.spec.ts` | 飞书与 GitHub 读取 |
+| `tests/admission-context.spec.ts`、`tests/feishu-image.spec.ts` | 评估的线程窗口，以及飞书图片读取 |
+| `tests/assessment.spec.ts` | MasterAssessor 每次评估保留的内容，以及何时释放 |
+| `tests/background.spec.ts` | 等待 worker 的 shell 作业与子智能体：唤醒它的结束，以及停止的宿主 |
+| `tests/bundle-patch.spec.ts` | bundle 的补丁，按 DeepSeek Harness 的读取方式读取，以及它定义执行器会话的智能体预设 |
+| `tests/effects.spec.ts` | 副作用队列：合并、限制、退避重试、健康与关闭 |
+| `tests/passes.spec.ts` | 轮次：一次一个，轮次期间请求的在轮次后合并运行，以及失败轮次报告运行时健康 |
+| `tests/outbox.spec.ts` | 运行中运行时上的发件箱：处理暂停或来源未安装时消息等待 |
 | `tests/cache.spec.ts` | `TextCache` |
-| `tests/queue.spec.ts` | The Runtime's work through the effect queue, and what earlier versions stored |
-| `tests/followups.spec.ts` | A person's follow-up on a Ticket's Thread: its notice to the main Session, the tools that act on it, what a burst costs; a worker's hand-back and context follow, and the main Session's note |
-| `tests/health.spec.ts` | One health entry per part, each cleared by its own next success |
+| `tests/queue.spec.ts` | 运行时通过副作用队列执行的工作，以及较早版本存储的内容 |
+| `tests/followups.spec.ts` | 工单线程上的人的跟进：发给主会话的通知、对其操作的工具、一次突发的代价；worker 的交回与上下文跟随，以及主会话的备注 |
+| `tests/health.spec.ts` | 每个部件一个健康条目，各自被其下一次成功清除 |
 | `tests/delivery.spec.ts` | `AgentDelivery` |
-| `tests/retry-health.spec.ts`, `tests/role-models.spec.ts` | Model budget retries, and the models of the two roles |
-| `tests/runtime.spec.ts` | The whole application on a simulated DeepSeek Harness host, through tools and HTTP |
-| `tests/tools.spec.ts` | The Sessions' tools: what `orchestrator_read` reads for each role, and the shapes and checks of the other main Session tools |
-| `tests/runtime-concurrency.spec.ts` | Work that overlaps: Triggers during a pass, Tickets that change during deliveries and launches |
-| `tests/http.spec.ts` | The same-origin and loopback checks, the status of each kind of failure, the body limit, path parameters and queries |
-| `tests/settings.spec.ts` | Settings saves that race a model or account check, a Policy sync that a save outran, and the refusals of the pause, a sync and a block |
-| `tests/views.spec.ts` | What the management views derive from the Store, such as the Thread a dropped message belongs to |
-| `tests/timeline.spec.ts` | A Thread's pages and a Trigger's neighbours by time and then id, with every received Trigger's time in one form |
-| `tests/migration.spec.ts` | The schema 11 migration: every stored record in its current shape, and the refusal of older schemas |
-| `tests/store.spec.ts` | Repositories and their working sets, in SQLite as in memory, the kv area, with every key of `KV` spelled only in `src/kv.ts` and the migration, settings history and queries |
-| `tests/prompts.spec.ts` | Prompt validation, assembly and versions |
-| `tests/cards.spec.ts` | The rules the built-in text must state, file by file |
-| `tests/model-surface.spec.ts` | Everything models read: tools, prompts, skills and inputs, checked against the tool schemas, the execution environment and the glossary, within a size budget per role |
-| `tests/mcp.spec.ts` | The MCP surface: tool-for-tool equality with `main.ts`, handshake, list, read and route over loopback, argument refusals, and a busy port that stays a health error |
-| `tests/deployment.spec.ts`, `tests/environment.spec.ts`, `tests/index.spec.ts` | The plugin configuration and setup, the agent's process environment, the plugin entry |
-| `tests/service-script.spec.ts` | `scripts/dsh-superagent` against fake `ps`, `tmux` and `dsh` |
-| `tests/client.spec.tsx`, `tests/navigation.spec.ts`, `tests/controls.spec.tsx` | The client plugin's registration and polling, Session navigation and route memory, the local controls, and the panel's imports, which have no cycle |
-| `tests/panel-overview.spec.tsx`, `panel-source.spec.tsx`, `panel-trigger.spec.tsx`, `panel-eval.spec.tsx`, `panel-execution.spec.tsx` | Each page of the panel, against a fake management API answered by route |
-| `tests/panel-settings.spec.tsx`, `panel-prompts.spec.tsx`, `panel-deployment.spec.tsx`, `panel-panel.spec.tsx` | The settings groups, drafts and history, the prompts, the Deployment page, and the panel's search, glossary and route memory |
-| `tests/draft.spec.ts`, `tests/prompt-config.spec.ts`, `tests/markdown.spec.ts`, `tests/marks.spec.ts` | Draft states, merges and the save bar's line; the prompt configuration by section and the line diff; the Markdown subset and its links; the mark of every state the views classify |
-| `tests/locales.spec.ts`, `tests/styles.spec.ts` | The copy in both languages, the stylesheet |
-| `tests/class-docs.spec.ts` | Every class in `src` has a JSDoc block before it |
-| `tests/docs.spec.ts` | Numbered documents link only to earlier ones, every local link resolves, no document has merge conflict markers, and this document's tables list every module and every test |
+| `tests/retry-health.spec.ts`、`tests/role-models.spec.ts` | 模型预算重试，以及两种角色的模型 |
+| `tests/runtime.spec.ts` | 在模拟 DeepSeek Harness 宿主上的整个应用，通过工具与 HTTP |
+| `tests/tools.spec.ts` | 会话的工具：`orchestrator_read` 为每个角色读取的内容，以及其他主会话工具的形状与检查 |
+| `tests/runtime-concurrency.spec.ts` | 重叠的工作：轮次期间的触发、投递与启动期间变化的工单 |
+| `tests/http.spec.ts` | 同源与回环检查、每种失败的状态、请求体上限、路径参数与查询 |
+| `tests/settings.spec.ts` | 与模型或账号检查竞争的设置保存、被保存超过的策略同步，以及暂停、同步与块的拒绝 |
+| `tests/views.spec.ts` | 管理视图从存储派生的内容，例如被丢弃消息所属的线程 |
+| `tests/timeline.spec.ts` | 线程的分页与按时间再按 id 排列的触发邻居，且每个已接收触发的时间只有一种形式 |
+| `tests/migration.spec.ts` | schema 11 迁移：每条已存储记录为其当前形态，以及拒绝更旧的 schema |
+| `tests/store.spec.ts` | 仓储及其工作集（SQLite 与内存一致）、kv 区域（`KV` 的每个键只在 `src/kv.ts` 与迁移中出现）、设置历史与查询 |
+| `tests/prompts.spec.ts` | 提示词校验、组装与版本 |
+| `tests/cards.spec.ts` | 内置文本必须陈述的规则，逐文件 |
+| `tests/model-surface.spec.ts` | 模型读取的一切：工具、提示词、技能与输入，对照工具 schema、执行环境与术语表检查，并受每角色大小预算约束 |
+| `tests/mcp.spec.ts` | MCP 表面：与 `main.ts` 逐工具相等、握手、列表、读取与回环路由、参数拒绝，以及保持为健康错误的端口占用 |
+| `tests/deployment.spec.ts`、`tests/environment.spec.ts`、`tests/index.spec.ts` | 插件配置与 setup、智能体的进程环境、插件入口 |
+| `tests/service-script.spec.ts` | `scripts/dsh-superagent` 对假 `ps`、`tmux` 与 `dsh` 的测试 |
+| `tests/client.spec.tsx`、`tests/navigation.spec.ts`、`tests/controls.spec.tsx` | 客户端插件的注册与轮询、会话导航与路由记忆、本地控件，以及面板的导入（无循环） |
+| `tests/panel-overview.spec.tsx`、`panel-source.spec.tsx`、`panel-trigger.spec.tsx`、`panel-eval.spec.tsx`、`panel-execution.spec.tsx` | 面板的每个页面，对按路由应答的假管理 API |
+| `tests/panel-settings.spec.tsx`、`panel-prompts.spec.tsx`、`panel-deployment.spec.tsx`、`panel-panel.spec.tsx` | 设置分组、草稿与历史、提示词、部署页面，以及面板的搜索、术语表与路由记忆 |
+| `tests/draft.spec.ts`、`tests/prompt-config.spec.ts`、`tests/markdown.spec.ts`、`tests/marks.spec.ts` | 草稿状态、合并与保存栏文本；按节划分的提示词配置与逐行差异；Markdown 子集及其链接；视图分类的每个状态的标记 |
+| `tests/locales.spec.ts`、`tests/styles.spec.ts` | 两种语言的文案、样式表 |
+| `tests/class-docs.spec.ts` | `src` 中每个类前都有 JSDoc 块 |
+| `tests/docs.spec.ts` | 编号文档只链接更早的文档、每个本地链接可解析、没有文档含合并冲突标记，以及本文档的表格列出每个模块与每个测试 |
 
-`tests/fixtures/` holds what several tests share: `host.ts`, a simulated DeepSeek Harness host; `panel-server.ts` and `panel.tsx`, the fake management API and the panel around a page; `deployment.ts`, a resolved deployment; `git.ts`, the environment of every git the tests start, which names no repository; and `async.ts`.
+`tests/fixtures/` 保存多个测试共享的内容：`host.ts`，一个模拟的 DeepSeek Harness 宿主；`panel-server.ts` 与 `panel.tsx`，假管理 API 与页面周围的面板；`deployment.ts`，一个已解析的部署；`git.ts`，测试启动的每个 git 的环境，不指名任何仓库；以及 `async.ts`。
 
-## Persistence
+## 持久化
 
-One SQLite file, `<stateDir>/orchestrator.sqlite`, which only the Store opens.
+一个 SQLite 文件，`<stateDir>/orchestrator.sqlite`，只有存储会打开它。
 
-| Table | Holds | Written by |
+| 表 | 保存内容 | 写入者 |
 | --- | --- | --- |
-| `trigger` | Each Trigger, its time `at` in the one form `Date#toISOString` gives, set when the Engine receives it, so times compare as text | Engine |
-| `disposition` | Where each Trigger went: `filtered` with the Source's reason code, its Eval and Decision, the Tickets it reached, by fan-out or attachment, whether it was requeued, the Tickets that handed it back with their reasons, and those whose Executor acknowledged or answered it | Engine |
-| `trigger_thread` | Which Threads each Trigger is on, with its time and whether a person wrote it, so a Thread's Triggers are read without scanning every Trigger, in order of time and then id: a page of a Thread's timeline continues from a `<at>|<id>` cursor, and Triggers that share a time are not skipped | Store, with each Trigger |
-| `thread` | Threads: Subscriptions, the Tickets that follow it for context, queued Triggers, the Eval in progress, the count of its expiries and `meta`; the generated columns `active`, set while Triggers are queued or an Eval runs, and `subscribed`, its Source while a Ticket subscribes to it | Engine; Sources write `meta` |
-| `ticket` | Tickets with their Mandate, origin, execution, Assignments, Channels, Inputs and the Threads they follow; the generated columns `open`, set while it has not ended, and `active`, set while Inputs are undelivered or the latest Assignment is pending or running | Engine |
-| `decision` | Decisions, by Thread | Engine |
-| `effect` | The effect queue: per kind and key, the payload, its order, failed attempts with the last error, and when it is due | Effects; the schema 11 migration queues what earlier versions kept for the main Session |
-| `outbox` | The receipt of each message for a Channel, by id, with the Ticket it is for and its `status`, `pending`, `sent` or `dropped`, kept so an id is never queued twice; for a dropped message, when and why, as the generated column `dropped`, its time, and a reason code. A message that waits has a `reply` effect, which holds its attempts | The Outbox |
-| `kv` | Every other record, by key | The part that names it |
+| `trigger` | 每个触发，其时间 `at` 采用 `Date#toISOString` 给出的唯一形式，在引擎接收它时设置，因此时间可按文本比较 | Engine |
+| `disposition` | 每个触发去了哪里：`filtered` 及来源的原因代码、其评估与决策、它按扇出或附加到达的工单、是否被重新排队、交回它的工单及其原因，以及其执行器确认或答复过它的工单 | Engine |
+| `trigger_thread` | 每个触发位于哪些线程，及其时间与人是否写下它，因此读取线程的触发无需扫描每个触发，按时间再按 id 排序：线程时间线的一页从 `<at>|<id>` 游标继续，时间相同的触发不会被跳过 | Store，随每个触发 |
+| `thread` | 线程：订阅、为上下文跟随它的工单、排队触发、进行中的评估、其过期计数与 `meta`；生成列 `active`（触发排队或评估运行时设置）与 `subscribed`（工单订阅它时为其来源） | Engine；来源写 `meta` |
+| `ticket` | 带授权、origin、execution、任务分派、渠道、输入及其跟随线程的工单；生成列 `open`（未结束时设置）与 `active`（输入未投递或最新任务分派待处理/运行时设置） | Engine |
+| `decision` | 决策，按线程 | Engine |
+| `effect` | 副作用队列：按 kind 与 key 保存负载、顺序、失败尝试及最后错误、到期时间 | Effects；schema 11 迁移排队较早版本为主会话保留的内容 |
+| `outbox` | 每条渠道消息的回执，按 id，带有其所属工单与 `status`（`pending`、`sent` 或 `dropped`），保留以使 id 不会被排队两次；对于被丢弃的消息，记录何时与为何，作为生成列 `dropped`、其时间与原因代码。等待中的消息有一个 `reply` 副作用，持有其尝试次数 | 发件箱 |
+| `kv` | 其他每条记录，按键 | 命名它的部件 |
 
-A generated column is computed from its row's JSON and is empty outside its set, and each has an index over its set, so a pass reads only active work. A database that predates a column gets it when the Store opens it.
+生成列由其行的 JSON 计算，未设置时为空，每个都对其集合有索引，因此轮次只读取活动工作。早于某列的数据库会在存储打开它时获得该列。
 
-`KV` (`src/kv.ts`) defines each key-value record's owner, key and type. All readers and writers use these entries; only migration code names older keys.
+`KV`（`src/kv.ts`）定义每个键值记录的所有者、键与类型。所有读取者与写入者都使用这些条目；只有迁移代码指名更旧的键。
 
-| Records | Keys or contents |
+| 记录 | 键或内容 |
 | --- | --- |
-| Schema | Current schema version |
-| Settings versions | `settings-revision`, `settings-version:<n>`, `settings-block-revision:<block>`; snapshots include origin, Policy version and affected Tickets |
-| Prompt versions | `prompt-revision`, `prompt-version:<n>` |
-| Main Session | `master-id` |
-| Session prompt history | `session-prompts:<session id>` |
-| Source state | Read positions such as `github-cursor:<number>`, PR CI fingerprints and seen Feishu-topic messages; keys begin with the kind or `thread-` plus a Thread key |
-| Display names | `source-labels:<source id>` |
+| 模式 | 当前 schema 版本 |
+| 设置版本 | `settings-revision`、`settings-version:<n>`、`settings-block-revision:<block>`；快照包含来源、策略版本与受影响的工单 |
+| 提示词版本 | `prompt-revision`、`prompt-version:<n>` |
+| 主会话 | `master-id` |
+| 会话提示词历史 | `session-prompts:<session id>` |
+| 来源状态 | 读取位置，例如 `github-cursor:<number>`、PR CI 指纹与已见的飞书话题消息；键以 kind 或 `thread-` 加线程键开头 |
+| 显示名称 | `source-labels:<source id>` |
 
-Dismissal is stored on its Decision. Input text is rendered from the Ticket when read, so neither needs a separate key-value record.
+消除记录存储在其决策上。输入文本在读取时从工单渲染，因此两者都不需要单独的键值记录。
 
-Read caches use bounded in-memory `TextCache` instances and are lost on restart. A Session paging through an original Source record or prompt preview must reread offset 0 after a restart. Feishu links resolved after intake are cached the same way; link-based search finds them only after that link has been read during the current process lifetime.
+读取缓存使用有界的内存 `TextCache` 实例，重启后丢失。分页读取来源原始记录或提示词预览的会话，必须在重启后重新读取偏移 0。接收后解析的飞书链接以同样方式缓存；基于链接的搜索只有在当前进程生命周期内读取过该链接后才能找到它们。
 
-Nothing deletes old records yet, so these grow without bound: the `trigger`, `disposition` and `decision` rows; ended Tickets and their Threads; the outbox's receipts; and in `kv`, every saved settings revision and prompt version, the prompt revisions each Session worked under, and the Sources' records per Thread and per Issue or pull request.
+目前没有任何东西删除旧记录，因此这些会无限增长：`trigger`、`disposition` 与 `decision` 行；已结束的工单及其线程；发件箱的回执；以及 `kv` 中每个已保存的设置修订与提示词版本、每个会话工作过的提示词修订，以及来源按线程与按 Issue 或拉取请求的记录。
 
-`SCHEMA_VERSION` only increases. A database of a newer version refuses to start; `src/app/migration.ts` upgrades a database of the pre-release schema 10 once, at start, and refuses an older one.
+`SCHEMA_VERSION` 只增不减。较新版本的数据库会拒绝启动；`src/app/migration.ts` 在启动时一次性升级预发布 schema 10 的数据库，并拒绝更旧的数据库。
 
-## Model-facing interfaces
+## 面向模型的接口
 
-### Main Session tools
+### 主会话工具
 
-The main Session has 14 application tools:
+主会话有 14 个应用工具：
 
-| Purpose | Tools |
+| 用途 | 工具 |
 | --- | --- |
-| Read and route | `orchestrator_read`, `orchestrator_route` |
-| Manage Tickets | `orchestrator_ticket_retry`, `orchestrator_ticket_request_status`, `orchestrator_ticket_note` |
-| Re-evaluate | `orchestrator_trigger_requeue` |
-| Assess proactive work | `orchestrator_eval`, `orchestrator_eval_read`, `orchestrator_eval_decide` |
-| Communicate and unsubscribe | `orchestrator_reply`, `orchestrator_thread_unsubscribe` |
-| Configure | `orchestrator_settings_save`, `orchestrator_policy_sync`, `orchestrator_prompts_save` |
+| 读取与路由 | `orchestrator_read`、`orchestrator_route` |
+| 管理工单 | `orchestrator_ticket_retry`、`orchestrator_ticket_request_status`、`orchestrator_ticket_note` |
+| 重新评估 | `orchestrator_trigger_requeue` |
+| 评估主动工作 | `orchestrator_eval`、`orchestrator_eval_read`、`orchestrator_eval_decide` |
+| 沟通与取消订阅 | `orchestrator_reply`、`orchestrator_thread_unsubscribe` |
+| 配置 | `orchestrator_settings_save`、`orchestrator_policy_sync`、`orchestrator_prompts_save` |
 
-`orchestrator_route` accepts 1–20 decisions in order. Each accept, attach, stop or ignore runs as a separate Engine command. It also permits ignoring an inferred candidate directly from its card. `orchestrator_ticket_note` sends a fact as context, not authority.
+`orchestrator_route` 按顺序接受 1–20 个决策。每个接受、附加、停止或忽略都作为单独的引擎命令运行。它还允许直接从卡片忽略推断的候选。`orchestrator_ticket_note` 发送事实作为上下文，而非授权。
 
-Settings saves select `policy`, `eval`, `executor`, `pause`, or `source`; the last also names its Source id. A prompt save with `preview: true` composes text without saving.
+设置保存选择 `policy`、`eval`、`executor`、`pause` 或 `source`；最后一个还要指名其来源 id。带 `preview: true` 的提示词保存只组合文本而不保存。
 
-The main Session also has DeepSeek Harness's `skill`, `bash`, `read`, `read_image`, `job_output`, `job_list` and `job_kill`. Avoiding code reads is a prompt rule, not a tool restriction.
+主会话还有 DeepSeek Harness 的 `skill`、`bash`、`read`、`read_image`、`job_output`、`job_list` 与 `job_kill`。避免读取代码是一条提示词规则，而不是工具限制。
 
-### Presets and wait limits
+### 预设与等待限制
 
-New main Sessions use `dsh-superagent-router` (`ROUTER_PRESET`). Shell commands and job waits return after 5 seconds. If the Web UI selects another preset before the first turn, `Sessions` restores this preset, or `WORKER_PRESET` for a worker.
+新的主会话使用 `dsh-superagent-router`（`ROUTER_PRESET`）。shell 命令与作业等待在 5 秒后返回。若 Web UI 在首个回合前选择了其他预设，`Sessions` 会恢复此预设，或为 worker 恢复 `WORKER_PRESET`。
 
-The `noWait` guard in `src/app/sessions.ts` refuses main-Session shell commands that invoke `sleep` at a command position, shell `timeoutMs` above 30 seconds, and `job_output` waits above 5 seconds. Reports and job results arrive automatically, so waiting only delays incoming candidates.
+`src/app/sessions.ts` 中的 `noWait` 守卫拒绝在命令位置调用 `sleep` 的主会话 shell 命令、超过 30 秒的 shell `timeoutMs`，以及超过 5 秒的 `job_output` 等待。汇报与作业结果会自动到达，因此等待只会延迟传入的候选。
 
-Existing main Sessions on `standard` also need explicit timeouts for foreground commands and job waits; otherwise that preset's defaults hold the step for 60 and 30 seconds respectively. The host determines the current preset through `presetForSession`, falls back to the Session projection or header, and assumes `standard` if it cannot read the value.
+`standard` 上现有的主会话也需要为前台命令与作业等待显式超时；否则该预设的默认值会分别让步骤保持 60 秒与 30 秒。宿主通过 `presetForSession` 确定当前预设，回退到会话投影或页头，若无法读取该值则假定为 `standard`。
 
-### Executor tools
+### 执行器工具
 
-Each Executor has six application tools:
+每个执行器有六个应用工具：
 
-| Tool | Purpose |
+| 工具 | 用途 |
 | --- | --- |
-| `orchestrator_read` | Read resources available to its own Ticket |
-| `orchestrator_ack` | Acknowledge a request |
-| `orchestrator_report` | Report progress or an outcome, binding a pull request under the pull-request rules |
-| `orchestrator_thread_unrelated` | Drop an unrelated attached Thread, hand back its owned follow-ups and tell the main Session why |
-| `orchestrator_thread_follow` | Subscribe to a related Thread for context and tell the main Session |
-| `orchestrator_trigger_handback` | Hand back a message once, with a reason carried by its candidate |
+| `orchestrator_read` | 读取其自身工单可用的资源 |
+| `orchestrator_ack` | 确认一个请求 |
+| `orchestrator_report` | 汇报进度或结果，按拉取请求规则绑定拉取请求 |
+| `orchestrator_thread_unrelated` | 放弃不相关的附加线程，交回其拥有的跟进，并告诉主会话原因 |
+| `orchestrator_thread_follow` | 为上下文订阅相关线程并告诉主会话 |
+| `orchestrator_trigger_handback` | 交回一条消息一次，原因由其候选携带 |
 
-A hand-back returns `queued: false` if another Ticket still owns the message, or this Ticket never owned it. For example, a bot message went to Eval independently.
+如果另一个工单仍拥有该消息，或本工单从未拥有它，交回会返回 `queued: false`。例如，机器人消息独立地进入评估。
 
-The worker preset is defined in `cordis.patch.yml` and selected through `WORKER_PRESET`. `WORK_TOOLS` in `src/app/sessions.ts` retains available file, search, shell, job, web, skill, todo and subagent tools. Workers do not receive tools for asking or presenting to a person, changing the profile, scheduling work outside worker slots, starting or messaging other Sessions, or editing external documents. Tool calls are refused after the Ticket ends.
+worker 预设在 `cordis.patch.yml` 中定义，并通过 `WORKER_PRESET` 选择。`src/app/sessions.ts` 中的 `WORK_TOOLS` 保留可用的文件、搜索、shell、作业、web、技能、todo 与子智能体工具。worker 不会收到用于向人询问或展示、更改配置、在 worker 槽位之外调度工作、启动或向其他会话发消息，或编辑外部文档的工具。工单结束后，工具调用会被拒绝。
 
-### Result shapes and assessment context
+### 结果形状与评估上下文
 
-Routing results use `{decision?, reason, ticket?}`. `orchestrator_route` returns `{results}`, preserving item order and adding each item's `trigger_id` and `kind`. Invalid or refused items return `refused` and a reason without stopping the batch.
+路由结果使用 `{decision?, reason, ticket?}`。`orchestrator_route` 返回 `{results}`，保持条目顺序，并为每个条目添加其 `trigger_id` 与 `kind`。无效或被拒绝的条目返回 `refused` 与原因，而不停止批次。
 
-Settings and prompt saves return the saved configuration. Policy sync returns the Source, allowed-list size, and `added` and `removed` names.
+设置与提示词保存返回已保存的配置。策略同步返回来源、允许列表大小，以及 `added` 与 `removed` 名称。
 
-`orchestrator_eval` returns context rather than instructions. Assessment instructions live in `runtime/admission` (`prompts/admission.md`), and rules in `runtime/policy`. Its context includes:
+`orchestrator_eval` 返回上下文而不是指令。评估指令位于 `runtime/admission`（`prompts/admission.md`），规则位于 `runtime/policy`。其上下文包括：
 
-- The Trigger text, up to 4,000 characters, with image ids and other Triggers in the batch.
-- Up to eight `related_tickets`, open ones first, and `tickets_total`.
-- The Eval's `policy_version`.
-- A Thread window: the first five messages and five on either side of the Trigger. Messages use `{id, from, at, text}`, normally limited to 400 characters, or 1,200 for the two on either side. Truncated messages include `chars`; image references use `images`.
-- Other loaded messages as `{id, from, preview}` stubs of 50 characters. `orchestrator_eval_read` expands them by id.
+- 触发文本，最多 4,000 个字符，带有图片 id 与批次中的其他触发。
+- 最多八个 `related_tickets`，打开的优先，以及 `tickets_total`。
+- 该评估的 `policy_version`。
+- 一个线程窗口：前五条消息，以及触发两侧各五条。消息使用 `{id, from, at, text}`，通常限制为 400 个字符，两侧各两条则为 1,200 个字符。被截断的消息包含 `chars`；图片引用使用 `images`。
+- 其他已加载消息作为 50 个字符的 `{id, from, preview}` 存根。`orchestrator_eval_read` 按 id 展开它们。
 
-Ticket cards use the closed `TICKET_STATES` set from `src/app/cards.ts`: an open stage such as `person/review` or `working/queued`, or an ended outcome. Acknowledgements are limited to 100 words whether submitted through accept, assessment or `orchestrator_ack`.
+工单卡片使用 `src/app/cards.ts` 的封闭 `TICKET_STATES` 集合：一个打开阶段，例如 `person/review` 或 `working/queued`，或一个结束结果。确认无论通过接受、评估还是 `orchestrator_ack` 提交，都限制为 100 词。
 
-### Read resources
+### 读取资源
 
-`RESOURCES` in `src/app/resources.ts` defines the resources and generates the tool's `resource` description.
+`src/app/resources.ts` 中的 `RESOURCES` 定义资源并生成工具的 `resource` 描述。
 
-| Resources | Content |
+| 资源 | 内容 |
 | --- | --- |
-| `tickets`, `triggers`, `threads`, `decisions` | Paged lists as `{items, next_offset}`; activity lists put newest first |
-| `decision/<id>` | One Decision |
-| `thread/<key>` | Label, Tickets, recent Decisions and a page of Triggers |
-| `trigger/<id>` | Message text, replied-to Trigger and neighboring messages, excluding CI runs |
-| `ticket/<id>` | Related ids, source-batch Triggers, Threads, and first pages of Assignments and Inputs |
-| Ticket subresources | `/assignments`, `/inputs`, `/assignment`, `/result`, `/report/<assignment id>`, `/transcript`, `/message/<n>`, `/input/<id>` |
-| `settings`, `settings/<block>` | Revisions and summaries, or a complete block ready to save |
-| `prompts`, `prompts/<revision>`, `prompts/current`, `prompts/defaults`, `prompt-preview/<id>` | Prompt configurations and composed text |
-| `models`, `models/<provider>` | Available models |
-| `feishu/<trigger id>/…`, `github/…` | Original Source records, described in the Source skills |
+| `tickets`、`triggers`、`threads`、`decisions` | 分页列表，形如 `{items, next_offset}`；活动列表最新优先 |
+| `decision/<id>` | 一个决策 |
+| `thread/<key>` | 标签、工单、最近决策与一页触发 |
+| `trigger/<id>` | 消息文本、被回复的触发与相邻消息，排除 CI 运行 |
+| `ticket/<id>` | 相关 id、来源批次触发、线程，以及任务分派与输入的前几页 |
+| 工单子资源 | `/assignments`、`/inputs`、`/assignment`、`/result`、`/report/<assignment id>`、`/transcript`、`/message/<n>`、`/input/<id>` |
+| `settings`、`settings/<block>` | 修订与摘要，或一个可直接保存的完整块 |
+| `prompts`、`prompts/<revision>`、`prompts/current`、`prompts/defaults`、`prompt-preview/<id>` | 提示词配置与组合文本 |
+| `models`、`models/<provider>` | 可用模型 |
+| `feishu/<trigger id>/…`、`github/…` | 来源原始记录，在来源技能中描述 |
 
-Ticket Threads are marked `context` for context-only follows and `bound` for Source bindings. Assignment pages are newest first and include report previews. Continue lists with `next_offset`. `/input/<id>` accepts an Input's name or id. `settings` includes small blocks in full and summarizes Policy and Source blocks.
+工单线程标记为 `context`（仅上下文跟随）与 `bound`（来源绑定）。任务分派页面最新优先，并包含汇报预览。列表用 `next_offset` 继续。`/input/<id>` 接受输入的名称或 id。`settings` 完整包含小块，并概括策略与来源块。
 
-Source resources include message neighborhoods, `github/pulls/<n>/thread/<comment id>` and `github/commits/<sha>/checks`.
+来源资源包括消息邻域、`github/pulls/<n>/thread/<comment id>` 与 `github/commits/<sha>/checks`。
 
-An original's messages read in one compact shape, `{id, from, at, text, reply_to?, path?, line?, url?}`, not as GitHub or Feishu records them.
+原始记录的消息以单一紧凑形态读取，`{id, from, at, text, reply_to?, path?, line?, url?}`，而不是 GitHub 或飞书记录它们的方式。
 
-An Executor Session reads only its own Ticket, its Threads, the Triggers that reached it or that its request held, the prompt versions it worked under and the originals, and its pages leave out the ids of what it cannot read, Decisions and other Tickets.
+执行器会话只读取自己的工单、其线程、到达它或由其请求持有的触发、它工作过的提示词版本与原始记录，其页面省略它无法读取的内容的 id、决策与其他工单。
 
-Every id a page shows reads through one of these, so a Session walks from one object to the next; hashes nothing reads by, such as an Eval's id or a Policy version, stay off the pages.
+页面显示的每个 id 都通过这些之一读取，因此会话从一个对象走到下一个；不用于读取任何内容的哈希，例如评估 id 或策略版本，不会出现在页面上。
 
-A text page has 4,000 UTF-16 code units by default and 8,000 at most, a list 20 items by default and 50 at most.
+文本页默认 4,000 个 UTF-16 代码单元，最多 8,000；列表默认 20 项，最多 50。
 
-The names `event/`, `task/` and `observation/` of earlier versions still resolve.
+较早版本的名称 `event/`、`task/` 与 `observation/` 仍可解析。
 
-### Messages delivered to Sessions
+### 投递给会话的消息
 
-These messages are steered into the main Session's turn:
+这些消息会被引入主会话的回合：
 
-| Message | Content |
+| 消息 | 内容 |
 | --- | --- |
-| Candidate | Batch Trigger cards, Thread, `related_tickets`, `tickets_total`, `delivered_to`, referenced Tickets from Issue/PR links, `handed_back` reasons and the next action |
-| `follow_up` | One message as its Executor sees it, `replies_to`, receiving Tickets, and the reminder that Executors decide it while the main Session may only stop work |
-| `worker_report` | Ticket card, originating Trigger, state and summary up to 600 characters; `chars` and a read pointer when truncated |
-| `worker_attention` | Ticket card carrying the question |
+| 候选 | 批次触发卡片、线程、`related_tickets`、`tickets_total`、`delivered_to`、来自 Issue/PR 链接的引用工单、`handed_back` 原因与下一步操作 |
+| `follow_up` | 一条消息按执行器所见的样子、`replies_to`、接收工单，以及提醒：由执行器决策它，而主会话只能停止工作 |
+| `worker_report` | 工单卡片、来源触发、状态与最多 600 字符的摘要；截断时有 `chars` 与读取指针 |
+| `worker_attention` | 携带问题的工单卡片 |
 
-Other notices are injected without waking the main Session: `ticket_ended`, `settings_saved`, prompt saves, Trigger requeues, dropped Subscriptions and context follows. A settings notice names the block, changed paths and `read: settings/<block>`. The main Session receives no redundant notice for a save, requeue, unsubscribe or attach it performed itself.
+其他通知在不唤醒主会话的情况下注入：`ticket_ended`、`settings_saved`、提示词保存、触发重新排队、被放弃的订阅与上下文跟随。设置通知指名块、变更路径与 `read: settings/<block>`。对于主会话自己执行的保存、重新排队、取消订阅或附加，它不会收到冗余通知。
 
-Workers receive assignments and Inputs inline. The first message includes the title, up to 1,500 characters of assignment text and the source Trigger card. Inputs carry a Trigger card with up to 600 characters and `replies_to`, or plain Input text. Read pointers appear only for truncated content.
+worker 内联接收任务分派与输入。第一条消息包括标题、最多 1,500 字符的任务分派文本与来源触发卡片。输入携带最多 600 字符的触发卡片与 `replies_to`，或纯输入文本。读取指针只在内容被截断时出现。
 
-### Panel-only actions
+### 仅面板操作
 
-There is no tool for dismissing an unavailable Decision, rerunning setup, refreshing Source display names, or sending an Executor-owned human follow-up to Eval. The last action is deliberately refused by `orchestrator_trigger_requeue`. Other panel actions have equivalent tools.
+没有用于消除不可用决策、重新运行 setup、刷新来源显示名称，或把执行器拥有的人工跟进发送到评估的工具。最后一个操作被 `orchestrator_trigger_requeue` 有意拒绝。其他面板操作都有等价工具。
 
-Most built-in instructions live in `prompts/*.md`, with one sentence per line joined by `promptFile`. Source skills live in `skills/dsh-superagent-*/SKILL.md`. Tool descriptions and fixed notices such as restart recovery notes remain in code. Assessment instructions live only in `prompts/admission.md`.
+大多数内置指令位于 `prompts/*.md`，每行一句，由 `promptFile` 连接。来源技能位于 `skills/dsh-superagent-*/SKILL.md`。工具描述与固定通知（例如重启恢复说明）仍留在代码中。评估指令只位于 `prompts/admission.md`。
 
-`tests/model-surface.spec.ts` checks these surfaces for drift. [004 Prompts](004-prompts.md) explains the team's editable parts.
+`tests/model-surface.spec.ts` 检查这些表面是否漂移。[004 提示词](004-prompts.md) 说明团队可编辑的部分。
 
-## Configuration reload
+## 配置重载
 
-Every plugin configuration key except `stateDir` is volatile. The panel's Deployment settings and DeepSeek Harness's Plugin Manager edit them through DeepSeek Harness's configuration form; the host writes `cordis.patch.yml` and updates the values in place, and dsh-superagent reads each limit when it uses it, so a change applies without a restart.
+除 `stateDir` 外，每个插件配置键都可以在运行时变更。面板的部署设置与 DeepSeek Harness 的插件管理器通过 DeepSeek Harness 的配置表单编辑它们；宿主写入 `cordis.patch.yml` 并原地更新值，dsh-superagent 在使用每个限制时读取它，因此变更无需重启即可生效。
 
-A settings save that changes a Source field setup reads, such as an account's CLI, and any save while setup waits, restarts dsh-superagent. DeepSeek Harness's settings service does not serve the entry during that restart, so after its own restart dsh-superagent asks it to read the entry again, and an open form becomes editable again.
+一次更改 setup 读取的来源字段（例如账号的 CLI）的设置保存，以及 setup 等待期间的任何保存，都会重启 dsh-superagent。DeepSeek Harness 的设置服务在该重启期间不提供该条目，因此在自身重启后，dsh-superagent 请求它再次读取该条目，打开的表单重新可编辑。
 
-## Reviewing a change against real data
+## 对照真实数据审查变更
 
-Point `DSH_HOME` at a temporary directory and create a new profile there. Copy the database from a backup, disable every Source, pause processing and remove the main Session id. Give the GitHub and Feishu CLIs read-only stand-ins.
+把 `DSH_HOME` 指向临时目录，并在那里创建新配置。从备份复制数据库，禁用每个来源、暂停处理并移除主会话 id。为 GitHub 与飞书 CLI 提供只读替身。
 
-## Open questions
+## 待解问题
 
-- Trust: which Trigger fields are trusted, such as the Source's actor and Thread membership, and which are not, such as the body and quotes.
-- Deployment isolation: the agent's profile on its own pinned DeepSeek Harness installation, so upgrading DeepSeek Harness elsewhere does not break it.
+- 信任：哪些触发字段可信，例如来源的参与者和线程成员关系，哪些不可信，例如正文与引用。
+- 部署隔离：智能体的配置位于其自己固定版本的 DeepSeek Harness 安装上，因此其他地方升级 DeepSeek Harness 不会破坏它。

@@ -21,7 +21,8 @@ const files = (directory: string): string[] => readdirSync(join(ROOT, directory)
   .filter(entry => entry.isFile()).map(entry => posix(relative(ROOT, join(entry.parentPath, entry.name))))
 /**
  * Extract repo-relative file paths from the first column of a table under `## <heading>` in `docs/007-architecture.md`.
- * Bare filenames inherit the directory of the preceding path in the same cell.
+ * Bare filenames inherit the directory of the preceding path in the same cell. The headings are Chinese, so the
+ * constants passed in are the literal section titles (`模块`, `测试`).
  */
 function listed(heading: string): string[] {
   const lines = read('docs/007-architecture.md').split('\n')
@@ -61,12 +62,12 @@ describe('documentation', () => {
     expect(documents.filter(path => /^(<{7}|>{7}) /m.test(read(path)))).toEqual([])
   })
   it('lists every module of src in the module table of 007 Architecture, and only files that exist', () => {
-    const modules = listed('Modules')
+    const modules = listed('模块')
     expect(files('src').filter(path => !modules.includes(path))).toEqual([])
     expect(modules.filter(path => !existsSync(join(ROOT, path)))).toEqual([])
   })
   it('lists every test in the test table of 007 Architecture, and only files that exist', () => {
-    const tests = listed('Tests')
+    const tests = listed('测试')
     expect(files('tests').filter(path => /\.spec\.tsx?$/.test(path) && !tests.includes(path))).toEqual([])
     expect(tests.filter(path => !existsSync(join(ROOT, path)))).toEqual([])
   })

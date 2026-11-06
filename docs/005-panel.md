@@ -1,58 +1,58 @@
-# 005 Panel
+# 005 面板
 
-Open **Superagent** in the DeepSeek Harness Web sidebar to supervise the agent. The panel prioritizes work that needs a person, then system health and history. This document builds on [000 Philosophy](000-philosophy.md) through [004 Prompts](004-prompts.md).
+在 DeepSeek Harness Web 侧边栏中打开 **Superagent** 即可监管代理。面板优先呈现需要人处理的工作，其次是系统健康与历史。本文档建立在 [000 理念](000-philosophy.md) 到 [004 提示词](004-prompts.md) 之上。
 
-## Three questions
+## 三个问题
 
-Opening the panel answers three questions, in this order:
+打开面板会按以下顺序回答三个问题：
 
-1. Does anything need me now?
-2. Is the system healthy and doing the right things?
-3. What is the history of one piece of work, from Trigger through Eval to Ticket?
+1. 现在有需要我处理的事吗？
+2. 系统是否健康、是否在做正确的事？
+3. 某一件工作从触发器经评估到工单的历史是怎样的？
 
-## Tabs
+## 标签页
 
-The tabs follow the workflow: **Overview**, **Source**, **Trigger**, **Eval**, **Execution**, and **Settings**. Until repository and account setup succeeds, Overview shows what is missing and links to the relevant setting.
+标签页按工作流排列：**概览**（Overview）、**来源**（Source）、**触发器**（Trigger）、**评估**（Eval）、**执行**（Execution）和**设置**（Settings）。在仓库与账号安装成功之前，概览页会显示缺什么，并链接到相应的设置项。
 
-| Tab | Shows |
+| 标签页 | 显示内容 |
 | --- | --- |
-| Overview | Tickets needing action, system problems, activity counts for the last 24 hours, and Executor load. Each block links to its detailed page |
-| Source | Source state, setup problems and non-zero counts. Filtered Triggers and dropped messages cover the same 24-hour window as Overview |
-| Trigger | Threads filtered by Subscribed, Evaluating, New Triggers in 24 h, or All Threads. Each Thread shows its Triggers newest first, Decisions and Subscriptions |
-| Eval | Decisions with their reason and matched rules |
-| Execution | Executor state, Pause processing, and Tickets filtered by Open, Pending, Working, Waiting for a Trigger or Ended. Ticket details show actions, authorization, waiting Inputs, Subscriptions and Assignments |
-| Settings | Sources, Eval, Execution, Prompts and Deployment. Each group includes its save history |
+| 概览 | 需要处理的工单、系统问题、过去 24 小时的活动计数，以及执行器负载。每个区块都链接到它的详情页 |
+| 来源 | 来源状态、安装问题和非零计数。被过滤的触发器与被丢弃的消息，与概览页使用同一个 24 小时时间窗 |
+| 触发器 | 按已订阅、评估中、24 小时内新触发器或全部会话线程过滤的会话线程。每个会话线程按最新优先显示其触发器、决策和订阅 |
+| 评估 | 决策及其原因和命中的规则 |
+| 执行 | 执行器状态、暂停处理，以及按打开、待处理、处理中、等待触发器或已结束过滤的工单。工单详情显示操作、授权、等待中的输入、订阅和分派 |
+| 设置 | 来源、评估、执行、提示词和部署。每个分组都包含它的保存历史 |
 
-### Reading individual records
+### 阅读单条记录
 
-A dropped message links to its Ticket, or to its Thread when it has no Ticket. The Source page explains whether its conversation disappeared or the Source stopped listening to it.
+被丢弃的消息会链接到它的工单；没有工单时则链接到它的会话线程。来源页面会说明：是它的会话消失了，还是来源已停止监听它。
 
-A human follow-up still owned by an Executor is marked **Delivered to Ticket**, without an Eval. The Thread also shows hand-back reasons and context-only Subscriptions. **Evaluate again** can send that follow-up to Eval, or retry a Trigger with no effective judgement: one filtered by its Source, an unavailable Eval, or a delivered message with neither a non-stop Decision nor an Executor acknowledgement.
+仍由某个执行器持有的人工追加消息会标记为 **已投递到工单**（Delivered to Ticket），并且不经过评估。会话线程还会显示交回原因和仅作上下文的订阅。**重新评估**（Evaluate again）可以把这条追加消息送去评估，也可以重试一个没有获得有效判断的触发器：被其来源过滤掉的、评估不可用的，或者已投递但既没有非停止的决策、也没有执行器确认的消息。
 
-Ticket details show the originating Trigger, Decision and reason, scope and Policy version. Assignments and secondary details are folded below the immediate actions. **Retry** is available for failed Input delivery or a Ticket waiting for a person after a blocked or failed Report. Ended Tickets show outcomes such as **Pull request merged** or **Stopped by a person**.
+工单详情显示发起它的触发器、决策及原因、范围和策略版本。分派信息与次要细节折叠在即时操作之下。**重试**（Retry）适用于输入投递失败的情况，或者报告被阻塞或失败后正在等待某人的工单。已结束的工单会显示结果，例如 **Pull Request 已合并**（Pull request merged）或 **已由人工停止**（Stopped by a person）。
 
-## Settings groups
+## 设置分组
 
-- **Sources:** one card per Source with its switch, fields and verified account facts. GitHub also offers receive-all switches for new Issues, pull requests, comments and default-branch CI. Polling and read limits are under Advanced.
-- **Eval:** the Policy version and rules, followed by **On each Source** and the Eval settings. Each Source tab contains its allowed list, membership sync, admission table and bot list. Sync runs at startup and on **Sync now**. The admission table distinguishes receiving scope, sender membership and whether the message addresses the agent. Eval settings select the accept mode, timeout and assessment model.
-- **Execution:** worker model, concurrency, directory root, prepare command and blocked commands. Clicking an available variable inserts it into the prepare command.
-- **Prompts:** **Edit** changes team sections, built-in parts and skills. **Full prompt** shows the assembled text and compares it with saved text or defaults. **History** lists versions. Edited built-in parts are marked changed and can be reset; templates list their required placeholders.
+- **来源：**每个来源一张卡片，包含它的开关、字段和已验证的账号信息。GitHub 还提供用于新 Issue、Pull Request、评论和默认分支 CI 的「全部接收」开关。轮询与读取上限位于「高级」中。
+- **评估：**策略版本与规则，其后是 **每个来源**（On each Source）和评估设置。每个来源标签页包含它的允许名单、成员同步、准入表和机器人名单。同步在启动时运行，也在点击 **立即同步**（Sync now）时运行。准入表区分接收范围、发送者成员身份，以及消息是否指向代理。评估设置用于选择接受模式、超时和评估模型。
+- **执行：**worker 模型、并发数、目录根、准备命令和被阻止的命令。点击一个可用变量会把它插入到准备命令中。
+- **提示词：****编辑**（Edit）可以修改团队段落、内置部分和技能。**完整提示词**（Full prompt）显示组装后的文本，并与已保存的文本或默认值做比较。**历史**（History）列出各个版本。被编辑过的内置部分会标记为已改动，并且可以重置；模板会列出它所需的占位符。
 
-  An upgrade that changes an overridden default marks it **Default updated** (默认内容已更新). The panel compares the old and new defaults above the team's text. If the old default was not recorded, it compares the team's text with the new default instead. Choose **Keep my text** or **Use the new default**. Overrides for removed parts are listed below the tab bar and dropped on the next save.
-- **Deployment:** startup problems with **Check again**, the state directory and machine limits. Saved limits apply without restart. The DeepSeek Harness Plugin Manager exposes the same page.
+  当一次升级修改了某个被覆盖的默认内容时，会将它标记为 **默认内容已更新**（Default updated）。面板会在团队文本上方比较新旧默认内容。如果没有记录旧默认内容，则改为把团队文本与新默认内容做比较。请选择 **保留我的文本**（Keep my text）或 **使用新默认内容**（Use the new default）。已被移除部分的自定义覆盖会列在标签栏下方，并在下次保存时被丢弃。
+- **部署：**启动问题（附 **重新检查**（Check again））、状态目录和机器限制。已保存的限制无需重启即可生效。DeepSeek Harness 插件管理器会展示同一个页面。
 
-## Search
+## 搜索
 
-The header search finds Triggers by text, id, Feishu message id or a stored link, such as a GitHub comment URL. A Feishu link missing from the original message becomes searchable only after the host reads it during the current process lifetime.
+顶部搜索可以按文本、id、飞书消息 id 或已存储的链接（例如 GitHub 评论 URL）查找触发器。原文消息中缺失的飞书链接，只有在宿主于当前进程生命周期内读取过它之后才可被搜索到。
 
-Search also finds Threads by references such as `#12` or a GitHub URL, and Tickets by title or a matching Thread.
+搜索还能按 `#12` 之类的引用或 GitHub URL 找到会话线程，并按标题或匹配的会话线程找到工单。
 
-## Principles
+## 原则
 
-1. **Focus on what matters.** Every element answers one of the three questions, or it is removed. A number appears only when it changes what the supervisor does.
-2. **Precise definitions.** Categories have checkable definitions, are mutually exclusive and cover every case, as the Ticket stages do. A label says whom a row waits for and what it needs, not an internal status code.
-3. **One place per concept.** Source state belongs in Source; Threads and Triggers in Trigger; Decisions in Eval; Tickets in Execution. Settings are grouped by the concept they configure. Overview summarizes these pages and links to them instead of becoming another detailed view.
-4. **Domain structure.** The panel uses the domain terms. Internal identifiers appear only in folded details, and names replace identifiers where they can be resolved.
-5. **Honest state.** A count equals the length of the list it links to, and no state contradicts another fact.
-6. **Quiet by default.** Healthy states take no extra space. Problems must be actionable; a one-off network error is not enough. Rows needing a person offer their action directly. Keep page explanations to one sentence and put further detail in the (?) tooltip. Destructive actions require confirmation.
-7. **Consistent controls.** Use DeepSeek Harness design tokens and control behavior. The same information should look the same throughout the panel. Each settings block has one save bar, visible only while changes exist, a save runs or a save fails.
+1. **聚焦真正重要的事。** 每个元素都要回答三个问题之一，否则就被移除。只有当一个数字会改变监管者的做法时，它才会出现。
+2. **定义精确。** 各类别都有可核对的定义，彼此互斥且覆盖所有情况，工单阶段也是如此。一个标签说明这一行在等谁、需要什么，而不是一个内部状态码。
+3. **每个概念只占一处。** 来源状态属于来源页；会话线程与触发器属于触发器页；决策属于评估页；工单属于执行页。设置按它所配置的概念分组。概览页只汇总这些页面并链接到它们，而不是变成又一个详情视图。
+4. **领域结构。** 面板使用领域术语。内部标识符只出现在折叠的详情里，凡是能解析出名称的地方都用名称替代标识符。
+5. **状态诚实。** 计数等于它所链接列表的长度，任何状态都不与其他事实相矛盾。
+6. **默认安静。** 健康状态不占额外空间。问题必须是可行动的，一次性的网络错误还不够。需要人处理的行直接给出操作入口。页面说明保持一句话，更多细节放进 (?) 提示气泡里。破坏性操作需要确认。
+7. **控件一致。** 使用 DeepSeek Harness 的设计令牌和控件行为。同样的信息在整个面板中应看起来一致。每个设置区块只有一个保存栏，仅在存在改动、保存进行中或保存失败时可见。

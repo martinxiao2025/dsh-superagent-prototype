@@ -1,21 +1,21 @@
-# SETUP
+# 安装（SETUP）
 
-Instructions for an agent that sets up dsh-superagent with its operator. If you are a person, ask your coding agent to read this file and follow it.
+本文件是「与运营者一起安装 dsh-superagent 的编码代理」所遵循的指令。如果你是一个自然人，请让你的编码代理阅读本文件并照着执行。
 
-## How to run the setup
+## 如何执行安装
 
-The setup follows [docs/000-philosophy.md](docs/000-philosophy.md): it takes as little of the operator's attention as possible.
+安装流程遵循 [docs/000-philosophy.md](docs/000-philosophy.md)：尽可能少地占用运营者的注意力。
 
-- **Before the first question,** read only this file and `docs/000-philosophy.md`, and run the probe below once. Read nothing else until every answer is collected.
-- **Ask one question per message,** about one thing. Wait for the answer before the next one. Skip a question the probe already answers.
-- **Keep each message under 300 words,** unless the operator asks for more. Give each question a recommended answer the operator can accept with one word, and one sentence on why it matters.
-- **Do not execute while asking.** Collect every answer, then send one message with the full plan, and execute only after the operator confirms it.
-- **Never ask for a secret in the chat.** Steps that need the operator's hands, such as creating an account, signing a CLI in or entering an app secret, go into one message with the exact commands to run in their own terminal.
-- **Teach the philosophy through the questions,** one sentence at a time, not as a lecture.
+- **在问第一个问题之前，** 只读本文件和 `docs/000-philosophy.md`，并把下面的探测命令执行一次。在收齐所有回答之前不要读任何其他内容。
+- **每条消息只问一个问题，** 只问一件事。等到回答之后再问下一个。探测已经回答的问题就跳过。
+- **每条消息控制在 300 词以内，** 除非运营者要求更多。每个问题都给出一个推荐答案，运营者用一个词就能接受，并用一句话说明它为什么重要。
+- **提问期间不要执行。** 先收齐所有回答，然后用一条消息发送完整计划，只有在运营者确认之后才执行。
+- **绝不在对话里索取密钥。** 需要运营者亲自动手的步骤（例如创建账号、登录 CLI 或输入应用密钥）合并到一条消息里，并附上要在他们自己终端中执行的确切命令。
+- **通过提问传授理念，** 一次一句话，不要做成一场说教。
 
-## 1. Probe
+## 1. 探测
 
-Run from this checkout, once, and keep the result to yourself:
+在当前检出目录中执行一次，结果只留给自己看：
 
 ```sh
 node -v; pnpm -v; git --version; tmux -V; python3 --version; gh --version | head -1; dsh --version
@@ -24,56 +24,56 @@ command -v lark-cli
 grep -l -E 'id: dsh-superagent\b' "${DSH_HOME:-$HOME/.dsh}"/profiles/*/cordis.patch.yml 2>/dev/null
 ```
 
-- **Prerequisites:** Node.js 22.19+ or 24+, pnpm, git 2.32+, tmux, Python 3.8+, GitHub CLI 2.48+, and DSH within the `engines.dsh` range of `package.json`. A missing one becomes an item of the plan, not a question. DSH also needs a model provider; if the operator has never run DSH with a model, configuring one is an operator step.
-- **Operator login:** the `gh api user` result is the operator's own GitHub login, used as the recommendation in question 5.
-- **Existing profile:** a profile with a `dsh-superagent` entry is an earlier setup: ask whether to continue it, keep its configuration, and read Upgrade in `docs/006-deployment.md`.
+- **前置条件：** Node.js 22.19+ 或 24+、pnpm、git 2.32+、tmux、Python 3.8+、GitHub CLI 2.48+，以及版本落在 `package.json` 的 `engines.dsh` 范围内的 DSH。缺失的项会成为计划里的一条，而不是一个问题。DSH 还需要一个模型提供方；如果运营者从未带模型运行过 DSH，那么配置模型提供方是一个运营者步骤。
+- **运营者登录名：** `gh api user` 的结果是运营者本人的 GitHub 登录名，用作第 5 个问题的推荐值。
+- **已存在的 profile：** 若某个 profile 中已有 `dsh-superagent` 条目，说明此前安装过：询问是否继续使用它、是否保留其配置，并阅读 `docs/006-deployment.md` 的「升级」一节。
 
-## 2. Questions
+## 2. 提问
 
-Ask in this order, one per message, following the flow of work in [docs/001-domain.md](docs/001-domain.md): first where Triggers come from, then who may ask for work there, then what the Executor does with a Ticket. Recommendations are in brackets.
+按下面的顺序提问，每条消息只问一个，遵循 [docs/001-domain.md](docs/001-domain.md) 中的工作流：先问触发器从哪来，再问在那里谁可以请求工作，最后问执行器会如何处理一个工单。推荐答案写在方括号里。
 
-**Sources: where requests come from.**
+**来源：请求从哪里来。**
 
-1. **Sources.** Should the agent take requests from GitHub only, or also from Feishu chats? [GitHub only, unless the team works in Feishu.]
-2. **Repository.** Which github.com repository should the agent work on, as `owner/name`?
-3. **Agent account.** Which GitHub user account will the agent act as? [A dedicated account, never the operator's own: everything the agent writes appears under this name.] It may not exist yet; creating it is an operator step.
-4. With Feishu: **which chats,** by name? The agent looks up their ids after the bot is configured.
+1. **来源。** 代理只接受来自 GitHub 的请求，还是也接受来自飞书群的请求？[只用 GitHub，除非团队在飞书里工作。]
+2. **仓库。** 代理应该在哪个 github.com 仓库上工作，用 `owner/name` 表示？
+3. **代理账号。** 代理以哪个 GitHub 用户账号的身份行动？[专用账号，绝不用运营者本人的账号：代理写下的一切都会以这个名字出现。]该账号可能还不存在；创建它是运营者步骤。
+4. 如果使用飞书：**哪些群，** 按名称说明？代理会在机器人配置好之后查出它们的 id。
 
-**Policy: who may ask for work.**
+**策略：谁可以请求工作。**
 
-5. **On GitHub.** Which GitHub logins may ask the agent for work? [Only `<operator login>`: the agent acts only for people on this list, and a short list keeps the team's noise low while the operator learns how the agent behaves.]
-6. With Feishu: **who may ask in Feishu?** [Everyone in the first chat, kept in sync with its members.]
+5. **在 GitHub 上。** 哪些 GitHub 登录名可以向代理请求工作？[只允许 `<operator login>`：代理只为这份名单上的人行动；名单短可以在运营者了解代理行为的过程中让团队噪音保持低水平。]
+6. 如果使用飞书：**在飞书里谁可以请求？** [第一个群里的所有人，并与该群成员保持同步。]
 
-**Execution: what the agent does with a Ticket.**
+**执行：代理如何处理一个工单。**
 
-7. **Checkout.** Which local clone of the repository should each Ticket check out from? [A new clone under `~/src/<name>`.]
-8. **Commit identity.** Who should the agent's commits name as author? [The agent account, so its work is visibly its own.] Another identity, such as the operator's, goes into the Delivery requirements prompt section.
-9. **Auto-merge.** Should the agent enable auto-merge on its own pull requests once they are ready and approved? [No: people merge until the agent's pull requests have been right for a while.] The agent never enables it as the agent account, so with yes it needs the GitHub CLI of another account that may merge: ask the operator to sign one in among the operator steps, and name it in Delivery requirements. With no, remove the auto-merge paragraph from Delivery requirements.
+7. **检出目录。** 每个工单应该从哪个本地仓库克隆中检出？[在 `~/src/<name>` 下新建一个克隆。]
+8. **提交身份。** 代理的提交应以谁作为作者？[代理账号，这样它的工作明显属于它自己。]其他身份（例如运营者本人的身份）则写入提示词的「交付要求」段落。
+9. **自动合并。** 代理是否应在其 Pull Request 就绪且获批后，为自己的 Pull Request 开启自动合并？[否：在代理的 Pull Request 持续正确一段时间之前，仍由人工合并。]代理绝不会以代理账号的身份开启自动合并，因此若选择「是」，它需要另一个有权合并的账号的 GitHub CLI：请运营者在运营者步骤中登录这样一个账号，并在「交付要求」里写明它。若选择「否」，则从「交付要求」中删掉自动合并那一段。
 
-Do not ask about values with a good default; list them in the plan instead:
+对于已有良好默认值的项不要提问，改为在计划中列出：
 
-- profile `superagent`, a copy of DSH's Web profile kept apart from the profile the operator works in, so it restarts without closing their Sessions; port `3082`; state directory `<home>/.dsh/state/superagent` as an absolute path;
-- an hourly check from the operator's own profile, which repairs dsh-superagent when it is not running;
-- branch prefix `agent/`;
-- accept mode `observe`, which records proactive work without doing it, and the default rules and prompt sections;
-- with Feishu: the bot reads only mentions, and direct messages are on.
+- profile `superagent`，它是 DSH Web profile 的一份副本，与运营者日常使用的 profile 分开保存，这样它重启时不会关掉运营者的会话；端口 `3082`；状态目录 `<home>/.dsh/state/superagent`，使用绝对路径；
+- 从运营者自己的 profile 发出的每小时检查，在 dsh-superagent 未运行时修复它；
+- 分支前缀 `agent/`；
+- 接受模式 `observe`，它只记录主动式工作而不实际执行，以及默认规则和默认提示词段落；
+- 如果使用飞书：机器人只读取 @ 提及，并且开启私聊消息。
 
-## 3. Plan
+## 3. 计划
 
-Send one message, under 300 words: what will be installed, the accounts and CLIs, the settings to save, the operator steps, and the defaults. Ask for one confirmation.
+发送一条消息，控制在 300 词以内：将要安装什么、涉及的账号与 CLI、要保存的设置、运营者步骤，以及各项默认值。请求一次确认。
 
-## 4. Execute
+## 4. 执行
 
-1. **Operator steps first.** Read the Accounts section of `docs/006-deployment.md`, write the CLI wrappers yourself, then send one message with what only the operator can do: create the agent account and, with auto-merge, sign a CLI in as the account that enables it, accept the repository invitation as the agent account, run `auth login` for each wrapper, and for Feishu create and publish the bot app and run the `config init` command with its secret. Wait until the operator says it is done, then check each login with `<wrapper> api user --jq .login`.
-2. **Install and start.** Follow the Install, Machine configuration, and Start and stop sections of `docs/006-deployment.md`. Skip the `git clone` of this repository: you are in its checkout. Clone the repository of question 2 if question 7 asked for a new clone. With an existing profile, skip the `dsh superagent --from-default-profile` command, which would replace the profile and delete its `cordis.patch.yml`, and edit that file instead of replacing it.
-3. **Settings.** Save them through the Management API of `docs/006-deployment.md`, in this order: the `github` Source, the `feishu` Source if used, the `policy` block with the allowed lists (for Feishu, look up the chat ids with the bot's CLI first), and the `executor` block with a prepare command from the answer to question 7. Then save the prompts with the commit identity of question 8 and the auto-merge answer of question 9 in Delivery requirements. A save that returns `restarting: true` restarts dsh-superagent: wait until `scripts/dsh-superagent status` no longer exits 1 before the next request, and read the revisions again from `GET settings`.
-4. **Failures.** A refused save names the setup problem in its response body. Find it in the Troubleshooting table of `docs/006-deployment.md`, fix it, and continue. Ask the operator only for what you cannot fix yourself.
+1. **先做运营者步骤。** 阅读 `docs/006-deployment.md` 的「账号」一节，自己编写 CLI 包装脚本，然后用一条消息说明只有运营者能做的事：创建代理账号；若启用自动合并，登录一个用于开启自动合并的账号的 CLI；以代理账号身份接受仓库邀请；对每个包装脚本执行 `auth login`；如果使用飞书，创建并发布机器人应用，并用它的密钥执行 `config init` 命令。等运营者说已完成，再用 `<wrapper> api user --jq .login` 逐个核对登录。
+2. **安装并启动。** 按照 `docs/006-deployment.md` 的「安装」「机器配置」「启动与停止」三节操作。跳过本仓库的 `git clone`：你已经在它的检出目录中。如果第 7 个问题要求新建克隆，就克隆第 2 个问题里的仓库。若已有 profile，跳过 `dsh superagent --from-default-profile` 命令，因为它会替换该 profile 并删除其中的 `cordis.patch.yml`；改为编辑那个文件，而不是替换它。
+3. **设置。** 通过 `docs/006-deployment.md` 中的管理 API 保存设置，顺序如下：`github` 来源；如果使用飞书，`feishu` 来源；带允许名单的 `policy` 配置块（飞书要先借助机器人的 CLI 查出群 id）；以及 `executor` 配置块，其准备命令来自第 7 个问题的回答。然后保存提示词，把第 8 个问题的提交身份和第 9 个问题的自动合并答案写进「交付要求」。若一次保存返回 `restarting: true`，说明 dsh-superagent 正在重启：在下一次请求之前，要等到 `scripts/dsh-superagent status` 不再以退出码 1 结束，并从 `GET settings` 重新读取修订号。
+4. **失败处理。** 被拒绝的保存会在响应体中给出安装问题名称。在 `docs/006-deployment.md` 的「故障排查」表中找到它，修复后继续。只向运营者询问你自己无法修复的部分。
 
-## 5. Verify and hand over
+## 5. 验证与交付
 
-`scripts/dsh-superagent status` exits 0 with no setup problem. If you run in the operator's own DSH profile, create the hourly check of the Hourly check section of `docs/006-deployment.md` with your schedule tool; otherwise give the operator its prompt to schedule there. Then send one message, under 300 words:
+`scripts/dsh-superagent status` 以退出码 0 结束且没有安装问题。如果你在运营者自己的 DSH profile 中运行，就用你的调度工具创建 `docs/006-deployment.md` 中「每小时检查」一节的检查；否则把它的提示词交给运营者，由其在那边调度。然后发送一条消息，控制在 300 词以内：
 
-- The panel URL, and that the **Superagent** entry in the sidebar is where to look.
-- How to try it: from an account on the allowed list, comment `@<agent login> <request>` on an issue in the repository. A Ticket appears on the overview within about a minute.
-- Three rules for the operator, from the Responsibility section of `docs/000-philosophy.md`: start narrow, tune for less noise, own what the agent says.
-- Where to read more: the numbered documents in `docs/`, in order.
+- 面板 URL，并说明侧边栏中的 **Superagent** 条目就是要看的地方。
+- 如何试用：用允许名单上的账号，在仓库的某个 issue 上评论 `@<agent login> <request>`。大约一分钟内概览页就会出现一个工单。
+- 给运营者的三条规则，出自 `docs/000-philosophy.md` 的「责任」一节：窄范围起步、为更少噪音而调优、为代理说的话负责。
+- 更多内容在哪里读：`docs/` 中按顺序排列的编号文档。

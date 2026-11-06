@@ -12,13 +12,13 @@
 
 | 事实 | 依据（可直接复核） |
 | --- | --- |
-| 主会话工具为 **14 个**，worker 工具为 **5 个** | `src/app/tools/main.ts`、`src/app/tools/executor.ts` 的 `name:` 字面量 |
+| 主会话工具为 **14 个**；worker 自有工具 **5 个**，加上共享的 `orchestrator_read`，每个执行器注册 **6 个** | `src/app/tools/main.ts`、`executor.ts`、`tool.ts` 的 `name:` 字面量；`tests/model-surface.spec.ts` 断言 worker 侧 6 个名称 |
 | 主会话工具依赖真实 `Agent`：`prompt-preview` 用 `agent.id`，`orchestrator_eval_read` 的图片分支需要 `agent.ctx` 与 `agent.session` | `src/app/tools/main.ts`、`src/app/assessment.ts` 的 `read()` |
 | 管理 API 要求 `x-orchestrator-request: 1` 且同源 | `src/app/http.ts` 的 `sameOrigin()` |
 | 端口失败若走 `SetupError`，`Setup.run()` 返回 `false` 后 `Runtime.initialize()` 直接 `return`，整个编排停摆 | `src/app/setup.ts`、`src/app/runtime.ts` 的 `initialize()` |
 | `lib/` 被 `.gitignore` 忽略，且 tsdown 第一份配置 `clean: true` 会清空它 | `.gitignore`、`tsdown.config.ts` |
 | 现有编号文档为 `000`–`008`，编号连续且只能链接更早文档 | `tests/docs.spec.ts` |
-| `docs/007-architecture.md` 的 Modules 表必须覆盖 `src` 全部文件、Tests 表必须覆盖全部 `*.spec.ts(x)` | `tests/docs.spec.ts` |
+| `docs/007-architecture.md` 的模块表必须覆盖 `src` 全部文件、测试表必须覆盖全部 `*.spec.ts(x)` | `tests/docs.spec.ts` |
 | 每个 `class` 声明前必须有 JSDoc | `tests/class-docs.spec.ts` |
 | `skills/` 下的技能会被加载进 DSH 会话，且测试断言内置技能恰为 `dsh-superagent-feishu`、`dsh-superagent-github` | `src/app/skill-files.ts`、`tests/tools.spec.ts` |
 | 面板文案必须中英双语，键与占位符一致 | `src/client/locales.ts`、`tests/locales.spec.ts` |
@@ -31,7 +31,7 @@
 
 | 文档说法 | 代码/配置事实 | 执行口径 |
 | --- | --- | --- |
-| `00` §4.2 表尾「worker 6 工具」 | 实际 5 个 | 以 5 为准；文档中的 6 属笔误 |
+| `00` §4.2 表尾「worker 6 工具」 | `executor.ts` 定义 5 个 worker 自有工具，另加共享的 `orchestrator_read`，每个执行器实际注册 6 个 | 口径要写明：说「注册工具」用 6，说「worker 专属工具」用 5 |
 | `00` A3「20 个工具列出」 | 主会话实际 14 个 | 验收按 14；A3 的 20 作废 |
 | `00` §4.3 端口占用走 `SetupError` | `Setup.run()` 吞掉 `SetupError` 后 `Runtime.initialize()` 提前返回，编排停摆 | 端口失败只写 `HealthBoard` 的 `mcp` 条目（`error`），进程继续 |
 | `00` §4.1「沿用同源自定义头」 | MCP 客户端不会发 `x-orchestrator-request` | 放弃自定义头；只绑 `127.0.0.1` + Streamable HTTP 的 DNS rebinding 防护 |
@@ -129,7 +129,7 @@ Get-ChildItem -Recurse -File src,tests,scripts,plugin,docs -Include *.ts,*.tsx,*
 ### 4.3 文档与文案
 
 - 新增编号文档：`docs/009-copilot-plugin.md` 是唯一允许的新编号；只能在 `000`–`008` 之后，且链接只能指向更早编号。
-- 新增模块或测试后，必须同步 `docs/007-architecture.md` 的 Modules 表与 Tests 表，否则 `tests/docs.spec.ts` 失败。
+- 新增模块或测试后，必须同步 `docs/007-architecture.md` 的模块表与测试表（标题为 `## 模块`、`## 测试`），否则 `tests/docs.spec.ts` 失败。
 - 新增面板文案必须同时写 `src/client/locales.ts` 的中英文，键与占位符一致。
 - 新增运行时依赖必须同时更新 `AGENTS.md`（实施仓库根）与 `docs/007` 的依赖说明。
 - 官方 schema 作为离线校验输入放在 `scripts/schemas/agent-plugins-1.0.0/`，**不得**在校验时联网。
