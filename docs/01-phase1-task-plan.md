@@ -560,3 +560,5 @@ npx -y @modelcontextprotocol/inspector --cli http://127.0.0.1:3083/mcp --method 
 | 全量核对与修复 | 2026-11-06 | `pnpm install --frozen-lockfile`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`pnpm plugin:check` | 安装 314 个包退出 0；typecheck 退出 0；全量 1179 通过 / 26 跳过 / 0 失败；`lib/plugin` 3 个技能；两处插件校验通过。核对发现并修复 1 个 Windows 跨盘符缺陷：`promptFile` 收到绝对路径时被 `join` 拼坏（包根在 D:、临时目录在 C:）；`tests/mcp.spec.ts` 增补「参数拒绝后继续服务」与「过期 revision 被拒」两例；T2.2/T2.3/T2.4/T3.1 与 `docs/007` 测试表按代码事实更正。本机 node v24.2.0（满足 `>=24.0.0`），与 §1.1 记录的 v24.19.0 不同 | 本批 |
 
 未闭合项（截至本批）：VS Code Copilot Chat 冒烟（A4，本机未安装官方 Copilot 扩展）、真实 worker 执行（无 `dsh` 宿主与真实模型 worker）、双人 SoD（验证宿主只有一个允许发送者）、保活演练（A6，需 systemd/计划任务）、真实 GitHub/飞书事件（无凭据）。Windows 上跳过的测试仍为 26 项，均为 POSIX 专属被测对象（`#!/bin/sh` worker shim、服务管理脚本、飞书假 CLI 与权限位），已在测试文件内写明原因，不视为通过。
+
+路径事实（2026-11-06 复核）：`d:\superagent-plugin` 不存在；阶段一全部提交位于 `d:\WorkSpace\dsh-superagent-prototype`（分支 `feat/phase1-agent-plugins`，远端 `origin` 指向原型仓库）。`AGENTS.md` 与本文 T0.0 仍按「新根 `d:\superagent-plugin`」表述，属文档与环境的既定冲突，未擅自改写；是否把当前仓库定为正式实施根，待用户决定。
