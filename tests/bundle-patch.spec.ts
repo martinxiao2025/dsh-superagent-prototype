@@ -1,4 +1,4 @@
-/** The bundle's patch, read with the entry-list dialect DSH reads bundle patches with, and the agent preset it defines. */
+/** bundle 的补丁，用 DSH 读取 bundle 补丁的条目列表方言读取，以及它定义的 agent preset。 */
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
@@ -6,7 +6,7 @@ import { expect, it } from 'vitest'
 import { ROUTER_PRESET, WORKER_PRESET } from '../src/app/sessions.ts'
 
 interface Row { id?: string; name: string; disabled?: unknown; config?: Record<string, unknown> & { plugins?: Row[] } | Row[] }
-/** The patch as DSH reads it: Cordis's include plugin parses `!!js` scalars, and applies the inserts to an entry list. */
+/** DSH 读取补丁的方式：Cordis 的 include 插件解析 `!!js` 标量，并把插入应用到条目列表。 */
 async function patched(): Promise<Row[]> {
   const cordis = createRequire(createRequire(import.meta.url).resolve('@deepseek-ai/cordis/package.json'))
   const include = cordis.resolve('@deepseek-ai/cordis-plugin-include')
@@ -19,17 +19,17 @@ async function patched(): Promise<Row[]> {
   expect(warnings).toEqual([])
   return rows
 }
-/** Every plugin row of a preset, those inside groups too. */
+/** preset 的每个插件行，包括组内的。 */
 const flat = (rows: readonly Row[]): Row[] => rows.flatMap(row => [row, ...Array.isArray(row.config) ? flat(row.config) : []])
 
-/** A preset the patch defines, by its id. */
+/** 补丁定义的一个 preset，按其 id 查找。 */
 const presetOf = (rows: readonly Row[], id: string) => rows.map(row => row.config as { id?: string; order?: number; plugins: Row[] })
   .find(config => config?.id === id)!
 
-it('defines the worker preset Executor Sessions run under, with a shell that moves long commands to the background', async () => {
+it('定义 Executor Session 所用的 worker preset，其 shell 会把长命令移到后台', async () => {
   const rows = await patched()
-  expect(rows.map(row => row.id)).toEqual(['dsh-superagent', 'dsh-superagent-github', 'dsh-superagent-feishu', 'dsh-superagent-worker-preset',
-    'dsh-superagent-router-preset'])
+  expect(rows.map(row => row.id)).toEqual(['dsh-superagent-cn', 'dsh-superagent-cn-github', 'dsh-superagent-cn-feishu', 'dsh-superagent-cn-worker-preset',
+    'dsh-superagent-cn-router-preset'])
   const preset = presetOf(rows, WORKER_PRESET)
   expect(preset.id).toBe(WORKER_PRESET)
   const plugins = flat(preset.plugins)
@@ -38,10 +38,10 @@ it('defines the worker preset Executor Sessions run under, with a shell that mov
   expect(named('@deepseek-ai/dsh-pwsh-sandbox')).toEqual([{ timeoutMs: 5000, maxTimeoutMs: 5000 }])
   expect(named('@deepseek-ai/dsh-tool-jobs')).toEqual([{ waitTimeoutMs: 5000, maxWaitTimeoutMs: 5000 }])
   expect(named('@deepseek-ai/dsh-tool-web')).toEqual([expect.objectContaining({ fetch: false })])
-  // Spawned subagents run under standard, whose shell moves a command to the background only after 60 s; forked ones, which would run under
-  // this preset, are left out.
+  // spawn 出的子 agent 运行在 standard 之下，其 shell 只在 60 秒后才把命令移到后台；本应运行在本 preset 之下的
+  // fork 出的子 agent 未包含在内。
   expect(named('@deepseek-ai/dsh-tool-subagent')).toEqual([expect.objectContaining({ provider: 'spawn', agentPreset: 'standard' })])
-  // What a worker needs, and none of what asks a person, presents, plans, changes the profile, schedules, sets goals or runs workflows.
+  // 只含 worker 所需的工具，不含任何询问人、展示、规划、修改 profile、调度、设定目标或运行工作流的工具。
   for (const name of ['@deepseek-ai/dsh-tool-fs', '@deepseek-ai/dsh-tool-fs-search', '@deepseek-ai/dsh-tool-bash', '@deepseek-ai/dsh-tool-skill',
     '@deepseek-ai/dsh-tool-todo', '@deepseek-ai/dsh-tool-subagent', '@deepseek-ai/dsh-tool-subagent-control', '@deepseek-ai/dsh-compaction-basic',
     '@deepseek-ai/dsh-compaction-tool-result-pruner', '@deepseek-ai/dsh-agent-instructions']) expect(named(name).length).toBeGreaterThan(0)
@@ -51,7 +51,7 @@ it('defines the worker preset Executor Sessions run under, with a shell that mov
     '@deepseek-ai/dsh-tool-workflow', '@deepseek-ai/dsh-workflow-ptc']) expect(names).not.toContain(name)
 })
 
-it('defines the router preset the main Session runs under: the worker\'s 5-second shell and job waits, and only the tools it uses', async () => {
+it('定义主 Session 所用的 router preset：worker 的 5 秒 shell 与 job 等待，以及它用到的工具', async () => {
   const rows = await patched()
   const router = presetOf(rows, ROUTER_PRESET), worker = presetOf(rows, WORKER_PRESET)
   expect(router.order).toBe(91)
@@ -60,7 +60,7 @@ it('defines the router preset the main Session runs under: the worker\'s 5-secon
   for (const name of ['@deepseek-ai/dsh-bash-sandbox', '@deepseek-ai/dsh-pwsh-sandbox', '@deepseek-ai/dsh-tool-jobs']) {
     expect(named(plugins, name), name).toEqual(named(flat(worker.plugins), name))
   }
-  // The tools its allow list keeps: skill, bash, read, read_image and the job tools; the file tools only read.
+  // 其允许列表保留的工具：skill、bash、read、read_image 与 job 工具；文件工具只读。
   for (const name of ['@deepseek-ai/dsh-tool-skill', '@deepseek-ai/dsh-skill-filesystem', '@deepseek-ai/dsh-tool-bash', '@deepseek-ai/dsh-tool-jobs',
     '@deepseek-ai/dsh-agent-instructions', '@deepseek-ai/dsh-time-context', '@deepseek-ai/dsh-compaction-basic',
     '@deepseek-ai/dsh-compaction-tool-result-pruner']) expect(named(plugins, name).length, name).toBeGreaterThan(0)

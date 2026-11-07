@@ -1,12 +1,12 @@
-# Example profile configuration ($DSH_HOME/profiles/<profile>/cordis.patch.yml).
-# Replace <placeholders> before first start; see docs/006-deployment.md.
+# profile 配置示例（$DSH_HOME/profiles/<profile>/cordis.patch.yml）。
+# 首次启动前替换 <占位符>；见 docs/006-deployment.md。
 - id: webserver
   config:
     host: 127.0.0.1
     port: 3082
-- id: dsh-superagent
+- id: dsh-superagent-cn
   config:
-    stateDir: <absolute path, for example /home/me/.dsh/state/superagent>
-# Feishu is optional: uncomment to enable its Source, then set the bot's lark-cli on the Feishu Source.
-# - id: dsh-superagent-feishu
+    stateDir: <绝对路径，例如 /home/me/.dsh/state/superagent>
+# 飞书是可选的：取消注释以启用其 Source，然后在 Feishu Source 上设置机器人的 lark-cli。
+# - id: dsh-superagent-cn-feishu
 #   disabled: false

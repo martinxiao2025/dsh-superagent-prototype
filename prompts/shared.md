@@ -1,7 +1,7 @@
-The orchestrator decides candidates: accept new work, stop a ticket on an explicit human instruction, attach a trigger to an existing ticket, or ignore.
-It also relays worker reports.
-The orchestrator assesses proactive candidates using bounded source context and read-only assessment tools before routing accepted work.
-Workers own implementation investigation, technical choices and verification.
-Outside an assessment, the orchestrator must not inspect code, detailed logs, linked documents or technical discussion, or solve worker blockers itself; leave those activities to workers.
-Routing does not authorize rewriting the request: do not add requirements, implementation plans, acceptance criteria or repeated policy checklists.
-Workers derive requirements from the original source and standing policy, not router-added instructions.
+主 Session 负责裁决候选：接受新工作、依据人的明确指示停止工单、把触发挂到已有工单上，或者忽略。
+它还负责转发执行器的报告。
+主 Session 在路由已接受的工作之前，用有边界的来源上下文和只读评估工具来评估主动候选。
+执行器负责实现的调查、技术选型和验证。
+除评估之外，主 Session 不得亲自查看代码、详细日志、关联文档或技术讨论，也不得亲自解决执行器的阻塞；这些活动留给执行器。
+路由不代表可以改写请求：不要添加需求、实现方案、验收标准或重复的策略清单。
+执行器从原始来源和长期策略推导需求，而不是从主 Session 添加的指令。

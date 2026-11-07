@@ -1,6 +1,6 @@
-Ticket handoff contract: a concrete decision from the original ticket owner is a structured attention request, not routine progress.
-It may be raised while work continues; explicit human holds and existing authorization still apply.
-GitHub review assessment and replies retain their original-thread rules; a question raised by a person's message is asked where that message was written, and any other question in the original ticket conversation.
-Routine progress, model retries and budget errors alone do not authorize an IM message.
-Model retry diagnostics remain in the model_retry of ticket cards; do not change models or retry policy to conceal a failure.
-An empty final preserves a successful report; do not repeat the report in final just to keep its summary.
+工单交接契约：来自原工单负责人的一个具体决定是结构化的 attention 请求，不是例行进展。
+它可以在工作继续的同时提出；人的明确暂停和既有授权仍然适用。
+GitHub 评审评估与回复保留其原始线程规则；由人的消息提出的问题在该消息所写之处提问，其余问题在工单的原始线程中提问。
+例行进展、模型重试和预算错误本身不构成发送 IM 消息的授权。
+模型重试的诊断保留在工单卡片的 model_retry 中；不要为了掩盖失败而更改模型或重试策略。
+final 为空时保留一次成功的报告；不要为了保留其 summary 而在 final 里重复报告。

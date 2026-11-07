@@ -1,28 +1,27 @@
-# dsh-superagent bundle layer: inserts the plugins without configuration, and the agent presets its Sessions run under. The
-# profile supplies the `dsh-superagent` entry's stateDir (see docs/006-deployment.md and examples/profile.cordis.patch.yml); the plugin
-# refuses to start without stateDir.
+# dsh-superagent-cn 的 bundle 层：无配置地插入各插件，以及其 Session 运行所用的代理 preset。
+# profile 提供 `dsh-superagent-cn` 条目的 stateDir（见 docs/006-deployment.md 与 examples/profile.cordis.patch.yml）；
+# 没有 stateDir 时插件拒绝启动。
 - insert:
-    - id: dsh-superagent
-      name: dsh-superagent
-    - id: dsh-superagent-github
-      name: dsh-superagent/github-watch
-    # Optional Feishu Source; requires configuring a bot CLI after enabling.
-    - id: dsh-superagent-feishu
-      name: dsh-superagent/feishu-watch
+    - id: dsh-superagent-cn
+      name: dsh-superagent-cn
+    - id: dsh-superagent-cn-github
+      name: dsh-superagent-cn/github-watch
+    # 可选的飞书 Source；启用后需配置机器人 CLI。
+    - id: dsh-superagent-cn-feishu
+      name: dsh-superagent-cn/feishu-watch
       disabled: true
-    # The agent preset of every Executor Session (WORKER_PRESET in src/app/sessions.ts); the main Session has its own, below.
-    # It is DSH's `standard` preset with only what a worker needs, and a shell whose foreground command moves to a background job
-    # after 5 seconds, so a long command does not hold back a person's message, which the Session takes at its next step. Left
-    # out: questions to a person, presenting, plan mode, the plugin manager and market, scheduling, goals, workflows, web fetch,
-    # and forked subagents, which would run under this preset; spawned subagents run under `standard`, whose shell moves a
-    # command to a background job only after 60 seconds, as a subagent's jobs are killed when it ends. A preset row has no
-    # setting that hides it from the preset picker, so its name and description say whom it is for.
-    - id: dsh-superagent-worker-preset
+    # 每个执行器 Session 运行所用的代理 preset（src/app/sessions.ts 中的 WORKER_PRESET）；主 Session 用下面自己的。
+    # 它是 DSH 的 `standard` preset，只保留执行器需要的能力，其 shell 会在前台命令运行 5 秒后把它转入后台任务，
+    # 这样长命令不会卡住人的消息——Session 在下一步才取到该消息。省略的：向人提问、演示、计划模式、插件管理器
+    # 与市场、调度、目标、工作流、网页抓取，以及会在本 preset 下运行的 fork 子代理；spawn 的子代理运行在
+    # `standard` 下，其 shell 只在 60 秒后才把命令转入后台，因为子代理结束时其任务会被杀死。preset 行没有
+    # 把它从 preset 选择器里隐藏的设置，所以它的名称和描述说明了面向谁。
+    - id: dsh-superagent-cn-worker-preset
       name: '@deepseek-ai/dsh-agent-preset'
       config:
-        id: dsh-superagent-worker
-        name: dsh-superagent 执行器
-        description: dsh-superagent 的执行器 Session 专用，不供手动选择。前台命令超 5 秒转入后台，只含执行工作所需的工具。
+        id: dsh-superagent-cn-worker
+        name: dsh-superagent-cn 执行器
+        description: dsh-superagent-cn 的执行器 Session 专用，不供手动选择。前台命令超 5 秒转入后台，只含执行工作所需的工具。
         order: 90
         plugins:
           - id: persona
@@ -35,7 +34,7 @@
               maxBytes: 65536
           - id: time-context
             name: '@deepseek-ai/dsh-time-context'
-          # A foreground command waits at most 5 s, then the shell tool moves it to a background job.
+          # 前台命令最多等待 5 秒，之后 shell 工具把它转入后台任务。
           - id: shell
             name: cordis:group
             group: true
@@ -66,7 +65,7 @@
             name: '@deepseek-ai/dsh-tool-fs-search'
             config:
               sampleOverCapGlobResults: false
-          # A wait for a job ends after 5 s too; the job's end wakes the worker with its result.
+          # 等待任务也在 5 秒后结束；任务结束时以结果唤醒执行器。
           - id: tool-jobs
             name: '@deepseek-ai/dsh-tool-jobs'
             config:
@@ -118,16 +117,16 @@
             config:
               fetch: false
               searchTimeoutMs: 60000
-    # The agent preset of the main Session (ROUTER_PRESET in src/app/sessions.ts). The worker's 5-second shell and job waits, so a command or a wait does not hold back the next candidates, and
-    # only what the main Session uses: no subagents, web, file search or writes, todo list, questions to a person, presenting,
-    # plan mode, plugin manager, scheduling, goals or workflows. No persona: the main Session's prompt is complete, so it has
-    # no other section.
-    - id: dsh-superagent-router-preset
+    # 主 Session 运行所用的代理 preset（src/app/sessions.ts 中的 ROUTER_PRESET）。执行器的 5 秒 shell 与任务等待，
+    # 使一个命令或一次等待不会卡住后续候选；只保留主 Session 用到的：没有子代理、网页、文件搜索或写入、待办清单、
+    # 向人提问、演示、计划模式、插件管理器、调度、目标或工作流。没有 persona：主 Session 的提示词是完整的，
+    # 不需要其他部分。
+    - id: dsh-superagent-cn-router-preset
       name: '@deepseek-ai/dsh-agent-preset'
       config:
-        id: dsh-superagent-router
-        name: dsh-superagent 主 Session
-        description: dsh-superagent 的主 Session 专用，不供手动选择。前台命令和任务等待超 5 秒转入后台，只含路由所需的工具。
+        id: dsh-superagent-cn-router
+        name: dsh-superagent-cn 主 Session
+        description: dsh-superagent-cn 的主 Session 专用，不供手动选择。前台命令和任务等待超 5 秒转入后台，只含路由所需的工具。
         order: 91
         plugins:
           - id: agent-instructions
