@@ -143,7 +143,7 @@ lib/plugin/
 
 ## 5. 部署与保活
 
-- **守护进程**:Windows 上用 `scripts/dsh-superagent-windows.ps1` 提供 start/stop/status/drill;`scripts/dsh-superagent`(tmux/`ps`/`fcntl`)属 POSIX,**范围外**;
+- **守护进程**:Windows 上用 `scripts/dsh-superagent-windows.ps1` 提供 start/stop/status/drill;POSIX 服务脚本 `scripts/dsh-superagent`(tmux/`ps`/`fcntl`)属**范围外**,且去 DSH 后已于 2026-11-07 删除(已废止历史);
 - **保活**:Windows 计划任务(开机启动 + 失败重启)与仓库自带的 Windows 守护循环;systemd 等 POSIX 调度为**范围外**,不再作为交付内容;不依赖 Copilot 进程存活;
 - **插件安装**:手动将 `lib/plugin/`(或仓库 `plugin/`)放入 Copilot 客户端的插件目录(客户端自定,如 VS Code 的 agent plugins 目录);文档中写明放置路径与启用步骤;
 - **重连语义**:规范未定义断线重启策略;streamable-http 断线由 Copilot 客户端自行重试,验收时实测 VS Code 行为并记录。

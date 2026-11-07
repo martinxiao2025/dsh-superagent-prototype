@@ -1,4 +1,4 @@
-/** 飞书 source kind 定义、policy 同步与 Cordis 插件入口。 */
+/** 飞书 source kind 定义、policy 同步与 Source 入口。 */
 import { z } from 'zod'
 import { FeishuBotSchema } from '../deployment.ts'
 import { feishuLink, sendFeishu } from './feishu-channel.ts'

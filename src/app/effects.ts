@@ -1,6 +1,6 @@
 /**
  * 表示某个 effect 当前无法运行，例如处理已暂停或 worker 槽位已满。
- * Effects 会在初始重试延迟后重新调度该行且不增加其失败计数；DshExecutor 会在启动与投递处理器中抛出它。
+ * Effects 会在初始重试延迟后重新调度该行且不增加其失败计数；HostExecutor 会在启动与投递处理器中抛出它。
  */
 export class Later extends Error {}
 /** 某种 effect 报告错误前允许的连续失败次数，与 Source 轮询的失败阈值一致。 */
@@ -41,7 +41,7 @@ type Task = { kind: EffectKind; key: string; done: Promise<void> }
 
 /**
  * 基于 SQLite 的持久队列：在命令事务内持久化副作用，并在提交后派发。
- * 为 MasterAssessor、DshExecutor、Sessions 与 Outbox 统一协调按 kind 的处理器、并发上限、指数退避与健康上报。
+ * 为 MasterAssessor、HostExecutor、Sessions 与 Outbox 统一协调按 kind 的处理器、并发上限、指数退避与健康上报。
  */
 export class Effects {
   private readonly handlers = new Map<EffectKind, Handler<never>>()

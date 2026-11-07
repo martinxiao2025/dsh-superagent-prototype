@@ -16,7 +16,9 @@
 
 本机没有安装 `dsh` 宿主，因此 Runtime 由本地脚本启动：**Engine、Policy、Store、评估、MCP 端点、提示词拼装全部是产品代码**；DSH 宿主服务（agents、sessionController、subprocess、webServer）与 Source 输入由脚本替代。所有替代点在下文标注。
 
-**支持环境（2026-11-06 用户确认）：Windows + VS Code Stable 的官方 Copilot / Copilot Chat。** 本文中的 Copilot CLI 路径只作前置证据，不计入 A4 正式验收；POSIX 专属对象（`#!/bin/sh`、systemd、权限位、`scripts/dsh-superagent`）为**范围外**，不作为待办。
+> **历史说明（2026-11-07）**：本节及第 3–9 节描述的是去 DSH 之前的验证方式，其中的 `dsh` 宿主、`sessionController`、`webServer` 已随 B1–B3 移除。当前 Runtime 由 `node lib/index.js --config <机器配置文件>` 启动，模型宿主是 VS Code 语言模型桥，真实端到端证据见 §12。
+
+**支持环境（2026-11-06 用户确认）：Windows + VS Code Stable 的官方 Copilot / Copilot Chat。** 本文中的 Copilot CLI 路径只作前置证据，不计入 A4 正式验收；POSIX 专属对象（`#!/bin/sh`、systemd、权限位）为**范围外**，不作为待办。POSIX 服务脚本 `scripts/dsh-superagent` 属已废止历史，已删除（见 §13）。
 
 ## 2. 客户端探测结论
 
@@ -191,3 +193,26 @@ copilot -p "<中文操作指令>" --plugin-dir ./lib/plugin --allow-all-tools -s
 **观察到的硬边界**：桥对单个回合设有 24 轮工具调用上限，超限即整回合失败（错误文案可读、落进转录，工单按普通回合失败处理，可重试）。因此「空目录里让模型自行摸索」不是有效场景，工单的执行目录必须真的存在且可用。
 
 该测试在没有桥发现文件时会整组跳过（`describe.skipIf(!info)`），跳过不计入通过；本机 2026-11-07 是真实执行并通过的。
+
+## 13. B6：清理与标准化
+
+### 13.1 死代码删除
+
+| 删除对象 | 检索证据 | 被测行为是否仍存在 | 取代者 |
+| --- | --- | --- | --- |
+| `scripts/dsh-superagent` | 全文只被 `tests/service-script.spec.ts`、README 与历史文档引用；脚本首行依赖 `shutil.which('dsh')` 与 `dsh --profile`，去 DSH 后该二进制不再存在 | 否。POSIX 下的 start/stop/status/drill 随 DSH profile 一起终止 | `scripts/dsh-superagent-windows.ps1`（本项目唯一支持的平台） |
+| `tests/service-script.spec.ts` | 整个文件 `test.skipIf(process.platform === 'win32')`，在本项目支持的 Windows 上从未执行 | 否，被测对象已删除 | 同上；Windows 守护脚本由 `scripts/copilot-smoke.ps1` 与 `-Action drill` 实测覆盖 |
+
+删除后跳过用例由 26 项降为 11 项，均为仍在产品的 POSIX 专属对象（worker shim、飞书消费者假 CLI、权限位断言）。
+
+### 13.2 代码注释中的 DSH 残留
+
+| 位置 | 原文 | 处理 |
+| --- | --- | --- |
+| `src/app/effects.ts` | `DshExecutor` | 改为 `HostExecutor` |
+| `src/infra/health.ts` | `DshExecutor` | 改为 `HostExecutor` |
+| `src/executor/agent.ts` | 「这是 `DshExecutor` 的去 DSH 版本」 | 改为直接描述回合语义 |
+| `src/sources/feishu.ts` | 「Cordis 插件入口」 | 改为「Source 入口」 |
+| `src/app/runtime.ts` | 「不再依赖 DSH 或 Cordis」「替代 DSH 的 cordis 插件装载」 | 改为描述注入与生命周期 |
+
+残留扫描命令与口径：在 `src/`、`tests/`、`scripts/`、`plugin/`、`extension/` 内检索 `@deepseek-ai`、`cordis`、`DshExecutor`、`executor/dsh`、`keepalive-host`、`sessionController`、`ctx.agents`、`ctx.jobs`、`ctx.subagents`、`ctx.webServer`。结果：代码引用为 0；`dsh`、`DSH_SUPERAGENT_*`、`dsh-superagent` 作为产品名保留；`tests/controls.spec.tsx` 中「不引用 `@deepseek-ai/`」是一条防回归断言，不是残留。

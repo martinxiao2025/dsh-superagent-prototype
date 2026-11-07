@@ -10,7 +10,7 @@ export interface HealthEntry {
 
 /**
  * 组件健康条目的中心注册表，对每个条目名强制单一写入者所有权。
- * 由 Runtime、Effects、Sessions、DshExecutor、Settings 与 SourceRegistry 认领，并由管理 HTTP 路由读取。
+ * 由 Runtime、Effects、Sessions、HostExecutor、Settings 与 SourceRegistry 认领，并由管理 HTTP 路由读取。
  */
 export class HealthBoard {
   private readonly entries: Record<string, Health> = {}

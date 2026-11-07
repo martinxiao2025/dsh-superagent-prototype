@@ -48,7 +48,7 @@ import type { TranscriptEntry } from './context.ts'
 
 const now = (): string => new Date().toISOString()
 
-/** `Runtime` 的宿主依赖：普通对象，不再依赖 DSH 或 Cordis。 */
+/** `Runtime` 的宿主依赖：普通对象，由 `src/index.ts` 组装并注入。 */
 export interface RuntimeHost {
   readonly machine: Machine
   readonly logger: Logger
@@ -246,7 +246,7 @@ export class Runtime implements SourceHost {
     }
     this.sessions.install()
     this.executor.install()
-    // Source 插件在本进程内启动，替代 DSH 的 cordis 插件装载。
+    // Source 插件在本进程内启动，生命周期与 Runtime 同步。
     void startFeishu(this, this.lifetime)
     void startGithub(this, this.lifetime)
     await this.sessions.ensure(this.masterId, this.machine.stateDir, 'dsh-superagent orchestrator', 'orchestrator')

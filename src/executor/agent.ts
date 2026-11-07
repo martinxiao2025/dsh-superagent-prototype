@@ -1,9 +1,9 @@
 /**
  * 通过 `AgentHost`（VS Code `vscode.lm` 扩展桥）执行工单 assignment 的宿主执行器。
  *
- * 这是 `DshExecutor` 的去 DSH 版本：不再创建 DSH Session、不依赖 agent 事件，一个回合就是
- * `dispatch` → `collect`。没有后台作业与 subagent，因此轮次结束即会话空闲；工具面由
- * `workspaceTools`（文件与命令）加上 Runtime 提供的编排工具组成，经回合工具回调执行。
+ * 一个回合就是 `dispatch` → `collect`，不再有独立的会话对象或 agent 事件。没有后台作业与
+ * subagent，因此轮次结束即会话空闲；工具面由 `workspaceTools`（文件与命令）加上 Runtime
+ * 提供的编排工具组成，经回合工具回调执行。
  */
 import { mkdir, readFile, rmdir, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'

@@ -150,6 +150,6 @@
 
 超时的评估会把它的触发排队以便再试一次。连续两次重试之后，第三次超时会记录 `unavailable`。研判失败也会记录 `unavailable`；之后到来的触发可以启动新的评估。策略变更，或针对过时策略做出的决策，会记录 `unavailable`，并立即按当前版本重新排队该批次。
 
-`evals` 健康条目会报告最近一小时内未解决的 unavailable 决策。`scripts/dsh-superagent status` 会包含该错误。
+`evals` 健康条目会报告最近一小时内未解决的 unavailable 决策。管理 API 的 `GET /orchestrator/api/health` 与 Windows 守护脚本的 `-Action status` 会包含该错误（POSIX 脚本 `scripts/dsh-superagent` 属已废止历史，已删除）。
 
 只有在 unavailable 决策距今不足 24 小时、仍是其线程上最新的决策、尚未被驳回，且该线程既未排队也未在评估时，面板才会请求人工关注。人可以重新评估该触发，或驳回该问题。

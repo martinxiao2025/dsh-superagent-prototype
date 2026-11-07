@@ -2,7 +2,7 @@
 
 本指南用于安装、配置与运维 dsh-superagent，涵盖账号、启动检查、升级与排障，并承接 [001 领域模型](001-domain.md) 到 [005 面板](005-panel.md)。
 
-> **支持环境（2026-11-06 用户确认）**：Windows + VS Code Stable 的官方 Copilot / Copilot Chat。本文中的 POSIX 命令、`#!/bin/sh` 包装器、tmux 与 `scripts/dsh-superagent` 仅描述既有产品行为，属**范围外**；Windows 上的启停请用 `scripts/dsh-superagent-windows.ps1`。
+> **支持环境（2026-11-06 用户确认）**：Windows + VS Code Stable 的官方 Copilot / Copilot Chat。本文中的 POSIX 命令、`#!/bin/sh` 包装器与 tmux 仅描述既有产品行为，属**范围外**；Windows 上的启停请用 `scripts/dsh-superagent-windows.ps1`。**已废止历史**：POSIX 服务脚本 `scripts/dsh-superagent` 依赖 `dsh --profile`，去 DSH 后已删除（2026-11-07），不再可用。
 
 ## 运行内容
 

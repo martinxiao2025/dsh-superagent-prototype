@@ -65,7 +65,7 @@ pnpm check          # typecheck + test + build + plugin:check
 保活由外部调度负责,Copilot 进程不必常驻:
 
 - Windows(支持环境):用本仓库的 `scripts/dsh-superagent-windows.ps1 -Action start`(无第三方依赖,start/stop/status/supervise);需要开机自启时,由计划任务在登录时调用同一条命令。演练与实测见 §10;
-- Linux/systemd(范围外,不实现也不验证):`scripts/dsh-superagent` 与 systemd 单元不属于本项目支持范围;
+- Linux/systemd(范围外,不实现也不验证):systemd 单元不属于本项目支持范围;**已废止历史**:POSIX 服务脚本 `scripts/dsh-superagent` 依赖 `dsh --profile`,去 DSH 后已于 2026-11-07 删除;
 - 守护进程重启后,MCP 端点重新监听同一端口;streamable-http 的断线重试由 Copilot 客户端负责,规范未定义重连语义。
 
 ## 7. 排障
@@ -126,7 +126,7 @@ pnpm check          # typecheck + test + build + plugin:check
 
 ### 10.1 既有机制与方案取舍
 
-- 产品自带的 `scripts/dsh-superagent` 依赖 tmux、`ps` 与 `fcntl`,只能在 POSIX 上运行;按 §1 的支持环境,它属于**范围外**,Windows 等价物是本仓库的 PowerShell 守护脚本。`tests/service-script.spec.ts` 在 Windows 上按其被测对象(`#!/bin/sh`)跳过并注明范围外。systemd 也不再是备选方案。
+- **已废止历史**:产品曾自带 `scripts/dsh-superagent`,依赖 `dsh --profile`、tmux、`ps` 与 `fcntl`,只能在 POSIX 上运行;去 DSH 后在 Windows 上已无意义,2026-11-07 连同 `tests/service-script.spec.ts` 一并删除,Windows 等价物是本仓库的 PowerShell 守护脚本。systemd 也不再是备选方案。
 - 备选方案与取舍:
   - **计划任务**:能开机自启,但需要注册任务与 XML,演练时难以在单次命令内完成启停与清理;
   - **nssm**:本机未安装,且任务要求不擅自联网安装第三方工具,排除;

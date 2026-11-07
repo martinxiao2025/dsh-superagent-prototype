@@ -74,7 +74,8 @@
 **本项目只支持并验证 Windows + VS Code Stable 的官方 Copilot / Copilot Chat。** 其他环境不在支持与验证范围内，也不作为未完成任务：
 
 - 范围外：Linux、macOS、WSL 及其它编辑器/宿主；VS Code Insiders（用户已卸载）；Copilot CLI（只作前置证据，不计入验收）。
-- POSIX 专属对象一律范围外：`scripts/dsh-superagent`（tmux/`ps`/`fcntl`）、产品生成的 `#!/bin/sh` worker shim、systemd 单元、POSIX 权限位断言、飞书消费者假 CLI 的 shebang 执行。
+- POSIX 专属对象一律范围外：产品生成的 `#!/bin/sh` worker shim、systemd 单元、POSIX 权限位断言、飞书消费者假 CLI 的 shebang 执行。
+- **已废止历史（2026-11-07）**：POSIX 服务脚本 `scripts/dsh-superagent` 依赖 `dsh --profile`、tmux、`ps` 与 `fcntl`，去 DSH 后无法工作，已连同 `tests/service-script.spec.ts` 删除；文档中提到它时只能作为已废止历史出现，不得再当作可用入口。
 - Windows 等价物：守护启停用 `scripts/dsh-superagent-windows.ps1`；相关测试在 Windows 上保持 `skipIf(platform)` 跳过并注明「范围外」，不得当作通过，也不得为跨平台去改产品行为。
 - 范围外不是遗留缺陷：文档与验收矩阵中不得再写成「待跨平台验证」或「未来支持其它环境」。
 
@@ -91,7 +92,6 @@
 | `docs/` | 设计文档 `000`–`010` + 计划文档 `00`/`01` | 可改；新增编号只能续到 `010` 之后的下一个，且只能链接更早编号 |
 | `locale/` | 面板双语文案 `en.json` / `zh.json` | 可改；键必须成对 |
 | `tests/` | vitest 测试与共享夹具 | 可改；**禁止**为通过验证而删测试或放宽断言 |
-| `scripts/dsh-superagent` | 部署后的服务管理脚本 | 可改；改动需 `tests/service-script.spec.ts` 通过 |
 | `plugin/` | **本阶段新增的插件源**（`plugin.json`、`mcp.json`、`skills/`） | 可手改，是唯一事实源 |
 | `lib/` | tsdown 构建产物（ESM 主包 + CJS 客户端） | **禁止手改**，会被下次构建清空 |
 | `lib/plugin/` | 插件打包产物 | **禁止手改**，由 `scripts/build-plugin.mjs` 生成 |
@@ -161,7 +161,7 @@ Get-ChildItem -Recurse -File src,tests,scripts,plugin,docs -Include *.ts,*.tsx,*
 ## 6. 安全规则
 
 1. **密钥与凭证**：不得把 token、cookie、私钥、`gh` 凭据、飞书 app secret、真实 session id 写入仓库、文档、测试夹具或提交信息。示例统一用占位符（`<org>`、`127.0.0.1`、`ou_bot`）。
-2. **不得为通过验证而降低标准**：禁止删除、注释掉测试，禁止为让结果变绿而跳过测试，禁止放宽断言、放宽 schema、改验收标准；失败就修代码或如实上报。仅当被测对象本身在某个平台无法运行时（例如产品生成的 `#!/bin/sh` worker shim、`scripts/dsh-superagent` 服务脚本），才允许用 `skipIf(platform)` 限定，并且必须在测试文件内写明原因、在 `docs/009-copilot-plugin.md` 的验收记录里同步数量，不得把跳过当作通过。
+2. **不得为通过验证而降低标准**：禁止删除、注释掉测试，禁止为让结果变绿而跳过测试，禁止放宽断言、放宽 schema、改验收标准；失败就修代码或如实上报。仅当被测对象本身在某个平台无法运行时（例如产品生成的 `#!/bin/sh` worker shim、飞书消费者假 CLI），才允许用 `skipIf(platform)` 限定，并且必须在测试文件内写明原因、在 `docs/009-copilot-plugin.md` 的验收记录里同步数量，不得把跳过当作通过。删除测试只允许一种情形：被测行为本身已被正式终止（如去 DSH 后删除 `scripts/dsh-superagent` 与其 spec），并且必须在 `docs/010-runtime-verification.md` 记录「行为是否仍存在 + 取代者」。
 3. **Git 安全**：禁止 `git push --force`、`git push -f`、改写已推送历史（rebase/amend 公开提交）、修改远端地址；不得擅自 `git reset --hard`、`git clean -fd`、`git checkout -- .`。
 4. **破坏性操作先确认**：删除目录/文件、覆盖未提交改动、清空数据库、重置分支，必须先征得用户同意（见 §8）。
 5. **外部网络与依赖**：新增依赖必须说明理由、锁定精确版本（不用 `^`）、更新锁文件与文档；校验脚本必须离线可跑；不得引入需要联网的运行时行为。
