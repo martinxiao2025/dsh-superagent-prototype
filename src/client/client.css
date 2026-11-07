@@ -1,9 +1,5 @@
 /* Panel layout and local UI controls styled with DSH `--dsw-alias-*` design tokens; one rule per line. */
 .dt-page { box-sizing: border-box; height: 100%; overflow: auto; scrollbar-gutter: stable; scroll-padding: 48px 0 72px; container-type: inline-size; padding: 28px clamp(24px, 4vw, 48px) 0; color: var(--dsw-alias-label-primary); }
-/* Deployment page rendered inside DSH Plugin Manager, which owns scrolling and padding. */
-.dt-embedded { container-type: inline-size; color: var(--dsw-alias-label-primary); }
-/* Disable sticky positioning inside DSH Plugin Manager, where the host container owns scrolling and bottom padding. */
-.dt-embedded .dt-savebar { position: static; }
 .dt-page > .dt-column { max-width: 960px; margin: 0 auto; padding-bottom: 48px; display: flex; flex-direction: column; gap: 24px; }
 .dt-head { position: relative; z-index: 3; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; }
 .dt-search { position: relative; width: 240px; max-width: 100%; }

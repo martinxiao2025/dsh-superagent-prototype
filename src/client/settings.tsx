@@ -1,6 +1,6 @@
 /** Settings 标签页外壳，在阶段设置（Source、评估、执行）、提示词与部署之间路由。 */
 import type { StateView } from './api.ts'
-import { DeploymentPage, type DeploymentForm } from './deployment.tsx'
+import { DeploymentPage } from './deployment.tsx'
 import { EvalSettings } from './eval.tsx'
 import { ExecutionSettings } from './execution.tsx'
 import { PromptsPage } from './prompts.tsx'
@@ -10,8 +10,8 @@ import { SettingsProvider } from './settings-kit.tsx'
 import { SourceSettings } from './source.tsx'
 
 const STAGE_GROUPS: readonly SettingsGroup[] = ['source', 'eval', 'execution']
-export function SettingsPage({ group, query, state, deploymentForm }: {
-  group: SettingsGroup; query: { source?: string; version?: string }; state: StateView; deploymentForm: DeploymentForm
+export function SettingsPage({ group, query, state }: {
+  group: SettingsGroup; query: { source?: string; version?: string }; state: StateView
 }) {
   const { t, navigate } = usePanel()
   const content = (() => {
@@ -20,7 +20,7 @@ export function SettingsPage({ group, query, state, deploymentForm }: {
       case 'eval': return <SettingsProvider><EvalSettings version={query.version} /></SettingsProvider>
       case 'execution': return <SettingsProvider><ExecutionSettings /></SettingsProvider>
       case 'prompts': return <PromptsPage />
-      case 'deployment': return <DeploymentPage setup={state.setup} form={deploymentForm} />
+      case 'deployment': return <DeploymentPage setup={state.setup} />
     }
   })()
   return <div className="dt-settings">

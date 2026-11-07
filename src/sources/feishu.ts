@@ -1,12 +1,11 @@
 /** 飞书 source kind 定义、policy 同步与 Cordis 插件入口。 */
-import type { Context } from '@deepseek-ai/cordis'
 import { z } from 'zod'
 import { FeishuBotSchema } from '../deployment.ts'
 import { feishuLink, sendFeishu } from './feishu-channel.ts'
 import { feishuThreadContext } from './feishu-read.ts'
 import { refreshChatNames, runFeishu } from './feishu-loops.ts'
 import { SOURCE, feishuTriggerId } from './feishu-trigger.ts'
-import { sourceContext } from './host.ts'
+import { sourceContext, type SourceHost } from './host.ts'
 import type { Localized, SourceKind } from './kind.ts'
 import type { SourceRegistry } from './registry.ts'
 
@@ -127,13 +126,12 @@ export const feishuKind: SourceKind<FeishuConfig> = {
 /** 返回飞书 Source 的设置；飞书插件禁用时回退到 schema 默认值。 */
 export const feishuSettings = (sources: SourceRegistry): FeishuConfig => sources.instance<FeishuConfig>(SOURCE)?.config ?? FeishuConfigSchema.parse({})
 
-export const name = 'dsh-superagent-feishu'
-export const inject = ['orchestrator']
-export function apply(ctx: Context): void {
-  ctx.effect(() => ctx.orchestrator.sources.register(feishuKind), 'feishu: source kind')
-  ctx.effect(() => {
-    const controller = new AbortController()
-    const running = runFeishu(sourceContext(ctx.orchestrator, feishuKind), controller.signal)
-    return async () => { controller.abort(); await running }
-  })
+/** 注册飞书 Source 并启动轮询；`lifetime` 中止时停止轮询。 */
+export async function startFeishu(host: SourceHost, lifetime: AbortSignal): Promise<void> {
+  const registered = host.sources.register(feishuKind)
+  const controller = new AbortController()
+  const stop = () => controller.abort()
+  lifetime.addEventListener('abort', stop, { once: true })
+  try { await runFeishu(sourceContext(host, feishuKind), controller.signal) }
+  finally { lifetime.removeEventListener('abort', stop); registered() }
 }

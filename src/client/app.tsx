@@ -2,7 +2,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import type { SearchView } from './api.ts'
 import { Button, Dot, Icon, Input, Modal, SegmentedTabs } from './controls.tsx'
-import type { DeploymentForm } from './deployment.tsx'
 import { EvalStatus } from './eval.tsx'
 import { ExecutionStatus } from './execution.tsx'
 import { ticketMark } from './marks.ts'
@@ -21,7 +20,6 @@ import { When } from './widgets.tsx'
 
 export interface AppProps {
   t: T; openSession: (sessionId: string) => Promise<void>
-  deploymentForm: DeploymentForm
 }
 
 function Glossary({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -138,7 +136,7 @@ function Header({ masterId }: { masterId: string | undefined }) {
   </header>
 }
 
-function Pages({ route, openTab, deploymentForm }: { route: Route; openTab: (tab: Tab) => void; deploymentForm: DeploymentForm }) {
+function Pages({ route, openTab }: { route: Route; openTab: (tab: Tab) => void }) {
   const { t } = usePanel()
   const { state, error, reload } = usePanelData()
   // 在窄屏上通过链接切换路由时，保持当前标签页滚动可见。
@@ -154,8 +152,7 @@ function Pages({ route, openTab, deploymentForm }: { route: Route; openTab: (tab
         paused={!!state?.paused} />
       case 'execution': return route.id !== undefined ? <TicketPage key={route.id} id={route.id} />
         : state ? <ExecutionStatus filter={route.query?.filter ?? 'open'} state={state} reload={reload} /> : waiting
-      case 'settings': return state ? <SettingsPage key={state.masterId} group={route.query.group} query={route.query} state={state}
-        deploymentForm={deploymentForm} /> : waiting
+      case 'settings': return state ? <SettingsPage key={state.masterId} group={route.query.group} query={route.query} state={state} /> : waiting
     }
   })()
   return <div className="dt-page">
@@ -170,7 +167,7 @@ function Pages({ route, openTab, deploymentForm }: { route: Route; openTab: (tab
 }
 
 /** 根面板组件，管理路由历史与共享的面板状态。 */
-export function App({ t, openSession, deploymentForm }: AppProps) {
+export function App({ t, openSession }: AppProps) {
   const [location, setLocation] = useState(initialLocation)
   useEffect(() => { remember(location) }, [location])
   // 跨导航保留最后打开的设置分组，使 Settings 标签页再次打开时停在该分组。
@@ -183,6 +180,6 @@ export function App({ t, openSession, deploymentForm }: AppProps) {
   const openTab = useCallback((tab: Tab) => move(current => ({ stack: [], route: tab === 'settings'
     ? settingsRoute(lastSettingsGroup(current)) : { page: tab, id: undefined } })), [move])
   return <PanelProvider t={t} openSession={openSession} navigate={navigate} back={back} backLabel={routeLabel(t, location.stack.at(-1) ?? HOME)}>
-    <Pages route={location.route} openTab={openTab} deploymentForm={deploymentForm} />
+    <Pages route={location.route} openTab={openTab} />
   </PanelProvider>
 }

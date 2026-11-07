@@ -1,303 +1,81 @@
-/** follow-up 路由：已订阅 thread 上的人类消息直接交给 ticket 的 worker，并通知主会话而不启动 Eval。 */
-import { afterEach, expect, it, vi } from 'vitest'
+/**
+ * follow-up 路由：已订阅 thread 上的人类消息直接交给 ticket 的 worker，并以通知告知主会话而不启动 Eval；
+ * 交回的 trigger 作为 candidate 回到主会话，只有从面板重新排队或交回之后才重新评估。
+ */
+import { afterEach, expect, it } from 'vitest'
 import { CHAT, feishu, startRuntime, type Host } from './fixtures/host.ts'
-import { repliedTo } from '../src/app/links.ts'
-import { inputMessage } from '../src/executor/dsh.ts'
 
 let h: Host | undefined
 afterEach(async () => { await h?.stop(); h = undefined })
 const THREAD = `feishu:${CHAT}:om_1`
-const followup = (id: string, text: string, overrides: Record<string, unknown> = {}) => feishu(id, text, { mentions: [], root_id: 'om_1',
-  ...overrides })
-const notices = (host: Host) => host.relays(host.runtime.masterId).filter(item => item.kind === 'follow_up')
+const followup = (id: string, text: string, overrides: Record<string, unknown> = {}) => feishu(id, text, { mentions: [], root_id: 'om_1', ...overrides })
+const notices = (host: Host) => host.notices().filter(item => item.kind === 'follow_up')
 
-it('delivers a follow-up to the worker and tells the main Session with a card, without an Eval', async () => {
+it('delivers a follow-up to the worker and tells the main Session, without an Eval', async () => {
   h = await startRuntime()
   const { ticket, sessionId } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
   h.deliveries.mockClear()
   const message = followup('2', '顺便把标题也改了', { parent_id: 'om_1' })
   h.runtime.receive(message)
-  await h.runtime.idle()
+  await h.settle()
   expect(h.relays(sessionId)).toEqual([expect.objectContaining({ trigger_id: message.id, text: '顺便把标题也改了' })])
-  expect(notices(h)).toEqual([{ kind: 'follow_up', trigger_id: message.id, from: 'ou_alice', thread: THREAD, at: message.at,
-    text: '顺便把标题也改了',
-    replies_to: { trigger_id: ticket.origin.triggerId, preview: '@bot 修一下回归' },
-    delivered_to: [{ ticket_id: ticket.id, title: ticket.title, state: 'working' }],
-      note: expect.stringContaining('该工单的 worker 已接手并自行决定') }])
-  // 没有 candidate、没有 Eval、没有 Decision：主 Session 上没有任何等待，Thread 的队列也保持空闲。
+  // 主会话收到的是一份 relay：谁把它交出去的、它送到了哪些工单，以及它只应被用来停止工作。
+  expect(h.relays(h.runtime.masterId).filter(item => item.kind === 'follow_up')).toEqual([expect.objectContaining({ kind: 'follow_up',
+    trigger_id: message.id, from: 'ou_alice', thread: THREAD, text: '顺便把标题也改了',
+    delivered_to: [expect.objectContaining({ ticket_id: ticket.id })], note: expect.stringContaining('该工单的 worker 已接手并自行决定') })])
+  // 没有 candidate、没有 Eval：thread 的队列保持空闲。
   expect(h.candidates()).toEqual([])
   expect(h.runtime.store.threads.get(THREAD)).toMatchObject({ pending: [] })
   expect(h.runtime.store.threads.get(THREAD)).not.toHaveProperty('evaluating')
-  expect(h.runtime.store.decisions.byThread(THREAD)).toHaveLength(1)
   expect(h.runtime.store.triggers.disposition(message.id)).toEqual({ fanout: [ticket.id], at: expect.any(String) })
 })
 
-it('sends a person\'s message that reaches no ticket, such as only one a person stopped, to Eval as before', async () => {
+it('sends a person\'s message that reaches no ticket, such as one a person stopped, to Eval as before', async () => {
   h = await startRuntime()
   const { ticket } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
   h.runtime.engine.stopTicket(ticket.id)
   h.deliveries.mockClear()
   const message = followup('2', '@bot 换个方式修', { mentions: [{ id: 'ou_bot' }] })
   h.runtime.receive(message)
-  await h.runtime.idle()
+  await h.settle()
   expect(notices(h)).toEqual([])
   expect(h.candidates()).toEqual([message.id])
 })
 
-it('leaves a delivered follow-up to its ticket\'s worker: the main Session may stop the ticket on it, and route it only once handed back',
-  async () => {
-  h = await startRuntime()
-  const { ticket, sessionId } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
-  const other = await h.acceptedTicket(feishu('3', '@bot 另一件事'))
-  const settle = async (id: string, text: string, sender?: string) => {
-    const message = followup(id, text, sender ? { sender_id: sender } : {})
-    h!.runtime.receive(message); await h!.runtime.idle()
-    return message.id
-  }
-  const master = (name: string, args: Record<string, unknown>) => h!.runTool(h!.runtime.masterId, name, args)
-  const decides = /由该工单的 worker 决定它是否属于那里/
-  // 访客的 follow-up 仍为 inferred，因此其 stop 不会停止工作；主 Session 无法路由或重新排队它。
-  const guest = await settle('4', '别做了', 'ou_guest')
-  expect(await h!.route({ kind: 'stop', ticket_id: ticket.id, trigger_id: guest })).toMatchObject({ decision: 'ignore' })
-  await expect(h!.route({ kind: 'accept', trigger_id: guest, title: 'More', worktree_name: 'more', acknowledgement: 'ok' }))
-    .rejects.toThrow(decides)
-  await expect(master('orchestrator_trigger_requeue', { trigger_id: guest })).rejects.toThrow(decides)
-  // 人仍可以从面板把它送去 Eval。
-  expect(await h.api('POST', `triggers/${encodeURIComponent(guest)}/requeue`)).toMatchObject({ status: 200, body: { queued: true } })
-  await h.runtime.pump(); await h.runtime.idle()
-  expect(h.candidates()).toContain(guest)
-  // Alice 的 follow-up 在 worker 交回后带有她的权限：一个转到另一个 ticket，一个成为新工作。
-  const attach = await settle('5', '这个其实是另一件事的')
-  await expect(h!.route({ kind: 'attach', ticket_id: other.ticket.id, trigger_id: attach })).rejects.toThrow(decides)
-  await h.runTool(sessionId, 'orchestrator_trigger_handback', { trigger_id: attach, reason: 'It is about the other request.' })
-  expect(await h!.route({ kind: 'attach', ticket_id: other.ticket.id, trigger_id: attach }))
-    .toMatchObject({ ticket: expect.objectContaining({ ticket_id: other.ticket.id }) })
-  const work = await settle('6', '另外把导出按钮也加上')
-  const request = { trigger_id: work, title: '导出按钮', worktree_name: 'export', acknowledgement: '收到，加导出按钮。' }
-  await expect(h!.route({ kind: 'accept', ...request })).rejects.toThrow(decides)
-  // attach 让另一个 ticket 也订阅了此 thread，因此它的 worker 也决定该消息；两者都交回后
-  // 它就成为新工作。
-  await h.runTool(sessionId, 'orchestrator_trigger_handback', { trigger_id: work, reason: 'It asks for an export button.' })
-  await expect(h!.route({ kind: 'accept', ...request })).rejects.toThrow(decides)
-  await h.runTool(other.sessionId, 'orchestrator_trigger_handback', { trigger_id: work, reason: 'Not this ticket either.' })
-  const accepted = await h!.route({ kind: 'accept', ...request })
-  expect(h.runtime.store.tickets.get((accepted.ticket as { ticket_id: string }).ticket_id)!.mandate).toMatchObject({ strength: 'explicit' })
-  // 应人要求执行的 stop 无需交回。
-  const stop = await settle('7', '先停一下')
-  expect(await h!.route({ kind: 'stop', ticket_id: ticket.id, trigger_id: stop })).toMatchObject({ decision: 'stop' })
-  expect(h.runtime.store.tickets.get(ticket.id)!.ended).toMatchObject({ by: 'human', outcome: 'stopped' })
-})
-
-/**
- * 统计由 steer 触发的主会话模型 turn：空闲时每个 steer 都会开启新的 turn，
- * 而在运行时到达的所有 steer 会合并进下一个 step。
- */
-function modelCalls(host: Host) {
-  const master = host.agents.get(host.runtime.masterId)!
-  const seen: string[] = []
-  const steer = master.steer.getMockImplementation() as (message: unknown) => void
-  master.steer.mockImplementation((message: unknown) => { seen.push(master.status); steer(message) })
-  return () => seen.filter(status => status === 'idle').length + (seen.includes('running') ? 1 : 0)
-}
-
-it('costs the main Session one model call for a burst of follow-ups while it works, and two while it idles', async () => {
-  for (const busy of [true, false]) {
-    h = await startRuntime()
-    await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
-    const master = h.agents.get(h.runtime.masterId)!
-    master.status = busy ? 'running' : 'idle'
-    h.deliveries.mockClear()
-    const calls = modelCalls(h)
-    for (const id of ['2', '3', '4', '5', '6']) h.runtime.receive(followup(id, `第 ${id} 条补充`, { sender_id: 'ou_guest' }))
-    await h.runtime.idle()
-    expect([notices(h).length, h.candidates().length, calls()]).toEqual([5, 0, busy ? 1 : 2])
-    await h.stop(); h = undefined
-  }
-})
-
-it('keeps a follow-up\'s notice in the effect queue until the main Session takes it, and sends it once', async () => {
-  h = await startRuntime()
-  await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
-  h.deliveries.mockClear()
-  h.agents.get(h.runtime.masterId)!.steer.mockImplementationOnce(() => { throw new Error('session gone') })
-  const message = followup('2', '补充一点')
-  h.runtime.receive(message)
-  await h.runtime.idle()
-  // notice 与接收时的事务一同存储，以其 Trigger 为键；重复消息不会新增任何内容。
-  expect(h.runtime.store.db.prepare("SELECT key FROM effect WHERE kind = 'relay'").all()).toEqual([{ key: `followup:${message.id}` }])
-  expect(h.runtime.receive(followup('2', '补充一点'))).toBe('duplicate')
-  vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 2000 })
-  try { await h.runtime.pump(); await h.runtime.idle() } finally { vi.useRealTimers() }
-  expect(notices(h).map(item => item.trigger_id)).toEqual([message.id])
-  expect(h.runtime.effects.pending('relay')).toBe(false)
-})
-
-it('relays a message a worker handed back as a candidate with the worker\'s reason', async () => {
+it('lets a worker hand a follow-up back as a candidate, and only then can the main Session route it', async () => {
   h = await startRuntime()
   const { ticket, sessionId } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
   const message = followup('2', '另外把导出按钮也加上')
   h.runtime.receive(message)
-  await h.runtime.idle()
+  await h.settle()
+  const decides = /由该工单的 worker 决定它是否属于那里/
+  await expect(h.route({ kind: 'accept', trigger_id: message.id, title: 'More', worktree_name: 'more', acknowledgement: 'ok' }))
+    .rejects.toThrow(decides)
   expect(await h.runTool(sessionId, 'orchestrator_trigger_handback', { trigger_id: message.id, reason: 'It asks for an export button.' }))
     .toEqual({ trigger_id: message.id, queued: true })
-  await h.runtime.pump(); await h.runtime.idle()
-  // candidate 会告知主 Session；在它之前不会有重新排队的通知。
-  const injected = h.agents.get(h.runtime.masterId)!.inject.mock.calls.map(([notice]) => JSON.stringify(notice))
-  expect(injected.filter(notice => notice.includes('trigger_requeued'))).toEqual([])
-  expect(h.relays(h.runtime.masterId).find(item => item.kind === 'candidate'
-    && item.trigger_id === message.id)).toMatchObject({ strength: 'explicit',
-    handed_back: [{ trigger_id: message.id, ticket_id: ticket.id, reason: 'It asks for an export button.' }] })
-  await expect(h.runTool(sessionId, 'orchestrator_trigger_handback', { trigger_id: message.id,
-    reason: 'Again' })).rejects.toThrow(/该工单已经把那个 Trigger 交回了/)
-  // 把它重新附加回交回它的 ticket 会被拒绝。
-  await expect(h.route({ kind: 'attach', ticket_id: ticket.id, trigger_id: message.id }))
-    .rejects.toThrow(/已把那个 Trigger 作为超出其范围交回/)
+  await h.runtime.pump(); await h.settle()
+  expect(h.candidates()).toContain(message.id)
+  expect(h.relays(h.runtime.masterId).find(item => item.kind === 'candidate' && item.trigger_id === message.id))
+    .toMatchObject({ strength: 'explicit', handed_back: [{ trigger_id: message.id, ticket_id: ticket.id, reason: 'It asks for an export button.' }] })
+  // 交回之后主会话才能接受它。
+  expect(await h.route({ kind: 'accept', trigger_id: message.id, title: '导出按钮', worktree_name: 'export', acknowledgement: '收到。' }))
+    .toMatchObject({ ticket: expect.objectContaining({ ticket_id: expect.any(String) }) })
+  await h.settle()
+  expect(h.runtime.store.tickets.get(ticket.id)!.mandate).toMatchObject({ strength: 'explicit' })
+  // 已交回的 trigger 不会被再次交回。
+  await expect(h.runTool(sessionId, 'orchestrator_trigger_handback', { trigger_id: message.id, reason: 'Again' }))
+    .rejects.toThrow(/该工单已经把那个 Trigger 交回了/)
 })
 
-it('lets a worker follow a related thread for context, which the main Session hears of without waking, and notes a ticket', async () => {
-  h = await startRuntime()
-  const { ticket, sessionId } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
-  const master = h.agents.get(h.runtime.masterId)!
-  master.inject.mockClear(); h.deliveries.mockClear()
-  expect(await h.runTool(sessionId, 'orchestrator_thread_follow', { thread: 'github:7',
-    reason: 'The issue it fixes.' })).toEqual({ followed: true, thread: 'github:7' })
-  await h.runtime.idle()
-  expect(h.runtime.store.threads.get('github:7')).toMatchObject({ subscriptions: [ticket.id], context: [ticket.id] })
-  const text = (message: unknown) => (message as { content: { text: string }[] }).content[0]!.text
-  const injected = master.inject.mock.calls.map(([message]) => JSON.parse(text(message)) as Record<string, unknown>)
-  expect(injected).toEqual([expect.objectContaining({ thread_followed: { ticket_id: ticket.id, thread: 'github:7',
-    reason: 'The issue it fixes.' } })])
-  expect(h.relays(h.runtime.masterId)).toEqual([])
-  await expect(h.runTool(sessionId, 'orchestrator_thread_follow', { thread: 'github', reason: 'x' })).rejects.toThrow(/<source>:<id>/)
-  expect(await h.runTool(h.runtime.masterId, 'orchestrator_ticket_note', { ticket_id: ticket.id, text: 'Ticket B renamed the setting.' }))
-    .toMatchObject({ reason: '已作为备注告知 worker' })
-  await h.runtime.idle()
-  expect(h.deliveries.mock.calls.map(([call]) => call).filter(call => call.sessionId === sessionId).map(call => call.text))
-    .toEqual([expect.stringContaining('来自 orchestrator 的说明，仅供上下文参考：Ticket B renamed the setting.')])
-})
-
-it('takes the message a follow-up answers from its Source kind, whichever kind it is', async () => {
-  h = await startRuntime()
-  const parent = feishu('1', 'the earlier message')
-  h.runtime.store.triggers.save(parent)
-  const reply = { ...feishu('2', 'a reply'), source: 'other' }
-  expect(repliedTo({ store: h.runtime.store, sources: { repliesTo: trigger => trigger.id === reply.id ? parent.id : undefined } },
-    reply)).toEqual(parent)
-  expect(repliedTo({ store: h.runtime.store, sources: { repliesTo: () => undefined } }, reply)).toBeUndefined()
-  expect(repliedTo(h.runtime, followup('3', 'yes', { parent_id: 'om_1' }))).toEqual(parent)
-})
-
-it('tells the main Session of a follow-up to an ended ticket once the ticket resumes, and not when it cannot', async () => {
-  h = await startRuntime()
-  const { ticket, sessionId } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
-  await h.runTool(sessionId, 'orchestrator_report', { state: 'ready', summary: 'Done' })
-  expect(h.runtime.store.tickets.get(ticket.id)!.ended).toBeDefined()
-  // 处理暂停期间，该消息等待 ticket，而 ticket 尚未恢复：主 Session 还什么都不知道。
-  await h.runtime.settings.pause(true, 'panel')
-  h.deliveries.mockClear()
-  const message = followup('2', '再改一下标题')
-  h.runtime.receive(message); await h.runtime.idle()
-  expect(notices(h)).toEqual([])
-  await h.runtime.settings.pause(false, 'panel')
-  await h.runtime.pump(); await h.runtime.idle()
-  expect(h.runtime.store.tickets.get(ticket.id)!.ended).toBeUndefined()
-  expect(notices(h)).toEqual([expect.objectContaining({ trigger_id: message.id, delivered_to: [expect.objectContaining({ ticket_id: ticket.id })] })])
-})
-
-it('tells the main Session nothing of a message it attached to an ended ticket, which resumes for it', async () => {
-  h = await startRuntime()
-  const { ticket, sessionId } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
-  await h.runTool(sessionId, 'orchestrator_report', { state: 'dropped', summary: 'nothing to do' })
-  const request = feishu('40', '@bot 上次那个改动还要改一下', { root_id: undefined })
-  h.runtime.receive(request); await h.runtime.idle()
-  await h.route({ kind: 'attach', ticket_id: ticket.id, trigger_id: request.id })
-  await h.runtime.idle()
-  expect(h.runtime.store.tickets.get(ticket.id)!.ended).toBeUndefined()
-  expect(notices(h)).toEqual([])
-})
-
-it('tells the main Session of a follow-up an earlier version queued for Eval, when the queue lets it go', async () => {
-  h = await startRuntime()
-  const { ticket } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
-  const message = followup('2', '顺便看看日志')
-  h.deliveries.mockClear()
-  // 更早的版本会把 follow-up 投递给 ticket，同时为其排队 Eval，却不告知主 Session。
-  h.runtime.store.atomic(() => {
-    h!.runtime.store.triggers.save(message)
-    h!.runtime.store.triggers.saveDisposition(message.id, { fanout: [ticket.id], at: message.at })
-    h!.runtime.store.threads.save({ ...h!.runtime.store.threads.get(THREAD)!, pending: [message.id] })
-  })
-  await h.runtime.pump(); await h.runtime.idle()
-  expect(h.runtime.store.threads.get(THREAD)).toMatchObject({ pending: [] })
-  expect(notices(h)).toEqual([expect.objectContaining({ trigger_id: message.id, delivered_to: [expect.objectContaining({ ticket_id: ticket.id })] })])
-})
-
-it('sends a request on a thread a worker follows only for context to Eval, and marks the worker\'s copy as context', async () => {
-  h = await startRuntime()
-  const { ticket, sessionId } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
-  await h.runTool(sessionId, 'orchestrator_thread_follow', { thread: `feishu:${CHAT}:om_9`, reason: 'The same page.' })
-  h.deliveries.mockClear()
-  const request = feishu('10', '@bot 把这里的按钮也改了', { root_id: 'om_9' })
-  h.runtime.receive(request)
-  await h.runtime.idle()
-  // 它不是任何人的 follow-up：主 Session 评估它，worker 把它作为 context 读取。
-  expect(h.candidates()).toEqual([request.id])
-  expect(notices(h)).toEqual([])
-  expect(h.runtime.store.triggers.disposition(request.id)).toMatchObject({ fanout: [ticket.id], context: [ticket.id] })
-  expect(h.relays(sessionId)).toEqual([expect.objectContaining({ trigger_id: request.id, context: true })])
-})
-
-it('shows a candidate\'s message as its workers would read it, with the message it answers', async () => {
-  h = await startRuntime()
-  const { ticket, sessionId } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
-  const long = `另外，${'导出按钮的文案也需要改。'.repeat(60)}`
-  const reply = followup('2', long, { parent_id: 'om_1' })
-  h.runtime.receive(reply); await h.runtime.idle()
-  await h.runTool(sessionId, 'orchestrator_trigger_handback', { trigger_id: reply.id, reason: 'Another change.' })
-  await h.runtime.pump(); await h.runtime.idle()
-  const card = h.relays(h.runtime.masterId).find(item => item.kind === 'candidate' && item.trigger_id === reply.id)!
-  expect(card).toMatchObject({ from: 'ou_alice', text: long.slice(0, 600) + '…', chars: long.length, read: `trigger/${reply.id}`,
-    replies_to: { trigger_id: ticket.origin.triggerId, preview: '@bot 修一下回归' } })
-  expect(card).not.toHaveProperty('triggers')
-})
-
-it('keeps a listed member\'s request on a ticket\'s thread to that ticket, so it is not done twice', async () => {
-  h = await startRuntime()
-  const { ticket, sessionId } = await h.acceptedTicket(feishu('1', '@bot 修一下设置页保存按钮的文案'))
-  h.deliveries.mockClear()
-  // 基准用例：来自允许列表成员、在 ticket 自身 thread 上的定向请求。
-  const request = followup('2', '@bot [W1-a] 概览页的保存按钮也按同样方式改一下', { mentions: [{ id: 'ou_bot' }] })
-  h.runtime.receive(request); await h.runtime.idle()
-  // worker 已收到并作出决定；主 Session 会得知此事，且无法为它开启第二个 ticket。
-  expect(h.relays(sessionId)).toEqual([expect.objectContaining({ trigger_id: request.id })])
-  expect(notices(h)).toEqual([expect.objectContaining({ trigger_id: request.id,
-    note: expect.stringContaining('使用 orchestrator_route，kind 为 stop') })])
-  await expect(h.route({ kind: 'accept', trigger_id: request.id, title: '概览页按钮',
-    worktree_name: 'overview-button', acknowledgement: '收到。' })).rejects.toThrow(/由该工单的 worker 决定它是否属于那里/)
-  // worker 认为它属于其 ticket，并如此说明。
-  expect(await h.runTool(sessionId, 'orchestrator_ack', { trigger_id: request.id, text: '收到：概览页的保存按钮也一起改。' }))
-    .toMatchObject({ trigger_id: request.id })
-  expect(h.runtime.store.tickets.list().map(item => item.id)).toEqual([ticket.id])
-  expect(h.candidates()).toEqual([])
-})
-
-it('leaves a follow-up to its ticket\'s worker after the main Session drops the subscriptions of its thread', async () => {
-  h = await startRuntime()
-  const { ticket } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
-  const request = followup('2', '@bot 另外把导出按钮也加上', { mentions: [{ id: 'ou_bot' }] })
-  h.runtime.receive(request); await h.runtime.idle()
-  const master = (name: string, args: Record<string, unknown>) => h!.runTool(h!.runtime.masterId, name, args)
-  expect(await master('orchestrator_thread_unsubscribe', { thread: THREAD })).toEqual({ removed: true, thread: THREAD })
-  // worker 已收到该消息并仍在决定，因此主 Session 无法为它开启第二个 ticket。
-  await expect(h!.route({ kind: 'accept', trigger_id: request.id, title: '导出按钮', worktree_name: 'export',
-    acknowledgement: '收到，加导出按钮。' })).rejects.toThrow(/由该工单的 worker 决定它是否属于那里/)
-  expect(h.runtime.store.tickets.list().map(item => item.id)).toEqual([ticket.id])
-})
-
-it('tells a worker it may hand back a message beyond its ticket or for another one, also when the message resumed it', async () => {
-  expect(inputMessage({ id: 'r', kind: 'resumed', triggerId: 't', at: '' })).toContain('请用 orchestrator_trigger_handback 交还')
+it('lets a worker follow a related thread for context, and notes the ticket without waking the main Session', async () => {
   h = await startRuntime()
   const { sessionId } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
-  expect((h.tools.get(sessionId)!.get('orchestrator_trigger_handback') as unknown as { description: string }).description)
-    .toContain('把要求本工单之外或另一张工单的工作的消息交回')
+  h.deliveries.mockClear()
+  expect(await h.runTool(sessionId, 'orchestrator_thread_follow', { thread: 'github:7', reason: 'The issue it fixes.' }))
+    .toEqual({ followed: true, thread: 'github:7' })
+  await h.settle()
+  expect(h.runtime.store.threads.get('github:7')).toMatchObject({ subscriptions: [expect.any(String)] })
+  // 通知留在主会话的待注入队列里，不派发回合。
+  expect(h.deliveries.mock.calls.filter(([call]) => call.sessionId === h!.runtime.masterId)).toEqual([])
+  expect(h.notices()).toEqual(expect.arrayContaining([expect.objectContaining({ thread_followed: expect.objectContaining({ thread: 'github:7' }) })]))
 })

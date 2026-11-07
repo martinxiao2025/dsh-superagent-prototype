@@ -1,7 +1,7 @@
 /** 格式化通过 effect 队列投递给主 Session 的后台通知与引导中继。 */
 import { randomUUID } from 'node:crypto'
 import { followupOwners, key, liveTicket, type DomainEvent, type Ticket, type WorkerReport } from '../core/index.ts'
-import { triggerMessage } from '../executor/dsh.ts'
+import { triggerMessage } from '../executor/messages.ts'
 import type { SourceRegistry } from '../sources/registry.ts'
 import { repliedTo } from './links.ts'
 import type { Store } from './store.ts'

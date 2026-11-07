@@ -3,7 +3,6 @@ import { z } from 'zod'
 import { SettingsSchema } from '../src/policy.ts'
 import { SourceRegistry } from '../src/sources/registry.ts'
 import type { SourceKind } from '../src/sources/kind.ts'
-import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { OutboundMessage } from '../src/core/index.ts'
 import { Commands } from '../src/infra/commands.ts'
 import { HealthBoard } from '../src/infra/health.ts'
@@ -65,9 +64,6 @@ describe('Source registry', () => {
     expect(context.messageId).toBe('m1')
     expect(await context.read(commands, 'thread', '2')).toMatchObject({ body: { page: '2' } })
     expect(read).toEqual([['t1', 'thread', '2', 7]])
-    expect(context.images('img_x')).toEqual([])
-    await expect(context.image({} as Agent, commands, { id: 'm1', text: '' }, 'img_x', '',
-      new AbortController().signal)).rejects.toThrow('不支持图片')
     // 没有 channel 或没有 context 的 kind 两者都没有。
     sources.register({ ...probe, kind: 'quiet' })
     expect(await sources.send(message('quiet'), commands)).toBe('gone')

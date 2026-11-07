@@ -1,73 +1,40 @@
 /**
- * 面板 Settings 标签页与 DSH Plugin Manager 配置页共用的部署设置视图。
- * 可写时通过 DSH `ConfigForm` 编辑主机级插件配置限制。
+ * 面板 Settings 标签页的部署设置视图。
+ * 独立版本不再内嵌 DSH 的插件配置表单：主机级配置来自启动时读取的配置文件，这里只读展示。
  */
-import { useCallback, useMemo, useSyncExternalStore } from 'react'
-import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
-import type { ConfigPageForm } from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import { LIMITS } from '../limits.ts'
 import type { SetupView } from './api.ts'
 import { InfoTip, Input } from './controls.tsx'
-import { SaveBar, useDraft } from './draft.tsx'
-import { PanelProvider, usePanel, usePanelData } from './provider.tsx'
+import { usePanel } from './provider.tsx'
 import { Field, Fields } from './settings-kit.tsx'
-import { setupText, type T } from './text.ts'
+import { setupText } from './text.ts'
 import { CheckSetupButton, Hint, KeyValues, Section, SetupMessage } from './widgets.tsx'
 
-export type DeploymentForm = ConfigPageForm | undefined
-type Op = Parameters<ConfigPageForm['mutate']>[0][number]
-
 const MACHINE_LIMITS = ['promptMaxChars', 'admissionContextMaxPages', 'admissionContextTimeoutMs'] as const
-type Limits = Record<typeof MACHINE_LIMITS[number], string>
-const text = (value: unknown): string => typeof value === 'string' || typeof value === 'number' ? String(value) : ''
-const limitsOf = (values: object | undefined): Limits =>
-  Object.fromEntries(MACHINE_LIMITS.map(key => [key, text((values as Record<string, unknown> | undefined)?.[key])])) as Limits
 
-export function usePageForm(form: ConfigForm<Record<string, unknown>> | undefined): DeploymentForm {
-  const subscribe = useCallback((listener: () => void) => form ? form.subscribe(listener) : () => {}, [form])
-  const state = useSyncExternalStore(subscribe, () => form?.getSnapshot())
-  return useMemo(() => form && state ? { state, mutate: form.mutate.bind(form) } : undefined, [form, state])
-}
-
-/** 部署配置表单；DSH 配置表单不可用或只读时回退为只读展示。 */
-export function DeploymentPage({ setup, form, accounts: showAccounts }: { setup: SetupView; form: DeploymentForm; accounts?: boolean }) {
-  const { t, notify } = usePanel()
-  const snapshot = form?.state
-  const editable = snapshot?.status === 'ready' && snapshot.writable
-  // 仅在 DSH 提供可写值时传入 `revision`，使在 `ready` 之前开始的草稿在变为可写时重新设定基准。
-  const draft = useDraft({ saved: limitsOf(editable ? snapshot.value : setup.machine), revision: editable ? snapshot.revision : undefined,
-    reload: async () => {},
-    save: async (value, revision, base) => {
-      const ops: Op[] = MACHINE_LIMITS.filter(key => value[key].trim() !== base[key].trim())
-        .map(key => value[key].trim() ? { op: 'set', path: [key], value: Number(value[key]) } : { op: 'unset', path: [key] })
-      if (!form || !await form.mutate(ops, revision)) throw new Error(t('deploymentRefused'))
-      notify(t('saved'))
-      return { revision: revision + 1, restarting: false }
-    } })
+/** 部署配置视图：只读展示状态目录、运行限制与派生的仓库/账号信息。 */
+export function DeploymentPage({ setup, accounts: showAccounts }: { setup: SetupView; accounts?: boolean }) {
+  const { t } = usePanel()
   const accounts = setup.accounts
-  // 远程浏览器（`memory` 模式）为只读；`unavailable` 表示 `dsh-superagent` 仍在启动。
-  const readOnlyHint = !form ? t('deploymentNoForms') : snapshot?.mode === 'memory' ? t('deploymentReadOnly')
-    : snapshot?.status === 'loading' ? t('loading') : snapshot?.status === 'unavailable' ? t('deploymentUnavailable')
-    : !editable ? t('deploymentReadOnly') : undefined
-  const limit = (key: typeof MACHINE_LIMITS[number], label: string) => <Field label={label}>
-    <Input type="number" min={LIMITS[key].min} max={LIMITS[key].max} step={1} value={draft.value[key]} disabled={!editable}
-      onChange={event => draft.edit({ ...draft.value, [key]: event.target.value })} />
-  </Field>
   const feishu = accounts?.feishu ? accounts.feishu.name || accounts.feishu.botId
     : setup.feishuProblem ? setupText(t, setup.feishuProblem) : t('deploymentFeishuNone')
-  return <form className="dt-form" onSubmit={event => { void draft.submit(event) }}>
-    <Fields disabled={draft.busy}>
+  const limit = (key: typeof MACHINE_LIMITS[number], label: string) => <Field label={label}>
+    <Input type="number" min={LIMITS[key].min} max={LIMITS[key].max} step={1} value={setup.machine[key]} disabled />
+  </Field>
+  return <form className="dt-form" onSubmit={event => event.preventDefault()}>
+    {/* 检查按钮要能点击，因此放在禁用的字段组之外；只读字段仍整体禁用。 */}
+    {setup.problem && <div className="dt-row-buttons">
+      <p className="dt-error" role="status"><SetupMessage problem={setup.problem} lead /></p><CheckSetupButton />
+    </div>}
+    <Fields disabled>
       <Hint>{t('deploymentIntro')}</Hint>
-      {setup.problem && <div className="dt-row-buttons">
-        <p className="dt-error" role="status"><SetupMessage problem={setup.problem} lead /></p><CheckSetupButton />
-      </div>}
       {showAccounts && <Section title={t('deploymentDerived')} hint={t('deploymentDerivedHint')}>
         <KeyValues rows={[[t('deploymentRepository'), accounts?.repository ?? '—'],
           [t('deploymentAgent'), accounts ? `@${accounts.agent}` : '—'], [t('deploymentFeishu'), feishu]]} />
         <Hint>{t('deploymentAccountsWhere')}</Hint>
       </Section>}
       <Section title={t('deploymentMachine')}>
-        {readOnlyHint && <Hint>{readOnlyHint}</Hint>}
+        <Hint>{t('deploymentConfigFile')}</Hint>
         <div className="dt-field">
           <span className="dt-field-head">{t('deploymentStateDir')}<InfoTip text={t('deploymentStateDirHint')} /></span>
           <span className="dt-mono">{setup.machine.stateDir}</span>
@@ -79,20 +46,5 @@ export function DeploymentPage({ setup, form, accounts: showAccounts }: { setup:
         {limit('admissionContextTimeoutMs', t('deploymentContextTimeout'))}
       </Section>
     </Fields>
-    {editable && <SaveBar {...draft} onDiscard={draft.discard} />}
   </form>
-}
-
-/** Plugin Manager 配置页；包含派生的仓库与账号信息，因为 Source 设置位于主面板。 */
-function PluginPage({ form }: { form: DeploymentForm }) {
-  const { t } = usePanel()
-  const { state, error } = usePanelData()
-  return <div className="dt-embedded">
-    {state ? <DeploymentPage setup={state.setup} form={form} accounts />
-      : error ? <p className="dt-error" role="alert">{error.message}</p> : <p className="dt-hint">{t('loading')}</p>}
-  </div>
-}
-/** DSH Plugin Manager 配置视图入口；`summary` 模式下不渲染内容，因为 DSH 会显示包描述。 */
-export function PluginConfig({ t, view, form }: { t: T; view: 'page' | 'summary'; form: DeploymentForm }) {
-  return view === 'page' ? <PanelProvider t={t} interval={10_000}><PluginPage form={form} /></PanelProvider> : null
 }

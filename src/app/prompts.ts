@@ -5,7 +5,7 @@ import { policyVersion, type Settings, type SettingsOrigin } from '../policy.ts'
 import { masterPrompt, workerPrompt, sharedPrompt, guides, mainAdmissionPolicy, handoffPolicy, teamDefaults, sourceSkills, cliNotes } from './context.ts'
 import { environmentLines, type Variable } from './execution-environment.ts'
 import { promptsNotice } from './notices.ts'
-import type { Sessions } from './sessions.ts'
+import type { MainSession } from './main-session.ts'
 import type { Store } from './store.ts'
 import { Versions } from './versions.ts'
 import { KV } from '../kv.ts'
@@ -130,7 +130,7 @@ export interface DefaultChange { part: string; base?: string; previous?: string;
 export class PromptConflict extends Error {}
 /**
  * 通过 `Versions` 在 `Store` 中存储编号的提示词配置，并结合执行环境合成角色系统提示词与技能。
- * `Sessions` 读取合成后的提示词与技能用于 orchestrator 与 worker 运行，管理路由与工具则通过它校验、预览并保存修订。
+ * `MainSession` 读取合成后的提示词与技能用于 orchestrator 与 worker 运行，管理路由与工具则通过它校验、预览并保存修订。
  */
 export class Prompts {
   private readonly versions: Versions<PromptVersion>
@@ -236,7 +236,7 @@ export class Prompts {
   }
 }
 /** 保存新的提示词修订，并在变更来自其自身工具调用之外时通知主 Session。 */
-export async function savePrompts(host: { store: Pick<Store, 'atomic'>; prompts: Pick<Prompts, 'save'>; sessions: Pick<Sessions, 'notify' | 'delivery'> },
+export async function savePrompts(host: { store: Pick<Store, 'atomic'>; prompts: Pick<Prompts, 'save'>; sessions: Pick<MainSession, 'notify' | 'delivery'> },
   config: unknown, baseRevision: number, origin: SettingsOrigin) {
   const version = host.store.atomic(() => {
     const saved = host.prompts.save(config, baseRevision, origin)

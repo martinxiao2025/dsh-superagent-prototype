@@ -36,7 +36,7 @@ const lark = (status: object, mode = 'bot', bot: object = { bot: { open_id: 'ou_
 }
 // 配置 schema 描述的是 POSIX 绝对路径；下面的 setup 用例改用真实目录。
 const minimal = (overrides: Record<string, unknown> = {}) => ({ stateDir: '/srv/state', ...overrides })
-const machine = (overrides: Partial<Machine> = {}): Machine => ({ ...machineOf(Config(minimal())), stateDir: join(dir, 'state'), ...overrides })
+const machine = (overrides: Partial<Machine> = {}): Machine => ({ ...machineOf(Config.parse(minimal())), stateDir: join(dir, 'state'), ...overrides })
 /** 在飞书探测添加的 `env` 前缀之后，应答 worker shell 本会启动的那个 CLI。 */
 const probe: Probe = async argv => {
   let at = 0
@@ -68,19 +68,19 @@ vi.setConfig({ testTimeout: 30_000 })
 
 describe('configuration schema', () => {
   it('requires only the state directory and reads the editable fields through references', () => {
-    expect(() => Config({})).toThrow('stateDir')
-    const read = machineOf(Config({ stateDir: '/srv/state' }))
-    // 限制值是易失引用，loader 就地更新，调用方在使用时读取。
+    expect(() => Config.parse({})).toThrow('stateDir')
+    const read = machineOf({ stateDir: '/srv/state' })
+    // 限制值经 `Volatile` 读取，调用方在使用时取值。
     expect({ ...read, promptMaxChars: read.promptMaxChars.get(), admissionContextMaxPages: read.admissionContextMaxPages.get(),
       admissionContextTimeoutMs: read.admissionContextTimeoutMs.get() })
       .toEqual({ stateDir: '/srv/state', promptMaxChars: 100000, admissionContextMaxPages: 10, admissionContextTimeoutMs: 15000,
-        mcpEnabled: true, mcpPort: 3083 })
-    expect(() => Config(minimal({ stateDir: 'relative/dir' }))).toThrow()
-    expect(() => Config(minimal({ stateDir: '~/dir' }))).toThrow()
+        mcpEnabled: true, mcpPort: 3083, panelPort: 3082, host: '127.0.0.1' })
+    expect(() => Config.parse(minimal({ stateDir: 'relative/dir' }))).toThrow()
+    expect(() => Config.parse(minimal({ stateDir: '~/dir' }))).toThrow()
   })
   it('names keys the configuration does not define, and where the values of older keys live now', () => {
     const raw = minimal({ repository: 'acme/widgets', repositoryPath: '/srv/widgets', blockedCommands: [], author: { name: 'Alice' }, extra: 1 })
-    expect(() => machineOf(Config(raw))).toThrow('dsh-superagent 的配置包含它不使用的键：repository（现在位于GitHub Source 上）、repositoryPath（现在位于Execution 设置的 prepare 命令中）、blockedCommands（现在位于Execution 设置中）、author（现在位于提示词文本中）、extra；docs/006-deployment.md 列出了这些键')
+    expect(() => machineOf(raw)).toThrow('dsh-superagent 的配置包含它不使用的键：repository（现在位于GitHub Source 上）、repositoryPath（现在位于Execution 设置的 prepare 命令中）、blockedCommands（现在位于Execution 设置中）、author（现在位于提示词文本中）、extra；docs/006-deployment.md 列出了这些键')
   })
 })
 

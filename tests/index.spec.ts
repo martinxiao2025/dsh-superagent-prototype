@@ -1,62 +1,71 @@
-import { expect, it, vi } from 'vitest'
-import { Config, type Machine } from '../src/deployment.ts'
-import { apply } from '../src/index.ts'
+/** 进程入口：配置文件读取、校验失败的可读错误，以及配置变更后的进程内重启。 */
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, expect, it, vi } from 'vitest'
+import type { Machine } from '../src/deployment.ts'
 
-// 用替身 Runtime 捕获解析后的 Machine 设置与重启回调。
-const runtimes = vi.hoisted(() => [] as { machine: Machine; restart: () => void }[])
+// 用替身 Runtime 捕获解析后的 Machine 与重启回调，避免真的监听端口或探测 CLI。
+const runtimes = vi.hoisted(() => [] as { machine: Machine; restart: () => void; stopped: boolean }[])
 vi.mock('../src/app/runtime.ts', () => ({ Runtime: class {
   ready = Promise.resolve()
-  constructor(_ctx: unknown, readonly machine: Machine, readonly restart: () => void) { runtimes.push(this) }
-  configured() { return true }
-  async stop() {}
-} }))
-/** 模拟 Cordis loader 就地更新易变配置引用。 */
-const commit = (reference: unknown, value: unknown) => { (reference as Record<symbol, (value: unknown) => void>)[Symbol.for('cosmokit.volatile.write')]!(value) }
-
-function context() {
-  const handlers = new Map<string, () => void>()
-  const configure = vi.fn(() => () => {})
-  const describe = vi.fn(() => [])
-  const ctx = {
-    on: vi.fn((name: string, handler: () => void) => { handlers.set(name, handler) }),
-    inject: vi.fn((_services: string[], callback: (child: unknown) => void) => { callback({ effect: (effect: () => unknown) => effect(), settings: { configure } }) }),
-    effect: vi.fn(),
-    fiber: { restart: vi.fn(async () => {}) },
-    get: vi.fn((name: string) => name === 'settings' ? { describe } : undefined),
-    logger: { info: vi.fn(), error: vi.fn() },
+  panelPort = 3082
+  constructor(readonly host: { machine: Machine; restart: () => void }) {
+    const entry = { machine: host.machine, restart: host.restart, stopped: false }
+    runtimes.push(entry)
+    host.restart = () => { entry.restart() }
   }
-  return { ctx, handlers, configure, describe }
+  configured() { return false }
+  get setupProblem() { return { code: 'repositoryUnset', place: 'github', detail: '尚未配置仓库', values: {} } }
+  async stop() { runtimes.at(-1)!.stopped = true }
+} }))
+const { configFile, loadConfig, main } = await import('../src/index.ts')
+
+let dir: string | undefined
+afterEach(() => { if (dir) rmSync(dir, { recursive: true, force: true }); dir = undefined; runtimes.length = 0; vi.restoreAllMocks() })
+const config = (contents: unknown): string => {
+  dir = mkdtempSync(join(tmpdir(), 'index-'))
+  const path = join(dir, 'config.json')
+  writeFileSync(path, typeof contents === 'string' ? contents : JSON.stringify(contents))
+  return path
 }
 
-it('reads a limit DSH commits a new value of without a restart, and asks DSH to generate no settings page', async () => {
-  const { ctx, handlers, configure } = context()
-  const config = Config({ stateDir: '/srv/state', promptMaxChars: 5000 })
-  await apply(ctx as never, config)
-  expect(configure).toHaveBeenCalledExactlyOnceWith({ auto: false }, ctx.fiber)
-  const { machine } = runtimes.at(-1)!
-  expect(machine.promptMaxChars.get()).toBe(5000)
-  commit(config.promptMaxChars, 8000)
-  expect(machine.promptMaxChars.get()).toBe(8000)
-  expect(handlers.has('loader/volatile-update')).toBe(false)
-  expect(ctx.fiber.restart).not.toHaveBeenCalled()
+it('reads the config path from --config and falls back to the home directory', () => {
+  expect(configFile([])).toMatch(/\.dsh-superagent[\\/]config\.json$/)
+  expect(configFile(['--config', 'C:\\cfg\\dsh.json'])).toBe('C:\\cfg\\dsh.json')
+  expect(() => configFile(['--config'])).toThrow('--config 需要一个文件路径')
 })
 
-it('asks DSH to read its settings entry again once a restart it started finished', async () => {
-  const { ctx, describe } = context()
-  let finish = () => {}
-  ctx.fiber.restart.mockImplementation(() => new Promise<void>(resolve => { finish = resolve }))
-  await apply(ctx as never, Config({ stateDir: '/srv/state' }))
-  // 保存 Source 账号变更会重启 dsh-superagent，后者重新执行 setup 并刷新设置描述符。
-  runtimes.at(-1)!.restart()
-  await Promise.resolve()
-  expect(describe).not.toHaveBeenCalled()
-  finish()
-  await vi.waitFor(() => { expect(describe).toHaveBeenCalledTimes(1) })
+it('names the file when it is missing, is not JSON, or fails validation', () => {
+  const missing = join(tmpdir(), 'does-not-exist-dsh-superagent.json')
+  expect(() => loadConfig(['--config', missing])).toThrow(`无法读取配置文件 ${missing}`)
+  const malformed = config('{not json')
+  expect(() => loadConfig(['--config', malformed])).toThrow(`配置文件 ${malformed} 不是合法 JSON`)
+  const invalid = config({ stateDir: '' })
+  expect(() => loadConfig(['--config', invalid])).toThrow(`配置文件 ${invalid} 无效`)
+  expect(() => loadConfig(['--config', config({ stateDir: '/srv/state', unexpected: true })]))
+    .toThrow('dsh-superagent 的配置包含它不使用的键：unexpected')
 })
 
-it('refuses keys of the previous configuration before registering anything', async () => {
-  const { ctx } = context()
-  await expect(apply(ctx as never, Config({ stateDir: '/srv/state', github: { cli: 'gh' } } as never))).rejects.toThrow('github（现在位于GitHub Source 上）')
-  expect(ctx.on).not.toHaveBeenCalled()
-  expect(ctx.inject).not.toHaveBeenCalled()
+it('starts the orchestrator with the parsed machine and reports a failed start as exit code 1', async () => {
+  const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
+  const code = await main({ config: { stateDir: '/srv/state', promptMaxChars: 5000, admissionContextMaxPages: 3,
+    admissionContextTimeoutMs: 1000, mcpEnabled: false, mcpPort: 3083, panelPort: 3082, host: '127.0.0.1', model: '' }, logger })
+  expect(code).toBe(0)
+  const runtime = runtimes.at(-1)!
+  expect(runtime.machine).toMatchObject({ stateDir: '/srv/state', mcpEnabled: false, mcpPort: 3083, panelPort: 3082, host: '127.0.0.1' })
+  expect(runtime.machine.promptMaxChars.get()).toBe(5000)
+  expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('正在等待 setup'))
+  // 面板提供的重启回调会停掉当前编排器再启动一个。
+  runtime.restart()
+  await vi.waitFor(() => { expect(runtimes).toHaveLength(2) })
+  expect(runtime.stopped).toBe(true)
+})
+
+it('exits with 1 and logs the reason when the configuration cannot be read', async () => {
+  const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
+  const code = await main({ argv: ['--config', join(tmpdir(), 'absent-dsh-superagent.json')], logger })
+  expect(code).toBe(1)
+  expect(logger.error).toHaveBeenCalledWith('dsh-superagent 无法启动：%s', expect.stringContaining('无法读取配置文件'))
+  expect(runtimes).toHaveLength(0)
 })

@@ -1,5 +1,4 @@
 /** SourceKind 插件契约：配置 schema、UI 表单字段、Policy 集成、channel 适配器与 thread 上下文读取器。 */
-import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { z } from 'zod'
 import type { OutboundMessage, ScopeResult, Trigger } from '../core/index.ts'
 import type { Deployment } from '../deployment.ts'
@@ -61,25 +60,16 @@ export interface ContextMessage {
 }
 export type ContextPartName = 'thread' | 'root' | 'parent'
 export interface ContextPart { messages: ContextMessage[]; next?: string | undefined; body: Record<string, unknown>; status?: string }
-/** 有界的 thread 上下文读取器，供评估检查 trigger 附近的消息与图片。 */
+/** 有界的 thread 上下文读取器，供评估检查 trigger 附近的消息。 */
 export interface ThreadContext<C> {
   /** 该 Trigger 自身消息在其 Thread 消息中的 ID。 */
   messageId(trigger: Trigger): string
   /** 读取一页 thread 消息（`thread`；省略 `cursor` 时为第一页）、话题根（`root`），或被回复的消息（`parent`）。 */
   read(commands: Commands, trigger: Trigger, part: ContextPartName, cursor: string | undefined, config: C): Promise<ContextPart>
-  /** 从消息文本中提取 `image` 可读取的图片键；不支持图片的 kind 省略此方法。 */
-  images?(text: string): string[]
-  /** 读取 Trigger 所在 Thread 中某条消息的一张图片，作为 `agent` 的附件。 */
-  image?(agent: Agent, commands: Commands, trigger: Trigger, message: { id: string; text: string }, key: string, stateDir: string,
-    signal: AbortSignal): Promise<unknown>
 }
 export interface TriggerContext {
   readonly messageId: string
   read(commands: Commands, part: ContextPartName, cursor?: string): Promise<ContextPart>
-  images(text: string): string[]
-  /** @throws 对不支持图片的 kind 抛出。 */
-  image(agent: Agent, commands: Commands, message: { id: string; text: string }, key: string, stateDir: string,
-    signal: AbortSignal): Promise<unknown>
 }
 /** 注册到 SourceRegistry 的可插拔 source kind 描述。 */
 export interface SourceKind<C extends Record<string, unknown> = Record<string, unknown>> {

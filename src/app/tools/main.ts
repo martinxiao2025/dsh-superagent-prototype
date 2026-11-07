@@ -1,14 +1,14 @@
 /** 主 Session 的工具：路由 Trigger、评估候选、发送回复，以及更新设置与提示词。 */
-import type { Context } from '@deepseek-ai/cordis'
 import { z } from 'zod'
 import { UserError, followupOwners, key, reasonText, type Decision, type DecisionKind, type EngineForMainSession, type EngineForPeople }
   from '../../core/index.ts'
 import { IM_WORDS, NOTE_WORDS, wordCount } from '../../infra/text.ts'
+import type { Logger } from '../../infra/logger.ts'
 import { AssessmentSchema, EvalReadSchema, WorktreeNameSchema, type MasterAssessor } from '../assessment.ts'
 import { ticketCard } from '../cards.ts'
 import { PromptConfigSchema, savePrompts, type Prompts } from '../prompts.ts'
 import { readResource, type MainResourceHost, type ResourceHost } from '../resources.ts'
-import type { Sessions } from '../sessions.ts'
+import type { MainSession } from '../main-session.ts'
 import type { Settings } from '../settings.ts'
 import type { Store } from '../store.ts'
 import { AcknowledgementSchema, readTool, tool, type Tool, type ToolScope } from './tool.ts'
@@ -17,11 +17,11 @@ const RoutingNoteSchema = z.string().trim()
   .refine(text => wordCount(text) <= NOTE_WORDS, `路由备注不得超过 ${NOTE_WORDS} 个词（中文按分词计数）。请缩短它；不要把它拆到多次投递中。`)
   .describe(`可选的路由背景或显式的人为约束，最多 ${NOTE_WORDS} 个词。绝不添加实现指令，也不替代原始 Source。`)
 export interface MainToolsHost {
-  readonly context: Context
+  readonly logger: Logger
   readonly engine: Pick<EngineForMainSession, 'decide' | 'attach' | 'reply' | 'requestStatus' | 'note'> & EngineForPeople
   readonly store: Pick<Store, 'tickets' | 'triggers' | 'threads' | 'atomic' | 'replyStatus' | 'settings'>
   readonly prompts: Pick<Prompts, 'preview' | 'save'>
-  readonly sessions: Pick<Sessions, 'status' | 'notify' | 'delivery' | 'modelRetry'>
+  readonly sessions: Pick<MainSession, 'status' | 'notify' | 'delivery' | 'modelRetry'>
   readonly settings: Pick<Settings, 'view' | 'block' | 'save' | 'pause' | 'sync'>
   readonly assessor: Pick<MasterAssessor, 'context' | 'read' | 'decide'>
   readonly resources: ResourceHost
@@ -141,7 +141,7 @@ function routeTool(host: MainToolsHost): Tool {
             ...(ticket ? { ticket: ticketCard(ticket) } : {}) }
         } catch (error) {
           if (error instanceof UserError) return { ...head, refused: error.message }
-          host.context.logger.warn('dsh-superagent 无法路由 Trigger %s：%s', item.trigger_id, String(error))
+          host.logger.warn('dsh-superagent 无法路由 Trigger %s：%s', item.trigger_id, String(error))
           return { ...head, refused: `未记录：${error instanceof Error ? error.message : String(error)}；请重试该条目` }
         }
       })
@@ -150,7 +150,7 @@ function routeTool(host: MainToolsHost): Tool {
     },
   })
 }
-/** 构建主 Session 的工具；`scope` 指明该 Session，并在 DSH 下提供接收图片的 Agent。 */
+/** 构建主 Session 的工具；`scope` 指明该 Session，用于 prompt-preview 资源。 */
 export function mainTools(host: MainToolsHost, scope: ToolScope): Tool[] {
   const resources: MainResourceHost = { ...host.resources, sessions: host.sessions, settings: host.settings }
   return [
@@ -208,7 +208,7 @@ export function mainTools(host: MainToolsHost, scope: ToolScope): Tool[] {
       name: 'orchestrator_eval_read',
       description: '读取候选的更多上下文，始终带上它的 trigger_id：按 message_id 读取完整的一条消息或存根，按 image_id 读取图片，读取根消息与父消息，按 cursor 读取一页 Thread，或按 path 读取文件或目录。',
       schema: EvalReadSchema,
-      execute: async (read, signal) => host.assessor.read(scope.agent, read, signal),
+      execute: async (read, signal) => host.assessor.read(read, signal),
     }),
     tool({
       name: 'orchestrator_eval_decide',

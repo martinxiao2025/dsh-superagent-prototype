@@ -1,7 +1,6 @@
 /** 为 orchestrator_read 提供分页上下文资源，使大段正文在请求之前不进入模型提示词。 */
-import type { SessionId } from '@deepseek-ai/dsh-session'
 import { UserError, key, latestReport, reached, runningAssignment, threadKey, type Ticket, type Trigger } from '../core/index.ts'
-import { batchOf, inputMessage, triggerMessage, workerSessionId } from '../executor/dsh.ts'
+import { batchOf, inputMessage, triggerMessage, workerSessionId } from '../executor/messages.ts'
 import { readGithub } from '../sources/github-read.ts'
 import { feishuReferences, feishuRead } from '../sources/feishu-read.ts'
 import { feishuRef } from '../sources/feishu.ts'
@@ -9,16 +8,22 @@ import { feishuTriggerId } from '../sources/feishu-trigger.ts'
 import { ASSIGNMENTS, INPUTS, assignmentLine, decisionCard, decisionDetails, inputLine, newestPage, preview, textPage, threadCard, ticketCard,
   ticketDetails, triggerCard, type TicketThread } from './cards.ts'
 import { threadTitle } from './views/records.ts'
-import { transcriptEntry } from './context.ts'
+import { transcriptEntry, type TranscriptEntry } from './context.ts'
 import { builtInParts, defaultPrompts } from './prompts.ts'
-import type { Context } from '@deepseek-ai/cordis'
 import type { Commands } from '../infra/commands.ts'
 import type { PromptVersion, Prompts } from './prompts.ts'
-import type { Sessions } from './sessions.ts'
+import type { MainSession } from './main-session.ts'
 import type { Settings } from './settings.ts'
 import { KV } from '../kv.ts'
 import type { Store } from './store.ts'
 import type { TextCache } from './cache.ts'
+
+/** 模型目录的一个分组；独立版本把它映射到设置里配置的 provider 与模型名。 */
+export interface ModelCatalogView {
+  default: { provider: string; model: string; reasoningEffort?: string } | null
+  failures?: unknown[]
+  groups: { id: string; name: string; models: { id: string; name?: string; reasoning?: { efforts: { id: string; name: string }[] } }[] }[]
+}
 
 /** 通过 orchestrator_read 暴露的资源描述符，并标明哪些资源 worker session 也可为自身工单读取。 */
 export const RESOURCES: readonly { name: string; holds: string; executor?: true }[] = [
@@ -48,8 +53,8 @@ export const RESOURCES: readonly { name: string; holds: string; executor?: true 
   { name: 'prompts/<revision>', holds: '按编号取一个提示词版本，或 current，即该 Session 当前使用的版本', executor: true },
   { name: 'prompts/defaults', holds: '内置提示词配置，以及按覆盖项所指 key 索引的内置片段' },
   { name: 'prompt-preview/<id>', holds: 'orchestrator_prompts_save 预览过的合成提示词' },
-  { name: 'models', holds: '模型 provider、DSH 默认模型与每个角色的模型' },
-  { name: 'models/<provider>', holds: '某个 provider 的模型' },
+  { name: 'models', holds: '设置中配置的 provider 与每个角色的模型名' },
+  { name: 'models/<provider>', holds: '某个 provider 配置的模型名' },
   { name: 'feishu/<trigger-id>/…', holds: '飞书原文，如 dsh-superagent-feishu 技能所述', executor: true },
   { name: 'github/…', holds: 'GitHub 原文，如 dsh-superagent-github 技能所述', executor: true },
 ]
@@ -62,15 +67,18 @@ export interface ResourceHost {
   readonly prompts: Pick<Prompts, 'current' | 'version' | 'history' | 'skills' | 'defaultChanged'>
   readonly commands: Commands
   readonly masterId: string
-  readonly context: Context
   promptVersion(sessionId: string): PromptVersion
   /** Session 是否可读取 `revision`（它当前运行的修订，或此前运行过的任一修订）。 */
   mayRead(sessionId: string, revision: number): boolean
   feishuPageSize(): number
   sourceLink(trigger: Trigger, signal?: AbortSignal): Promise<{ source_url?: string; source_url_read?: string }>
+  /** 设置中可见的模型目录；没有 DSH 模型注册表，只展示已配置的名字。 */
+  models(): Promise<ModelCatalogView>
+  /** 某个工单的 worker 对话记录，由 `HostExecutor` 落库。 */
+  transcript(ticketId: string): Promise<TranscriptEntry[]>
 }
 export interface MainResourceHost extends ResourceHost {
-  readonly sessions: Pick<Sessions, 'status' | 'modelRetry'>
+  readonly sessions: Pick<MainSession, 'status' | 'modelRetry'>
   readonly settings: Pick<Settings, 'view' | 'block'>
 }
 interface Read {
@@ -112,7 +120,7 @@ const THREAD_DECISIONS = 5
 const triggerLine = (trigger: Trigger) => ({ trigger_id: trigger.id, actor: trigger.actor.id, human: trigger.human, at: trigger.at,
   preview: preview(trigger.text), chars: trigger.text.length, read: `trigger/${trigger.id}` })
 async function transcript(host: ResourceHost, ticketId: string) {
-  return (await host.context.sessionController.inspect(workerSessionId(ticketId) as SessionId)).events
+  return host.transcript(ticketId)
 }
 
 const ROUTES: readonly Route[] = [
@@ -189,13 +197,13 @@ const ROUTES: readonly Route[] = [
     return text(read, body)
   }],
   ['models', async read => {
-    const host = main(read), catalog = await host.context.sessionController.modelCatalog(), settings = host.store.settings()
+    const host = main(read), catalog = await host.models(), settings = host.store.settings()
     const roles = { orchestrator: settings.eval.model, worker: settings.executor.model }
     return { default: catalog.default, roles, failures: catalog.failures,
       providers: catalog.groups.map(group => ({ id: group.id, name: group.name, count: group.models.length, read: `models/${group.id}` })) }
   }],
   ['models/', async read => {
-    const models = (await main(read).context.sessionController.modelCatalog()).groups.find(group => group.id === read.rest)?.models
+    const models = (await main(read).models()).groups.find(group => group.id === read.rest)?.models
     if (!models) throw new Error('未知的模型 provider')
     return list(read, (offset, count) => models.slice(offset, offset + count))
   }],

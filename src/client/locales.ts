@@ -100,6 +100,7 @@ const TEXT = {
   // 页头、搜索与标签页
   panel: ['Superagent', 'Superagent'],
   openMaster: ['打开主 Session', 'Open main Session'],
+  sessionUnavailable: ['独立版本不再打开 DSH 会话：请在该面板中查看记录，或经 MCP 在 VS Code 的 Copilot Chat 中与主会话交互。', 'The standalone build no longer opens DSH sessions: read the records in this panel, or talk to the master Session through MCP in VS Code Copilot Chat.'],
   pagesLabel: ['dsh-superagent 页面', 'dsh-superagent pages'],
   searchPlaceholder: ['搜索工单、线程、触发或链接', 'Search Tickets, Threads, Triggers or links'],
   searchLabel: ['搜索', 'Search'],
@@ -541,8 +542,9 @@ const TEXT = {
   'promptRole.orchestrator': ['主 Session', 'Main Session'],
   'promptRole.worker': ['执行器 Session', 'Executor Session'],
   // 部署
-  deploymentIntro: ['这台机器上的 dsh-superagent 设置，存放在 DSH 配置文件的 dsh-superagent 条目里；保存后立即生效，不会重启 dsh-superagent。', 'dsh-superagent\'s settings on this machine, kept in the dsh-superagent entry of the DSH configuration; a saved change applies at once, without restarting dsh-superagent.'],
-  deploymentUnavailable: ['dsh-superagent 启动完成后才能修改这些值。', 'These values can be changed once dsh-superagent has started.'],
+  deploymentIntro: ['这台机器上的 dsh-superagent 设置来自启动时读取的配置文件；修改配置文件后重启进程生效。', 'dsh-superagent\'s settings on this machine come from the configuration file read at startup; restart the process after editing it.'],
+  deploymentConfigFile: ['这些值只读，来自启动参数 `--config` 指向的配置文件（默认 ~/.dsh-superagent/config.json）。', 'These values are read-only and come from the file passed to `--config` (default ~/.dsh-superagent/config.json).'],
+  deploymentUnavailable: ['dsh-superagent 启动完成后才能读取这些值。', 'These values are available once dsh-superagent has started.'],
   deploymentDerived: ['仓库与账号', 'Repository and accounts'],
   deploymentDerivedHint: ['由来源设置里的仓库和 CLI 得出。', 'Derived from the repository and the CLIs in the Source settings.'],
   deploymentRepository: ['仓库', 'Repository'],
@@ -552,7 +554,7 @@ const TEXT = {
   deploymentAccountsWhere: ['账号在 dsh-superagent 面板的来源设置里修改。', 'Accounts are changed in the Source settings of the dsh-superagent panel.'],
   deploymentMachine: ['本机设置', 'This machine'],
   deploymentStateDir: ['状态目录', 'State directory'],
-  deploymentStateDirHint: ['数据库、锁、执行器的命令和智能体的 git 配置所在目录，只能在 DSH 配置文件里修改。', 'Holds the database, locks, the Executor\'s commands and the agent\'s git configuration; change it only in the DSH configuration file.'],
+  deploymentStateDirHint: ['数据库、锁、执行器的命令和智能体的 git 配置所在目录，只能在配置文件里修改。', 'Holds the database, locks, the Executor\'s commands and the agent\'s git configuration; change it only in the configuration file.'],
   deploymentLimits: ['上限', 'Limits'],
   deploymentLimitsHint: ['本机资源的上限：保存的提示词最长多少字，评估读取线程上下文时最多读几页、每次读取最多等多久。', 'Resource limits on this machine: how long a saved prompt may be, and how many Thread pages Eval may read and how long one read may take.'],
   deploymentPromptMaxChars: ['提示词配置的最大字符数', 'Largest prompt configuration / characters'],
@@ -751,8 +753,6 @@ const TEXT = {
 export type DshSuperagentKey = keyof typeof TEXT
 const language = (index: 0 | 1) => Object.fromEntries(Object.entries(TEXT).map(([key, pair]) => [key, pair[index]])) as Record<DshSuperagentKey, string>
 export const zh = language(0), en = language(1)
-
-/** 术语表词条，按动作角色之后的阶段流程分组；每个键映射到 `term.<key>` 与 `meaning.<key>`。 */
 export const GLOSSARY = {
   roles: ['agent', 'mainSession', 'executorSession'],
   source: ['source', 'channel'],
@@ -765,7 +765,3 @@ export const GLOSSARY_VALUES = {
   ticket: ['stage.answer', 'stage.review', 'stage.blocked', 'stage.failed', 'stage.delivery', 'stage.queued', 'stage.working', 'stage.idle', 'ticket.ended'],
   assignment: ['assignment.pending', 'assignment.running', 'assignment.ended'], report: ['report.progress', 'report.waiting', 'report.ready', 'report.blocked', 'report.failed', 'report.dropped'],
 } as const
-
-declare module '@deepseek-ai/dsh-client-ui-slots' {
-  interface LocaleNamespaceMap { dshSuperagent: DshSuperagentKey }
-}

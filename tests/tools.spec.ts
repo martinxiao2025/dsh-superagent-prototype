@@ -7,6 +7,7 @@ import { KV } from '../src/kv.ts'
 import { RESOURCES } from '../src/app/resources.ts'
 import { CliError, Commands } from '../src/infra/commands.ts'
 import { IM_WORDS, NOTE_WORDS } from '../src/infra/text.ts'
+import { toolJsonSchema } from '../src/executor/workspace-tools.ts'
 import { CHAT, feishu, startRuntime, type Host } from './fixtures/host.ts'
 
 let h: Host
@@ -20,7 +21,7 @@ it('reads the lists, a ticket, a decision, the settings, the prompts and the mod
   const { ticket, trigger } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
   await h.acceptedTicket(feishu('2', '@bot 再修一个'))
   const tickets = await read('tickets', { limit: 1 })
-  expect(tickets).toEqual({ items: [expect.objectContaining({ ticket_id: expect.any(String), state: 'working' })], next_offset: 1 })
+  expect(tickets).toEqual({ items: [expect.objectContaining({ ticket_id: expect.any(String), state: 'idle' })], next_offset: 1 })
   expect(await read('tickets', { offset: 1 })).toMatchObject({ items: [expect.objectContaining({ ticket_id: ticket.id })], next_offset: null })
   const triggers = await read('triggers') as { items: { trigger_id: string }[] }
   expect(triggers.items.map(item => item.trigger_id)).toEqual([expect.any(String), trigger.id])
@@ -29,7 +30,7 @@ it('reads the lists, a ticket, a decision, the settings, the prompts and the mod
   const accepted = expect.objectContaining({ kind: 'accept', ticket_id: ticket.id, trigger_ids: [trigger.id], read: expect.stringMatching(/^decision\//) })
   expect(decisions.items).toContainEqual(accepted)
   expect(await read(decisions.items.at(-1)!.read)).toMatchObject({ kind: 'accept', ticket_id: ticket.id, mandate: { strength: 'explicit' } })
-  expect(await read(`ticket/${ticket.id}`)).toMatchObject({ ticket_id: ticket.id, state: 'working', directory: ticket.execution!.directory,
+  expect(await read(`ticket/${ticket.id}`)).toMatchObject({ ticket_id: ticket.id, state: 'idle', directory: ticket.execution!.directory,
     trigger_id: trigger.id, assignments: { items: [expect.objectContaining({ state: 'running' })] }, assignment: `ticket/${ticket.id}/assignment` })
   // settings 指明每个块的修订版本并持有较小的块；块按保存所使用的名称整体读取。
   const settings = await read('settings')
@@ -44,11 +45,12 @@ it('reads the lists, a ticket, a decision, the settings, the prompts and the mod
   await expect(read('settings/source:retired')).rejects.toThrow('未知设置块')
   const skills = { built_in: ['dsh-superagent-feishu', 'dsh-superagent-github'], team: [] }
   expect(await read('prompts')).toMatchObject({ revision: 0, read: 'prompts/0', skills, items: [expect.objectContaining({ revision: 0 })], next_offset: null })
-  const models = [{ id: 'm1', name: 'One' }, { id: 'm2', name: 'Two' }]
-  const catalog = { default: { provider: 'p', model: 'm1' }, groups: [{ id: 'p', name: 'Provider', models }], failures: [] }
-  Object.assign(h.controller, { modelCatalog: vi.fn(async () => catalog) })
+  // 模型目录由设置中的 eval 与 executor 模型合成，按 provider 分组。
+  const seeded = h.runtime.store.settings()
+  h.runtime.store.saveSettings({ ...seeded, eval: { ...seeded.eval, model: { provider: 'p', model: 'm1' } },
+    executor: { ...seeded.executor, model: { provider: 'p', model: 'm2' } } })
   expect(await read('models')).toMatchObject({ providers: [{ id: 'p', count: 2, read: 'models/p' }], roles: expect.any(Object) })
-  expect(await read('models/p', { limit: 1 })).toEqual({ items: [models[0]], next_offset: 1 })
+  expect(await read('models/p', { limit: 1 })).toEqual({ items: [{ id: 'm1', name: 'm1' }], next_offset: 1 })
   await expect(read('ticket')).rejects.toThrow('未知的上下文资源')
   // 列表页最多容纳 50 项，prompt 历史也是如此。
   const config = h.runtime.prompts.current().config
@@ -97,9 +99,9 @@ it('keeps the main Session\'s resources from an Executor Session, which lists on
     await expect(h.runTool(sessionId, 'orchestrator_read', { resource })).rejects.toThrow('该资源属于主 Session')
   }
   expect(await h.runTool(sessionId, 'orchestrator_read', { resource: `ticket/${ticket.id}` })).toMatchObject({ ticket_id: ticket.id })
-  type Registered = { description: string; parameters: { properties: { resource: { description: string } } } }
-  const registered = h.tools.get(sessionId)!.get('orchestrator_read') as unknown as Registered
-  const offered = registered.description + registered.parameters.properties.resource.description
+  const registered = h.tools.get(sessionId)!.get('orchestrator_read')!
+  const parameters = toolJsonSchema(registered.schema) as { properties: { resource: { description: string } } }
+  const offered = registered.description + parameters.properties.resource.description
   for (const { name, executor } of RESOURCES) expect(offered.includes(`${name}:`), name).toBe(!!executor)
   expect(offered).not.toMatch(/preview/i)
 })
@@ -114,7 +116,8 @@ it('answers every routing tool in one shape: the decision it recorded, why, and 
   expect(await route({ kind: 'attach', ticket_id: ticket.id, trigger_id: other.id })).toEqual({ trigger_id: other.id, kind: 'attach',
     reason: expect.any(String), ticket: card })
   const status = await run('orchestrator_ticket_request_status', { ticket_id: ticket.id })
-  expect(status).toEqual({ reason: 'worker 并未在等待；未发送任何内容', ticket: card })
+  // 首轮结束未汇报，worker 处于 waiting，因此请求状态这条消息可以送达。
+  expect(status).toEqual({ reason: '已向 worker 请求状态汇报', ticket: card })
   await h.runTool(sessionId, 'orchestrator_report', { state: 'failed', summary: 'The build broke.' })
   expect(await run('orchestrator_ticket_retry', { ticket_id: ticket.id })).toEqual({ reason: '已开始新的 Assignment', ticket: card })
   const chatter = feishu('4', '@bot 谢谢')
@@ -209,8 +212,9 @@ it('decides a candidate\'s batch with its card\'s trigger: a second accept keeps
 })
 
 it('states each routing field\'s limit in its description, which the schema leaves to the item\'s check', () => {
-  type Schema = { parameters: { properties: { decisions: { items: { properties: Record<string, { description?: string }> } } } } }
-  const fields = (h.tools.get(h.runtime.masterId)!.get('orchestrator_route') as unknown as Schema).parameters.properties.decisions.items.properties
+  type Schema = { properties: { decisions: { items: { properties: Record<string, { description?: string }> } } } }
+  const tool = h.tools.get(h.runtime.masterId)!.get('orchestrator_route')!
+  const fields = (toolJsonSchema(tool.schema) as unknown as Schema).properties.decisions.items.properties
   const limits: Record<string, string[]> = { title: ['200 个字符'], worktree_name: ['kebab-case', '32 个字符'],
     acknowledgement: [`${IM_WORDS} 个词`], note: [`${NOTE_WORDS} 个词`, '绝不添加实现指令'], reason: ['500 个字符'] }
   for (const [field, phrases] of Object.entries(limits)) for (const phrase of phrases) expect(fields[field]!.description, field).toContain(phrase)
@@ -290,15 +294,13 @@ it('previews a prompt configuration without saving it, and saves one only agains
   expect(await save({ config, baseRevision: 0 })).toMatchObject({ revision: 1 })
 })
 
-it('releases the tools it registered for a Session once its agent is disposed, and leaves the other Sessions\' tools', async () => {
+it('reads the transcript the executor recorded for a ticket, with a short preview and its first message', async () => {
   const { ticket } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
-  const worker = `worker-${ticket.id}`
-  expect(h.tools.get(worker)!.size).toBeGreaterThan(0)
-  h.ctx.emit('agent/disposed', { agent: h.agents.get(worker) } as never)
-  expect([h.tools.get(worker)!.size, h.tools.get(h.runtime.masterId)!.size > 0]).toEqual([0, true])
-  // 再次释放（如同关停时）找不到它的任何残留。
-  h.ctx.emit('agent/disposed', { agent: h.agents.get(worker) } as never)
-  expect(h.tools.get(worker)!.size).toBe(0)
+  h.runtime.store.set(KV.transcript(ticket.id), [{ type: 'assistant/message', message: { role: 'assistant',
+    content: [{ type: 'text', text: `I fixed the margin. ${'Details. '.repeat(20)}` }] } }])
+  const transcript = JSON.parse((await read(`ticket/${ticket.id}/transcript`) as { text: string }).text) as { preview: string; read: string }
+  expect(transcript).toMatchObject({ preview: expect.stringMatching(/^I fixed the margin\./), read: `ticket/${ticket.id}/message/0` })
+  expect(transcript.preview.length).toBeLessThanOrEqual(80)
 })
 
 it('reads a thread by the key cards show: its label, tickets, latest decisions and triggers, newest first, also for its own worker', async () => {
@@ -345,11 +347,6 @@ it('reads a ticket with the ids it is tied to, its reports by assignment, and it
   expect(await read(`ticket/${ticket.id}/input/text:long`)).toMatchObject({ text: page.text })
   expect(await read(`ticket/${ticket.id}/inputs`, { offset: 20 })).toMatchObject({ items: expect.objectContaining({ length: 4 }), next_offset: null })
   expect(await read(details.assignments.items[0]!.report.read)).toMatchObject({ text: report(7).summary.slice(0, 4000) })
-  vi.mocked(h.controller.inspect).mockResolvedValueOnce({ events: [{ type: 'assistant/message', data: { message: { role: 'assistant',
-    content: [{ type: 'text', text: `I fixed the margin. ${'Details. '.repeat(20)}` }] } } }] } as never)
-  const transcript = JSON.parse((await read(`ticket/${ticket.id}/transcript`) as { text: string }).text) as { preview: string; read: string }
-  expect(transcript).toMatchObject({ preview: expect.stringMatching(/^I fixed the margin\./), read: `ticket/${ticket.id}/message/0` })
-  expect(transcript.preview.length).toBeLessThanOrEqual(80)
 })
 
 it('reads a trigger once with the message it replies to and the messages around it on its thread, without the CI runs', async () => {
@@ -367,8 +364,8 @@ it('reads a trigger once with the message it replies to and the messages around 
 })
 
 const relaysOf = (kind: string) => h.relays(h.runtime.masterId).filter(item => item.kind === kind)
-const notices = () => h.agents.get(h.runtime.masterId)!.inject.mock.calls
-  .map(([message]) => JSON.parse(message.content.map(block => block.type === 'text' ? block.text : '').join('')) as Record<string, unknown>)
+/** 主会话尚未注入的通知，按排队顺序。 */
+const notices = () => h.notices()
 
 it('shows a candidate with its thread\'s tickets open first, the tickets it reached, those its text names, and a short next step', async () => {
   const first = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))

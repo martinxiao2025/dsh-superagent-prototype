@@ -1,14 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Engine, MemoryRepositories, key, type Assessor, type Executor, type Thread, type Ticket, type Trigger } from '../src/core/index.ts'
-import { backfillChat, consumerRetry, feishuKind, feishuTriggerId, feishuRef, feishuTime, feishuTrigger, historyEvent }
+import { feishuKind, feishuTriggerId, feishuRef, feishuTime, feishuTrigger, historyEvent, startFeishu }
   from '../src/sources/feishu.ts'
 import { KV } from '../src/kv.ts'
-import { apply as applyFeishu, pollThreads as pollFeishuThreads } from '../src/sources/feishu.ts'
+import { pollThreads as pollFeishuThreads } from '../src/sources/feishu.ts'
 import { runFeishu } from '../src/sources/feishu-loops.ts'
+import { backfillChat, consumerRetry } from '../src/sources/feishu-loops.ts'
 import { commentTrigger, githubAddress, githubChannel, issueTrigger, type GithubComment, type GithubIssue } from '../src/sources/github-trigger.ts'
 import { claimPull, observePull, pullEndNotices, pullOf, ticketBranch, type Pull } from '../src/sources/github-pull.ts'
 import { ciCounts, ciFact, ciSummary } from '../src/sources/github-read.ts'
-import { apply as applyGithub, githubKind, pollFailure, pollRound } from '../src/sources/github.ts'
+import { githubKind, pollFailure, pollRound, startGithub } from '../src/sources/github.ts'
 import { pollThreads as pollGithubThreads } from '../src/sources/github.ts'
 import { SourceRegistry } from '../src/sources/registry.ts'
 import { cursorAt, POLL_HORIZON_MS } from '../src/sources/poll.ts'
@@ -44,8 +45,8 @@ function host(overrides: Partial<SourceContextDeps> = {}) {
   // Source 的函数接收 context；插件条目与 kind 回调接收 host，由 host 构建每个 kind 的 context。
   const value = { ...parts, context: (kind: { kind: string; health: readonly string[] }) => sourceContextOf(parts, kind) }
   const context = sourceContextOf(parts, { kind: 'feishu', health: ['github', 'feishu', 'history'] })
-  const health = overrides.sources ? healthOf.get(overrides.sources)!.all : board.all
-  return { ...value, ...context, health, store, engine, commands: parts.commands, receive, executor }
+  return { ...value, ...context, get health() { return overrides.sources ? healthOf.get(overrides.sources)!.all : board.all },
+    store, engine, commands: parts.commands, receive, executor }
 }
 const healthOf = new WeakMap<SourceRegistry, HealthBoard>()
 function emptyRegistry(): SourceRegistry {
@@ -94,13 +95,14 @@ describe('feishu source', () => {
     const run = async (overrides: Partial<SourceContextDeps>) => {
       // 夹具的 registry 已持有该 kind；这个从空开始，以便显示插件的注册。
       const value = host({ sources: emptyRegistry(), ...overrides })
-      const disposers: (() => unknown)[] = []
-      applyFeishu({ orchestrator: value, effect: (effect: () => () => unknown) => { disposers.push(effect()) } } as never)
+      const controller = new AbortController()
+      const running = startFeishu(value, controller.signal)
       await vi.waitFor(() => expect(value.health.history).toBeDefined())
       const registered = value.sources.kind('feishu')
-      // 在 dispose 清空已注册条目之前快照 health。
+      // 在停止之前快照 health，之后 health 条目会随插件卸载被移除。
       const health = { ...value.health }
-      for (const dispose of disposers) await dispose()
+      controller.abort()
+      await running
       return { ...value, registered, health }
     }
     const unset = await run({ deployment: testDeployment({ feishu: undefined }) })
@@ -769,9 +771,9 @@ describe('github source', () => {
         const sources = new SourceRegistry(() => settings, board)
         healthOf.set(sources, board)
         const value = host({ sources, ...overrides })
-        const disposers: (() => unknown)[] = []
-        applyGithub({ orchestrator: value, effect: (effect: () => () => unknown) => { disposers.push(effect()) } } as never)
-        return { value, stop: async () => { for (const dispose of disposers) await dispose(); value.store.close() } }
+        const controller = new AbortController()
+        const running = startGithub(value, controller.signal)
+        return { value, stop: async () => { controller.abort(); await running; value.store.close() } }
       }
       const pending = await start({ configured: () => false })
       await vi.waitFor(() => expect(pending.value.health.github).toMatchObject({ state: 'paused', code: 'setupPending' }))
@@ -805,10 +807,11 @@ describe('github source', () => {
   it('reports a failure that escapes the polling loop as its health instead of an unhandled rejection', async () => {
     // 夹具的 registry 已持有该 kind；这个从空开始，以便插件注册它。
     const value = host({ sources: emptyRegistry(), ready: Promise.reject(new Error('lock held')) })
-    const disposers: (() => unknown)[] = []
-    applyGithub({ orchestrator: value, effect: (effect: () => () => unknown) => { disposers.push(effect()) } } as never)
+    const controller = new AbortController()
+    const running = startGithub(value, controller.signal)
     await vi.waitFor(() => expect(value.health.github).toMatchObject({ state: 'error', detail: expect.stringContaining('lock held') }))
-    for (const dispose of disposers) await dispose()
+    controller.abort()
+    await running
     value.store.close()
   })
   /** GitHub 返回的 Issue，由 alice 开启。 */

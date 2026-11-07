@@ -2,30 +2,31 @@
 import { LIMITS } from './limits.ts'
 import { accessSync, constants, statSync } from 'node:fs'
 import { delimiter, isAbsolute, join } from 'node:path'
-import type { Volatile } from '@deepseek-ai/cordis'
-import s from '@deepseek-ai/schemastery'
 import { z } from 'zod'
 import type { SubprocessRuntime } from './infra/subprocess.ts'
 import { runAsWorker, sameDirectory, withoutDirectory, workerBin } from './infra/environment.ts'
 import { SetupError } from './setup.ts'
 
+/** 每次使用时重新读取的配置值；与 DSH `Volatile` 同形，但只保留单进程需要的 `get()`。 */
+export interface Volatile<T> { get(): T }
 const reason = (error: unknown): string => error instanceof Error ? error.message : String(error)
-const absolute = (description: string) => s.string().pattern(/^\//).description(`${description} 绝对路径。`)
-/** dsh-superagent 条目的插件配置。Volatile 字段无需重启即生效，因为 dsh-superagent 每次使用时都会读取它们；修改 `stateDir` 会重新挂载插件。 */
-export const Config = s.object({
-  stateDir: absolute('用于存放数据库、锁、worker shim、agent 的 git 配置，以及（默认）工单目录的目录。').required(),
-  promptMaxChars: s.number().min(LIMITS.promptMaxChars.min).max(LIMITS.promptMaxChars.max).step(1).default(100000)
-    .description('可保存的提示词配置上限，以字符计。').volatile(),
-  admissionContextMaxPages: s.number().min(LIMITS.admissionContextMaxPages.min).max(LIMITS.admissionContextMaxPages.max).step(1).default(10)
-    .description('一次评估最多可读取的 Thread 上下文页数。').volatile(),
-  admissionContextTimeoutMs: s.number().min(LIMITS.admissionContextTimeoutMs.min).max(LIMITS.admissionContextTimeoutMs.max).step(1)
-    .default(15000).description('评估期间单次上下文读取的时限，以毫秒计。').volatile(),
-  mcpEnabled: s.boolean().default(true)
-    .description('通过 MCP 在 127.0.0.1 上向 agent-plugins 客户端提供主会话的工具。修改后需重启生效。'),
-  mcpPort: s.number().min(0).max(65535).step(1).default(3083)
-    .description('/mcp 上 MCP 端点的回环端口；请同步更新 plugin/mcp.json。0 表示自动选择空闲端口。修改后需重启生效。'),
-})
-export type DeploymentConfig = ReturnType<typeof Config>
+/** 配置里 `stateDir` 的校验提示。 */
+const STATE_DIR_MESSAGE = 'stateDir 必须是绝对路径，用于存放数据库、锁、worker shim、agent 的 git 配置，以及（默认）工单目录。'
+/** dsh-superagent 的配置文件结构；`stateDir` 为必填项，其余字段有默认值。 */
+export const Config = z.object({
+  stateDir: z.string().trim().min(1, STATE_DIR_MESSAGE).refine(isAbsolute, STATE_DIR_MESSAGE),
+  promptMaxChars: z.number().int().min(LIMITS.promptMaxChars.min).max(LIMITS.promptMaxChars.max).default(100000),
+  admissionContextMaxPages: z.number().int().min(LIMITS.admissionContextMaxPages.min).max(LIMITS.admissionContextMaxPages.max).default(10),
+  admissionContextTimeoutMs: z.number().int().min(LIMITS.admissionContextTimeoutMs.min).max(LIMITS.admissionContextTimeoutMs.max).default(15000),
+  mcpEnabled: z.boolean().default(true),
+  mcpPort: z.number().int().min(0).max(65535).default(3083),
+  panelPort: z.number().int().min(0).max(65535).default(3082),
+  /** 面板与 MCP 端点的回环主机名；只允许 `127.0.0.1` 或 `localhost`。 */
+  host: z.enum(['127.0.0.1', 'localhost']).default('127.0.0.1'),
+  /** 扩展桥使用的模型 id；缺省使用 VS Code 里选中的模型。 */
+  model: z.string().trim().default(''),
+}).strict()
+export type DeploymentConfig = z.infer<typeof Config>
 export interface Machine {
   stateDir: string
   promptMaxChars: Volatile<number>
@@ -33,6 +34,8 @@ export interface Machine {
   admissionContextTimeoutMs: Volatile<number>
   mcpEnabled: boolean
   mcpPort: number
+  panelPort: number
+  host: '127.0.0.1' | 'localhost'
 }
 const MOVED: Record<string, string> = {
   repository: 'GitHub Source 上', branchPrefix: 'Execution 设置的 prepare 命令中', github: 'GitHub Source 上',
@@ -40,12 +43,15 @@ const MOVED: Record<string, string> = {
   worktreeRoot: 'Execution 设置的工单目录中', blockedCommands: 'Execution 设置中',
 }
 
-/** 读取机器设置，并拒绝未知的配置键（同时指出已弃用的键迁移到了哪里）。 */
-export function machineOf(config: DeploymentConfig): Machine {
-  const unknown = Object.keys(config).filter(key => !(key in (Config.dict ?? {})))
+/** 读取机器设置，并拒绝未知的配置键（同时指出已废弃的键迁移到了哪里）。 */
+export function machineOf(config: Record<string, unknown>): Machine {
+  const unknown = Object.keys(config).filter(key => !(key in Config.shape))
   if (unknown.length) throw new Error(`dsh-superagent 的配置包含它不使用的键：${unknown.map(key => MOVED[key] ? `${key}（现在位于${MOVED[key]}）` : key).join('、')}；docs/006-deployment.md 列出了这些键`)
-  const { stateDir, promptMaxChars, admissionContextMaxPages, admissionContextTimeoutMs, mcpEnabled, mcpPort } = config
-  return { stateDir, promptMaxChars, admissionContextMaxPages, admissionContextTimeoutMs, mcpEnabled, mcpPort }
+  const parsed = Config.parse(config)
+  return { stateDir: parsed.stateDir, promptMaxChars: { get: () => parsed.promptMaxChars },
+    admissionContextMaxPages: { get: () => parsed.admissionContextMaxPages },
+    admissionContextTimeoutMs: { get: () => parsed.admissionContextTimeoutMs },
+    mcpEnabled: parsed.mcpEnabled, mcpPort: parsed.mcpPort, panelPort: parsed.panelPort, host: parsed.host }
 }
 
 export const GithubAccountsSchema = z.object({

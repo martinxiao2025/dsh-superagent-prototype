@@ -2,7 +2,6 @@
 import { z } from 'zod'
 import type { Trigger } from '../core/index.ts'
 import { validItems, type Commands } from '../infra/commands.ts'
-import { admissionImageKeys, readAdmissionImage } from './feishu-image.ts'
 import { feishuRef, feishuTime, HistoricalMessageSchema, HistoryPageSchema, historyText, withMentionNames, type HistoricalMessage }
   from './feishu-trigger.ts'
 import type { ContextMessage, ThreadContext } from './kind.ts'
@@ -165,7 +164,4 @@ export const feishuThreadContext: ThreadContext<{ readPageSize: number }> = {
     const next = 'next_resource' in body && body.next_resource ? decodeURIComponent(body.next_resource.split('/').at(-1)!) : undefined
     return { messages, next, body: { ...body }, status: body.status }
   },
-  images: admissionImageKeys,
-  image: (agent, commands, trigger, message, key, stateDir, signal) =>
-    readAdmissionImage(agent, commands, { ...sourceRef(trigger), messageId: message.id }, message.text, key, stateDir, signal),
 }

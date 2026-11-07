@@ -4,7 +4,6 @@
  */
 import { afterEach, beforeEach, expect, vi } from 'vitest'
 import { z } from 'zod'
-import type { ConfigForm, ConfigFormSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { Api, ApiResponse, RouteParams } from '../../src/app/api.ts'
 import { SKILL_NAME, SKILL_PREFIX, TEAM_SECTIONS, builtInBase, builtInPart, builtInParts, composePrompt, composeSkill, defaultPrompts,
   environmentSection, policySection, promptParts } from '../../src/app/prompts.ts'
@@ -104,7 +103,6 @@ export interface PanelServer {
   down: boolean
   /** 客户端尚未消费的响应数量。 */
   pending: number
-  form?: ConfigForm<Record<string, unknown>> | undefined
   opened: string[]
   dropped: DroppedReply[]
   failing: Extract<Problem, { kind: 'outgoing' }>['outgoing'][]
@@ -452,29 +450,3 @@ export function usePanelServer(cleanup: () => void) {
   })
 }
 
-type Ops = Parameters<ConfigForm<Record<string, unknown>>['mutate']>[0]
-/** 假冒的 DSH 主机配置表单，记录变更，并可选地把它们应用到其快照。 */
-export function fakeForm(writable = true, accept = true) {
-  const listeners = new Set<() => void>()
-  let snapshot: ConfigFormSnapshot<Record<string, unknown>> = { status: 'ready', value: { ...MACHINE }, base: undefined, user: undefined,
-    revision: 1, writable,
-    mode: 'host' }
-  const notify = () => { for (const listener of listeners) listener() }
-  const mutations: { ops: Ops; revision: number | undefined }[] = []
-  const form: ConfigForm<Record<string, unknown>> = {
-    getSnapshot: () => snapshot,
-    subscribe: listener => { listeners.add(listener); return () => { listeners.delete(listener) } },
-    mutate: async (ops, revision) => {
-      mutations.push({ ops, revision })
-      if (!accept || revision !== snapshot.revision) return false
-      const value = { ...snapshot.value }
-      for (const op of ops) { if (op.op === 'set') value[op.path[0]!] = op.value; else delete value[op.path[0]!] }
-      snapshot = { ...snapshot, value, revision: snapshot.revision! + 1 }
-      notify()
-      return true
-    },
-    set: async () => false, unset: async () => false,
-  }
-  const publish = (patch: Partial<ConfigFormSnapshot<Record<string, unknown>>>) => { snapshot = { ...snapshot, ...patch }; notify() }
-  return { form, mutations, publish }
-}

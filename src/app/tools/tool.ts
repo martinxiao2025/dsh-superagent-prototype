@@ -1,17 +1,13 @@
 /** 主 Session 与 executor Session 共用的工具原语与 schema。 */
-import type { Agent } from '@deepseek-ai/dsh-agent'
 import { z } from 'zod'
 import { IM_WORDS, wordCount } from '../../infra/text.ts'
 import { resourceGrammar } from '../resources.ts'
 
 /**
- * 工具调用所代表的 Session：其 id 用于索引 prompt-preview 资源；若存在 Agent，则它是接收图片附件的主
- * Session。MCP 调用方只有 id，没有 Agent。
+ * 工具调用所代表的 Session：其 id 用于索引 prompt-preview 资源。
+ * 独立版本没有 `Agent`，因此图片附件不在工具面上（见 README 的已知限制）。
  */
-export interface ToolScope {
-  id: string
-  agent?: Agent
-}
+export interface ToolScope { id: string }
 export interface Tool<S extends z.ZodType = z.ZodType> {
   name: string
   description: string

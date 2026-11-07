@@ -124,7 +124,7 @@ export function applyEnvironment(variables: Record<string, string | undefined>, 
   return () => { apply(previous) }
 }
 
-/** 通过 DSH 子进程运行时启动命令，该运行时会剥离形似凭据的环境变量。 */
+/** 在 worker 限制下启动命令；子进程运行时已剥离形似凭据的环境变量。 */
 export async function runAsWorker(subprocess: SubprocessRuntime, argv: string[], cwd: string, signal: AbortSignal, env?: Record<string, string>): Promise<string> {
   const handle = subprocess.spawn({ argv, cwd, graceMs: 2000, signal, ...env ? { env } : {}, stdio: { stdin: 'ignore', stdout: { maxBytes: 1 << 20 }, stderr: { maxBytes: 1 << 16 } } })
   const { exitCode } = await handle.done

@@ -1,13 +1,15 @@
 /** 探测仓库与账号 CLI，配置 worker 执行环境与命令 shim，并跟踪 setup 是否就绪。 */
-import type { Context } from '@deepseek-ai/cordis'
 import { UserError } from '../core/index.ts'
 import { SETUP_FIELDS, resolveDeployment, resolveFeishuBot, workerProbe, type Deployment, type Machine } from '../deployment.ts'
 import { agentVariables, applyEnvironment, verifyEnvironment, withoutDirectory, workerBin, writeEnvironment } from '../infra/environment.ts'
+import type { Logger } from '../infra/logger.ts'
+import type { SubprocessRuntime } from '../infra/subprocess.ts'
 import type { Settings, SettingsBlock } from '../policy.ts'
 import { SetupError, type SetupProblem } from '../setup.ts'
 
 export interface SetupHost {
-  readonly context: Context
+  readonly logger: Logger
+  readonly subprocess: SubprocessRuntime
   readonly machine: Machine
   readonly lifetime: AbortSignal
   restart(): void
@@ -70,17 +72,17 @@ export class Setup {
   restore(): void { this.restoreEnvironment?.(); this.restoreEnvironment = undefined }
   /** 按 worker shell 的运行方式探测 CLI，并用 `stateDir` 作为 `cwd`，因为它在仓库克隆有效之前就已存在。 */
   private probe() {
-    const { context, machine, lifetime } = this.host
-    return workerProbe(context.subprocess, machine.stateDir, machine.stateDir, lifetime)
+    const { subprocess, machine, lifetime } = this.host
+    return workerProbe(subprocess, machine.stateDir, machine.stateDir, lifetime)
   }
   private async resolve(settings: Settings): Promise<Deployment> {
-    const { context, machine, lifetime } = this.host
+    const { machine, lifetime } = this.host
     const probe = this.probe()
     const deployment = await resolveDeployment(machine, settings.sources.github?.config, probe)
     const feishu = await resolveFeishuBot(machine, settings.sources.feishu?.config, probe).catch((error: unknown) => {
       if (!(error instanceof SetupError)) throw error
       this.feishuProblem = error.problem
-      context.logger.warn('dsh-superagent 跳过飞书：%s', error.message)
+      this.host.logger.warn('dsh-superagent 跳过飞书：%s', error.message)
       return undefined
     })
     const resolved = { ...deployment, ...(feishu ? { feishu } : {}) }
@@ -90,7 +92,7 @@ export class Setup {
     }
     await writeEnvironment(resolved, settings.executor.blockedCommands).catch(machineProblem)
     this.restoreEnvironment = applyEnvironment(this.variables, machine.stateDir, this.path)
-    await verifyEnvironment(resolved, context.subprocess, lifetime).catch((error: unknown) => {
+    await verifyEnvironment(resolved, this.host.subprocess, lifetime).catch((error: unknown) => {
       this.restore()
       machineProblem(error)
     })

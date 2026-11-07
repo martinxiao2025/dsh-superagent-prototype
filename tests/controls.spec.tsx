@@ -13,7 +13,8 @@ it('imports no DSH client runtime package, only React and type declarations', ()
   const dir = join(process.cwd(), 'src/client')
   for (const name of readdirSync(dir)) {
     const source = readFileSync(join(dir, name), 'utf8')
-    for (const match of source.matchAll(/^import (type )?[^'"]*from '(@deepseek-ai\/[^']+)'/gm)) expect({ name, from: match[2], typeOnly: !!match[1] }).toMatchObject({ typeOnly: true })
+    // 面板已不依赖任何 DSH 包：只允许相对导入与本项目的类型。
+    expect(source).not.toMatch(/@deepseek-ai\//)
     expect(source).not.toContain('dsh-client-ui-primitives\'')
   }
 })

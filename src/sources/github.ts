@@ -1,5 +1,4 @@
-/** GitHub source kind 定义、通知与仓库轮询循环，以及 Cordis 插件入口。 */
-import type { Context } from '@deepseek-ai/cordis'
+/** GitHub source kind 定义、通知与仓库轮询循环，以及独立进程的启动入口。 */
 import { key, type Thread } from '../core/index.ts'
 import { sameName } from '../infra/text.ts'
 import { GithubAccountsSchema } from '../deployment.ts'
@@ -10,7 +9,7 @@ import { branchCiTrigger, ciTrigger, commentTrigger, CommentSchema, githubAddres
 import { githubLink, sendGithub } from './github-channel.ts'
 import type { GithubComment, PullRef } from './github-trigger.ts'
 import { observePull, pullsOf, readPull, type Pull } from './github-pull.ts'
-import { health, sourceContext, type Health, type SourceContext } from './host.ts'
+import { health, sourceContext, type Health, type SourceContext, type SourceHost } from './host.ts'
 import { KV } from '../kv.ts'
 import { cursorAt, pause, POLL_HORIZON_MS, pollThreads as pollEach } from './poll.ts'
 import type { Localized, SourceKind } from './kind.ts'
@@ -107,18 +106,21 @@ export const githubKind: SourceKind<GithubConfig> = {
     cli: { zh: `当前账号 @${deployment.github.login}`, en: `Current account @${deployment.github.login}` },
   } : {},
 }
-export const name = 'dsh-superagent-github'
-export const inject = ['orchestrator']
-export function apply(ctx: Context): void {
-  ctx.effect(() => ctx.orchestrator.sources.register(githubKind), 'github: source kind')
-  ctx.effect(() => {
-    const source = sourceContext(ctx.orchestrator, githubKind)
-    const controller = new AbortController()
-    // 未处理的 rejection 会终止 DSH 进程，因此逃出轮询循环的失败改为上报为 source 健康状态。
-    const running = watch(source, controller.signal)
-      .catch((error: unknown) => { source.report('github', { state: 'error', detail: String(error) }) })
-    return async () => { controller.abort(); await running }
-  })
+/** 注册 GitHub Source 并启动轮询；`lifetime` 中止时停止轮询。 */
+export async function startGithub(host: SourceHost, lifetime: AbortSignal): Promise<void> {
+  const registered = host.sources.register(githubKind)
+  const source = sourceContext(host, githubKind)
+  const controller = new AbortController()
+  const stop = () => controller.abort()
+  lifetime.addEventListener('abort', stop, { once: true })
+  let escaped = false
+  // 轮询循环的失败改为上报为 source 健康状态，而不是让未处理的 rejection 终止进程；该条目保留，避免面板把它显示成从未运行。
+  try {
+    await watch(source, controller.signal).catch((error: unknown) => {
+      escaped = true
+      source.report('github', { state: 'error', detail: String(error) })
+    })
+  } finally { lifetime.removeEventListener('abort', stop); if (!escaped) registered() }
 }
 /** 连续 `failures` 次轮询失败后返回 error 健康状态；否则返回 undefined，使单次网络中断保持静默。 */
 export function pollFailure(failures: number, threshold: number, error: unknown): Health | undefined {

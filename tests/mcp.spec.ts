@@ -57,13 +57,13 @@ describe('MCP tool surface', () => {
     } finally { await client.close(); await server.close() }
   })
 
-  it('passes no DSH Agent to the assessor, so an MCP image read is refused instead of faked', async () => {
-    const agents: unknown[] = []
-    const host = { assessor: { read: async (agent: unknown) => { agents.push(agent); return { ok: true } } } } as unknown as MainToolsHost
+  it('hands the assessor only validated read arguments and the abort signal, with no host objects', async () => {
+    const seen: unknown[][] = []
+    const host = { assessor: { read: async (...args: unknown[]) => { seen.push(args); return { ok: true } } } } as unknown as MainToolsHost
     const read = mainTools(host, { id: 'mcp-test' }).find(tool => tool.name === 'orchestrator_eval_read')!
-    const result = await read.execute({ trigger_id: 't', resource: 'image', image_id: 'a/b', offset: 0 }, new AbortController().signal)
-    expect(agents).toEqual([undefined])
-    expect(result).toEqual({ ok: true })
+    const signal = new AbortController().signal
+    expect(await read.execute({ trigger_id: 't', resource: 'image', image_id: 'a/b', offset: 0 }, signal)).toEqual({ ok: true })
+    expect(seen).toEqual([[{ trigger_id: 't', resource: 'image', image_id: 'a/b', offset: 0 }, signal]])
   })
 
   it('reports the package version in initialize', () => {

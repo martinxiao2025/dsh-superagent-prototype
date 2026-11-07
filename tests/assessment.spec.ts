@@ -1,6 +1,5 @@
 /** 主会话评估器按 Eval 的状态与 context 加载。 */
 import { expect, it, vi } from 'vitest'
-import type { Agent } from '@deepseek-ai/dsh-agent'
 import { AssessmentSchema, EvalReadSchema, MasterAssessor, type AssessorHost } from '../src/app/assessment.ts'
 import { mainAdmissionPolicy } from '../src/app/context.ts'
 import { Engine, MemoryRepositories, type Executor, type Policy, type Trigger } from '../src/core/index.ts'
@@ -49,7 +48,7 @@ function setup(strength: 'explicit' | 'inferred' = 'inferred', bodies = Array.fr
   const outbox = { send: () => {}, status: () => undefined, withdraw: () => {} }
   engine = new Engine({ repo, policy: () => policy, scope, assessor, executor, outbox })
   const tools: Record<string, (args: unknown, signal: AbortSignal) => Promise<unknown>> = {}
-  tools.orchestrator_eval_read = (args, signal) => assessor.read({} as Agent, EvalReadSchema.parse(args), signal)
+  tools.orchestrator_eval_read = (args, signal) => assessor.read(EvalReadSchema.parse(args), signal)
   tools.orchestrator_eval_decide = (args, signal) => {
     const { trigger_id, ...result } = args as { trigger_id: string }
     return assessor.decide(trigger_id, AssessmentSchema.parse(result), signal)
@@ -164,8 +163,7 @@ it('lets the main Session read on from the cursor its loaded window ends with, a
     const message = { id: `m${n}`, from: 'bob', at: new Date(Date.UTC(2026, 8, 9, 0, 0, n)).toISOString(), text: `message ${n}` }
     return { messages: [message], next: String(n + 1), body: { messages: [message] } }
   }
-  const context = { messageId: 'm0', read: async (_commands: Commands, _part: string, cursor?: string) => page(cursor), images: () => [],
-    image: async () => { throw new Error('No images') } }
+  const context = { messageId: 'm0', read: async (_commands: Commands, _part: string, cursor?: string) => page(cursor) }
   const s = setup('inferred', undefined, () => context)
   s.engine.receive(issue(1))
   const long = { ...issue(2), id: 'long', threads: issue(1).threads, text: 'a long follow-up. '.repeat(40) }

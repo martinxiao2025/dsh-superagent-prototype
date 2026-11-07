@@ -11,18 +11,23 @@ import type { Tool } from '../app/tools/tool.ts'
 import { latestAssignment, latestReport, liveTicket, runningAssignment, waitsForPerson } from '../core/index.ts'
 import type { AssessmentOutcome, Assignment, EngineForExecutor, Executor, Ticket, Trigger } from '../core/index.ts'
 import type { Machine } from '../deployment.ts'
-import type { Effects } from '../app/effects.ts'
-import type { Sessions } from '../app/sessions.ts'
+import { type Effects, Later } from '../app/effects.ts'
+import type { MainSession } from '../app/main-session.ts'
 import type { Prompts } from '../app/prompts.ts'
 import type { Store } from '../app/store.ts'
+import type { TranscriptEntry } from '../app/context.ts'
 import type { Variable } from '../app/execution-environment.ts'
 import type { HealthEntry } from '../infra/health.ts'
 import { resultRelay } from '../app/notices.ts'
 import type { AgentHost, TurnTool } from './host.ts'
 import { runShell, toolJsonSchema, workspaceTools } from './workspace-tools.ts'
-import { Later } from '../app/effects.ts'
-import { batchLine, batchOf, inputMessage, mandateInstructions, sourceTrigger, ticketExecution, transient, triggerMessage, WorkerSlots,
-  workerSessionId } from './dsh.ts'
+import { batchLine, batchOf, inputMessage, mandateInstructions, sourceTrigger, ticketExecution, transient, triggerMessage,
+  workerSessionId } from './messages.ts'
+import { KV } from '../kv.ts'
+import { WorkerSlots } from './slots.ts'
+
+/** 每个工单保留的对话记录条数；超出后丢弃最旧的。 */
+const TRANSCRIPT_LIMIT = 200
 
 /** prepare 命令的最长运行时间。 */
 const PREPARE_TIMEOUT_MS = 10 * 60_000
@@ -40,16 +45,18 @@ export interface HostExecutorHost {
   readonly host: AgentHost
   readonly engine: Pick<EngineForExecutor, 'assignmentStarted' | 'inputsDelivered' | 'inputsRead' | 'turnEnded' | 'deliveryFailed'
     | 'report' | 'assignmentInterrupted'>
-  readonly store: Pick<Store, 'tickets' | 'triggers' | 'settings' | 'atomic' | 'afterCommit'>
+  readonly store: Pick<Store, 'tickets' | 'triggers' | 'settings' | 'atomic' | 'afterCommit' | 'get' | 'set'>
   readonly effects: Pick<Effects, 'enqueue' | 'handle'>
   /** 名为 `worker` 的健康条目。 */
   readonly health: HealthEntry
   readonly machine: Pick<Machine, 'stateDir'>
   readonly lifetime: AbortSignal
   /** 只用于把 worker 的结果转给主 Session；不再创建 worker 会话。 */
-  readonly sessions: Pick<Sessions, 'relay'>
+  readonly sessions: Pick<MainSession, 'relay'>
   /** worker 的系统提示词与技能文本。 */
   readonly prompts: Pick<Prompts, 'current' | 'compose' | 'skills'>
+  /** 配置的 worker 模型名；缺省时交给宿主选择。 */
+  model?(): string | undefined
   /** 工单的编排工具面（`orchestrator_*`），由 Runtime 组装。 */
   toolkit(ticket: Ticket): Callable[]
   closing(): boolean
@@ -196,12 +203,16 @@ export class HostExecutor implements Executor {
     const instruction = this.instructed.has(sessionId) ? '' : await this.instruction(ticket, directory)
     if (assignment.state === 'pending') this.host.engine.assignmentStarted(ticket.id, assignment.id)
     this.turns.set(ticket.id, { assignmentId: assignment.id, controller })
+    this.record(ticket.id, { type: 'user/message', message: { role: 'user', content: [{ type: 'text', text: message }] } })
     try {
       const { tools, call } = this.toolset(ticket, directory)
       const handle = await this.host.host.dispatch({ sessionId, directory,
-        prompt: instruction === '' ? message : `${instruction}\n\n---\n\n${message}`, tools, callTool: call })
+        prompt: instruction === '' ? message : `${instruction}\n\n---\n\n${message}`, tools, callTool: call,
+        ...(this.host.model?.() ? { model: this.host.model!() } : {}) })
       const result = await this.host.host.collect(handle, { signal })
       this.instructed.add(sessionId)
+      this.record(ticket.id, { type: 'assistant/message', message: { role: 'assistant',
+        content: [{ type: 'text', text: result.error ? `[回合失败] ${result.error}` : result.text }] } })
       await this.finished(ticket.id, assignment.id, result)
     } finally {
       this.turns.delete(ticket.id)
@@ -289,10 +300,10 @@ export class HostExecutor implements Executor {
     if (health.state !== 'ready') throw new Error(`worker 宿主不可用：${health.detail}；请确认 VS Code 已打开且扩展已启用`)
     this.host.health.set({ state: 'ready', detail: health.detail, at: new Date().toISOString() })
   }
-  /** 工单是否仍应继续：已结束或被另一个 assignment 取代则不应。 */
+  /** 工单是否仍应继续：已结束或被另一个 assignment 取代则不应；待启动的 assignment 也算当前的一个。 */
   private alive(ticket: Ticket, assignmentId: string): boolean {
     const current = this.host.store.tickets.get(ticket.id)
-    return !!current && liveTicket(current) && runningAssignment(current)?.id === assignmentId
+    return !!current && liveTicket(current) && latestAssignment(current)?.id === assignmentId
   }
   /** 组装本回合的工具面：工作区工具 + 编排工具，并给出一个带校验的调用分派。 */
   private toolset(ticket: Ticket, directory: string): { tools: TurnTool[]; call: (call: { name: string; arguments: unknown },
@@ -377,6 +388,14 @@ export class HostExecutor implements Executor {
   /** 把 worker 的结果转给主 Session；没有主 Session 时是空操作。 */
   private relay(notice: { id: string; text: string } | undefined): void {
     if (notice) this.host.sessions.relay(notice.id, notice.text)
+  }
+  /** 追加一条工单对话记录，只保留最近 200 条，避免数据库无限增长。 */
+  private record(ticketId: string, entry: TranscriptEntry): void {
+    const store = this.host.store
+    store.atomic(() => {
+      const all = store.get(KV.transcript(ticketId)) ?? []
+      store.set(KV.transcript(ticketId), [...all, entry].slice(-TRANSCRIPT_LIMIT))
+    })
   }
 }
 

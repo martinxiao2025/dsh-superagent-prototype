@@ -297,7 +297,6 @@ flowchart TB
 | `src/admission.ts` | 准入表的值、每个单元格的选项与默认值，与面板共享 |
 | `src/limits.ts` | 人设置的值的限制，设置 schema 会检查它们，面板字段会提供这些限制 |
 | `src/kv.ts` | `KV`：每个 `kv` 记录族及其键、值类型与所有者，以及存储与 `SourceContext.state` 接收的 `Key` 与 `Family` 类型 |
-| `src/navigation.ts` | 当宿主的目录列出会话后，从面板打开一个 DeepSeek Harness 会话 |
 | `src/core/model.ts` | 领域类型，其中包括带类型的工单与 `MandateBasis`，以及 `threadKey`、`ticketOutcome`、`reached`、`followupOwners`、`settled`、`waitsForPerson`、`liveTicket`、`runningAssignment`、`latestAssignment` 与 `latestReport` |
 | `src/core/ports.ts` | 端口：`Repositories`、`Policy`、`SourceScope`、`Assessor`、`Executor`、`Outbox`，以及领域事件 |
 | `src/core/engine.ts` | 引擎，核心的入口，以及角色接口 `EngineForSources`、`EngineForMainSession`、`EngineForPeople`、`EngineForSettings` 与 `EngineForExecutor` |
@@ -330,10 +329,7 @@ flowchart TB
 | `src/app/context.ts` | 内置提示词文本，从 `prompts/` 读取，以及会话读取的记录条目 |
 | `src/app/skill-files.ts` | 打包文本：`promptFile`（把文件每行一句连接成段落）与内置技能 |
 | `src/app/main-session.ts` | `MainSession`：用 `AgentHost` 回合维持的主会话（去 DSH 版 `Sessions`）：`prompt` 按 `requestId` 去重、派发即返回、回合按会话串行回收；`inject` 通知缓存到下一回合前缀；`status`/`promptVersion`/`mayRead` 与 `Models 健康` 语义与原实现一致 |
-| `src/app/sessions.ts` | 会话 |
-| `src/app/delivery.ts` | `AgentDelivery`：每个请求 id 向 DeepSeek Harness 智能体投递一次消息，跨恢复的会话亦然 |
 | `src/app/retry-health.ts` | `RetryHealth`：哪些会话在等待模型预算重试，供 `models` 健康条目使用 |
-| `src/app/role-models.ts` | 解析评估与执行器模型，并用其角色的模型初始化新会话 |
 | `src/app/assessment.ts` | MasterAssessor、评估 schema，以及 `orchestrator_eval` 回答的窗口 |
 | `src/app/execution-environment.ts` | 执行环境：其变量、工单的值、目录根，以及提示词各节的文本行，`src/app/prompts.ts` 会把它们填入其模板 |
 | `src/app/source-context.ts` | `sourceContextOf`：每个来源 kind 的 `SourceContext` |
@@ -346,6 +342,7 @@ flowchart TB
 | `src/app/mcp-tools.ts` | 把主会话的工具映射到 MCP：`tools/list`、经 schema 校验的 `tools/call`，以及结构化失败 |
 | `src/app/mcp.ts` | 回环 Streamable HTTP MCP 端点：每个会话一个传输、DNS rebinding 防护、空闲回收，以及 `mcp` 健康条目 |
 | `src/app/http.ts` | `/orchestrator/api` 路由：同源检查、请求限制，以及每种失败一个状态 |
+| `src/app/panel.ts` | `PanelServer`：面板自建的回环静态服务，把打包后的页面、样式与图标挂在管理端口上，与 `/orchestrator/api` 同源 |
 | `src/app/api.ts` | `Api`：每条路由及其参数、查询、请求体与响应，以及列表的过滤器；它只导入类型，因此面板可以打包它 |
 | `src/app/views/text.ts` | 视图文本的两种形式：`preview`（单行纯文本）与 `markdown`（无 HTML）；`plain` 与 `readable` |
 | `src/app/views/records.ts` | 视图共享的行：触发、工单、线程、决策与渠道链接，以及 `ownersOf`（一次请求读取到的跟进所有者） |
@@ -354,9 +351,9 @@ flowchart TB
 | `src/app/views/sources.ts` | 来源状态：每个来源实例的状态、其最后一天的计数，以及它在那一天过滤和丢弃的内容 |
 | `src/app/views/settings.ts` | 设置页视图：每个块及其修订、每个来源的设置及其 kind 的表单，以及执行环境 |
 | `src/app/views/overview.ts` | 概览：需要人的工单、问题、最后一天的流转与执行器负载 |
-| `src/executor/dsh.ts` | DshExecutor（保留的 DSH worker 路径）、`WorkerSlots`、`ticketExecution`、`inputMessage` 与 `mandateInstructions` |
-| `src/executor/agent.ts` | `HostExecutor`：去 DSH 的 worker 执行器，经 `AgentHost`（`VsCodeLmHost`）执行回合；工具面由 `workspaceTools` 与编排工具组成，经回合工具回调执行，启动与投递走持久 effect 队列，同一工单串行，失败按临时/永久分流并指数退避。已实现，尚未接线到 `Runtime`（见 `docs/010` 的迁移状态） |
-| `src/executor/background.ts` | worker 在 DeepSeek Harness 中的后台工作，其会话拥有的 shell 作业（`ctx.jobs`）与其子智能体（`ctx.subagents`）：`runningJobs`、`untilQuiet`、`killJobs`、`collectJobs`、`stopSubagents`、`stopBackground`、`until`，以及 `cancelled`（其子智能体的停止取消了回合的 worker） |
+| `src/executor/agent.ts` | `HostExecutor`：worker 执行器，经 `AgentHost` 执行回合；工具面由 `workspaceTools` 与编排工具组成，经回合工具回调执行，启动与投递走持久 effect 队列，同一工单串行，失败按临时/永久分流并指数退避；已由 `Runtime` 接线 |
+| `src/executor/messages.ts` | 工单与 trigger 的消息格式化、执行元数据与临时失败判定；从原 DSH 执行器拆出，不依赖任何宿主 |
+| `src/executor/slots.ts` | `WorkerSlots`：worker 并发槽位的占用、预留与释放，上限来自执行的 `maxWorkers` |
 | `src/executor/host.ts` | 宿主与 agent 执行的抽象：`AgentHost` 的启动、健康检查、派发回合、结果回收与停止，以及回合请求、回执、结果与 MCP 服务器的类型。Runtime 只依赖它，换宿主不影响领域规则 |
 | `src/executor/copilot.ts` | `CopilotCliHost`：用 `copilot` CLI 的非交互模式运行真实回合，提示词经 stdin 送达，`parseTurnOutput` 解析文本与 JSONL 输出；Windows 上 `.cmd` 垫片无法以 `shell: false` 启动时记为健康错误，而不是抛出 |
 | `src/executor/bridge.ts` | 扩展桥协议：发现文件（`bridgeFilePath`、`readBridgeInfo`）、回合快照与分类，以及只连 `127.0.0.1` 的 `BridgeClient`；HTTP 状态与错误分类一一对应，供宿主区分“桥不可用”与“模型侧失败” |
@@ -385,8 +382,7 @@ flowchart TB
 | `src/sources/feishu-channel.ts` | 飞书渠道：话题回复，`sent` 或 `gone` |
 | `src/sources/feishu-read.ts` | 触发消息及其根、父与话题的 `feishu/` 读取，以及 `feishuThreadContext`，它把这些连同图片交给评估 |
 | `src/sources/admission-context.ts` | 评估起始的有界窗口：触发所在线程的前几页（通过其 kind 读取），以及触发周围的消息 |
-| `src/sources/feishu-image.ts` | 把飞书消息的图片读取为附件，供评估会话使用 |
-| `src/client/index.tsx` | 客户端插件入口：侧边栏条目、主面板，以及 DeepSeek Harness 插件管理器中的页面 |
+| `src/client/main.tsx` | 面板网页入口：把 `App` 挂载到 `#root`，由 `tsdown` 打成 `lib/panel/main.js` 供自建回环服务加载 |
 | `src/client/app.tsx` | 面板：页头、搜索、术语表、标签页与当前路由的页面 |
 | `src/client/provider.tsx` | 每个页面从宿主读取的内容：文案、调用、导航、通知、状态轮询，以及 `restart`（在 dsh-superagent 重启期间快速读取状态） |
 | `src/client/api.ts` | 管理 API 的调用与轮询，由 `src/app/api.ts` 标注类型，以及评估状态的决策过滤器 |
@@ -422,26 +418,21 @@ flowchart TB
 | `tests/sources.spec.ts` | `SourceContext` 上的飞书与 GitHub 来源：翻译、轮询与读取位置、拉取请求规则、健康 |
 | `tests/commands.spec.ts` | 以部署账号身份进行的 CLI 调用、渠道的应答，以及限定仓库的 GitHub 调用 |
 | `tests/feishu-read.spec.ts`、`tests/github-read.spec.ts` | 飞书与 GitHub 读取 |
-| `tests/admission-context.spec.ts`、`tests/feishu-image.spec.ts` | 评估的线程窗口，以及飞书图片读取 |
+| `tests/admission-context.spec.ts` | 评估的线程窗口 |
 | `tests/assessment.spec.ts` | MasterAssessor 每次评估保留的内容，以及何时释放 |
-| `tests/background.spec.ts` | 等待 worker 的 shell 作业与子智能体：唤醒它的结束，以及停止的宿主 |
 | `tests/host.spec.ts` | 宿主抽象与 Copilot CLI 宿主：就绪与错误自检、正常回合与经 stdin 的提示词、非零退出码、超时、无法解析的输出、MCP 配置临时文件与清理、停止，以及测试替身 |
 | `tests/vscode-lm.spec.ts` | `VsCodeLmHost` 与桥协议：正常回合与模型/用量回收、鉴权失败、无可用模型、发现文件缺失、超时与取消（都会取消桥侧回合）、模型侧失败分类，以及带工具回合的派发与工具回调 |
 | `tests/tool-server.spec.ts` | 回合工具回调端点：回环监听、令牌与未知回合拒绝、非 POST 路由与畸形请求体、工具失败以文本回传、超长结果截断，以及注销与停止后不再服务 |
 | `tests/workspace-tools.spec.ts` | worker 工作区工具：JSON Schema 与参数校验、带行号的读取与写入与定点编辑、歧义编辑拒绝、路径越界拒绝、列目录跳过依赖、正则搜索、命令退出码、输出截断与超时终止 |
-| `tests/bundle-patch.spec.ts` | bundle 的补丁，按 DeepSeek Harness 的读取方式读取，以及它定义执行器会话的智能体预设 |
 | `tests/effects.spec.ts` | 副作用队列：合并、限制、退避重试、健康与关闭 |
 | `tests/passes.spec.ts` | 轮次：一次一个，轮次期间请求的在轮次后合并运行，以及失败轮次报告运行时健康 |
 | `tests/outbox.spec.ts` | 运行中运行时上的发件箱：处理暂停或来源未安装时消息等待 |
 | `tests/cache.spec.ts` | `TextCache` |
-| `tests/queue.spec.ts` | 运行时通过副作用队列执行的工作，以及较早版本存储的内容 |
+| `tests/queue.spec.ts` | 运行时通过副作用队列执行的工作，以及启动时排空较早版本已排队的条目 |
 | `tests/followups.spec.ts` | 工单线程上的人的跟进：发给主会话的通知、对其操作的工具、一次突发的代价；worker 的交回与上下文跟随，以及主会话的备注 |
-| `tests/health.spec.ts` | 每个部件一个健康条目，各自被其下一次成功清除 |
-| `tests/delivery.spec.ts` | `AgentDelivery` |
-| `tests/retry-health.spec.ts`、`tests/role-models.spec.ts` | 模型预算重试，以及两种角色的模型 |
-| `tests/runtime.spec.ts` | 在模拟 DeepSeek Harness 宿主上的整个应用，通过工具与 HTTP |
+| `tests/health.spec.ts` | 主会话回合失败上报到 `models`、回复重试与同名通知去重，以及下一次成功后的恢复 |
+| `tests/runtime.spec.ts` | 在 `AgentHost` 替身上运行整个应用：接收、接受、作业环境、转录、暂停与失败，经工具与回环 HTTP |
 | `tests/tools.spec.ts` | 会话的工具：`orchestrator_read` 为每个角色读取的内容，以及其他主会话工具的形状与检查 |
-| `tests/runtime-concurrency.spec.ts` | 重叠的工作：轮次期间的触发、投递与启动期间变化的工单 |
 | `tests/http.spec.ts` | 同源与回环检查、每种失败的状态、请求体上限、路径参数与查询 |
 | `tests/settings.spec.ts` | 与模型或账号检查竞争的设置保存、被保存超过的策略同步，以及暂停、同步与块的拒绝 |
 | `tests/views.spec.ts` | 管理视图从存储派生的内容，例如被丢弃消息所属的线程 |
@@ -454,7 +445,7 @@ flowchart TB
 | `tests/mcp.spec.ts` | MCP 表面：与 `main.ts` 逐工具相等、握手、列表、读取与回环路由、参数拒绝后可继续服务、过期 revision 被拒，以及保持为健康错误的端口占用 |
 | `tests/deployment.spec.ts`、`tests/environment.spec.ts`、`tests/index.spec.ts` | 插件配置与 setup、智能体的进程环境、插件入口 |
 | `tests/service-script.spec.ts` | `scripts/dsh-superagent` 对假 `ps`、`tmux` 与 `dsh` 的测试 |
-| `tests/client.spec.tsx`、`tests/navigation.spec.ts`、`tests/controls.spec.tsx` | 客户端插件的注册与轮询、会话导航与路由记忆、本地控件，以及面板的导入（无循环） |
+| `tests/controls.spec.tsx` | 本地控件，以及面板的导入（无循环、不引用 DSH 包） |
 | `tests/panel-overview.spec.tsx`、`panel-source.spec.tsx`、`panel-trigger.spec.tsx`、`panel-eval.spec.tsx`、`panel-execution.spec.tsx` | 面板的每个页面，对按路由应答的假管理 API |
 | `tests/panel-settings.spec.tsx`、`panel-prompts.spec.tsx`、`panel-deployment.spec.tsx`、`panel-panel.spec.tsx` | 设置分组、草稿与历史、提示词、部署页面，以及面板的搜索、术语表与路由记忆 |
 | `tests/draft.spec.ts`、`tests/prompt-config.spec.ts`、`tests/markdown.spec.ts`、`tests/marks.spec.ts` | 草稿状态、合并与保存栏文本；按节划分的提示词配置与逐行差异；Markdown 子集及其链接；视图分类的每个状态的标记 |

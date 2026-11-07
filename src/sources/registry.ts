@@ -114,11 +114,6 @@ export class SourceRegistry implements SourceScope {
     return {
       messageId: context.messageId(trigger),
       read: (commands, part, cursor) => context.read(commands, trigger, part, cursor, config),
-      images: text => context.images?.(text) ?? [],
-      image: async (agent, commands, message, key, stateDir, signal) => {
-        if (!context.image) throw new Error(`${kind.kind} Source 不支持图片`)
-        return context.image(agent, commands, trigger, message, key, stateDir, signal)
-      },
     }
   }
   scope(input: { source: string; meta: Record<string, unknown> }, settings = this.settings()): ScopeResult {

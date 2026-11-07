@@ -2,7 +2,7 @@
 import { latestReport, reasonText, threadKey, ticketStage, type Decision, type Mandate, type Thread, type Ticket, type TicketInput,
   type Trigger, type TriggerDisposition } from '../core/index.ts'
 import { pullOf } from '../sources/github-pull.ts'
-import { batchLine, inputResource } from '../executor/dsh.ts'
+import { batchLine, inputResource } from '../executor/messages.ts'
 
 /** 压缩空白并截断文本以用于预览，同时为模型读者保留代码、尖括号与链接的原貌。 */
 export function preview(text: string): string { return text.replace(/\s+/g, ' ').slice(0, 160) }

@@ -1,6 +1,15 @@
 /** 本地子进程运行时：替换 DSH 的 subprocess 服务，接口只保留 setup 与工单目录校验用到的部分。 */
 import { spawn } from 'node:child_process'
 
+/**
+ * 形似凭据的环境变量名：派生子进程时剥离，避免把运维人员的 token/密钥传给 worker 的
+ * git、gh、lark-cli。名字按 `_` 分段，命中整段才算（`PATH`、`HOME` 不受影响）。
+ */
+export const SENSITIVE_ENV_PATTERN = /(^|_)(TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|CREDENTIALS|COOKIE|AUTH|SESSION|KEY)(_|$)/i
+/** 过滤掉凭据形态的变量，返回可传给子进程的环境。 */
+const withoutSecrets = (env: NodeJS.ProcessEnv): Record<string, string> =>
+  Object.fromEntries(Object.entries(env).flatMap(([name, value]) => value === undefined || SENSITIVE_ENV_PATTERN.test(name) ? [] : [[name, value]]))
+
 /** 已收集输出的读取器；`readFrom(offset)` 返回该偏移之后的文本与下一偏移。 */
 export interface SubprocessOutputReader {
   readFrom(offset: number): { text: string; next?: number }
@@ -48,14 +57,14 @@ class BoundedOutput implements SubprocessOutputReader {
   }
 }
 
-/** 用 `node:child_process` 实现 `SubprocessRuntime`；环境变量合并到 `process.env` 上。 */
+/** 用 `node:child_process` 实现 `SubprocessRuntime`；环境变量合并到 `process.env` 上，并剥离凭据形态的项。 */
 export class NodeSubprocess implements SubprocessRuntime {
-  /** 启动一个子进程并立即返回句柄。 */
+  /** 启动一个子进程并立即返回句柄；凭据形态的环境变量不会传给子进程。 */
   spawn(options: SpawnOptions): SubprocessHandle {
     const [program = '', ...args] = options.argv
     const child = spawn(program, args, {
       cwd: options.cwd,
-      env: options.env ? { ...process.env, ...options.env } : process.env,
+      env: { ...withoutSecrets(process.env), ...withoutSecrets(options.env ?? {}) },
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     })

@@ -3,6 +3,7 @@
  * 读写方通过这里的条目引用记录，使每个键只写一次并带上它的值类型。
  */
 import type { PromptVersion } from './app/prompts.ts'
+import type { TranscriptEntry } from './app/context.ts'
 import type { SettingsVersion } from './app/store.ts'
 import type { SettingsSave } from './policy.ts'
 import type { Retry } from './sources/github.ts'
@@ -34,6 +35,8 @@ export const KV = {
   /** Sessions：每个 Session 工作过的提示词修订号，从旧到新排列；最后一项（`.at(-1)`）是它当前生效的修订；以及主会话已投递过的 request id（去重，保留最近若干条）。 */
   sessions: { prompts: family<number[], [session: string]>('session-prompts:'),
     delivered: family<string[], [session: string]>('session-delivered:') },
+  /** HostExecutor：每个工单的 worker 对话记录（最新的在后），供 `ticket/<id>/transcript` 读取。 */
+  transcript: family<TranscriptEntry[], [ticket: string]>('ticket-transcript:'),
   /** Schema 11 迁移：导入到 effect 表中的旧版主 Session 队列。 */
   queues: { relays: record<{ id: string; text: string }[]>('relay-queue'), unsubscribed: record<string[]>('subscription-results'),
     prompts: record<number | null>('prompt-notification'), settings: record<number | null>('settings-notification') },

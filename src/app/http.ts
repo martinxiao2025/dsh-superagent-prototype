@@ -1,11 +1,8 @@
 /** 仅限回环地址的管理 HTTP 路由，对 Web 面板强制同源。 */
-import type { Context } from '@deepseek-ai/cordis'
-import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
 import { THREAD_FILTERS, TICKET_FILTERS, type Api, type ApiResponse, type RouteParams } from './api.ts'
 import { sourceSkills } from './context.ts'
-import type { ModelCatalog } from '@deepseek-ai/dsh-api-session-controller/types'
 import { PromptConflict, SKILL_NAME, SKILL_PREFIX, TEAM_SECTIONS, builtInBase, builtInParts, defaultPrompts, savePrompts, type Prompts }
   from './prompts.ts'
 import { policyVersion } from '../policy.ts'
@@ -13,14 +10,15 @@ import { SettingsConflict, type Settings } from './settings.ts'
 import { SetupError, type SetupProblem } from '../setup.ts'
 import { UserError, type EngineForPeople, type Ticket } from '../core/index.ts'
 import type { Deployment, Machine } from '../deployment.ts'
-import type { DshExecutor } from '../executor/dsh.ts'
+import type { HostExecutor } from '../executor/agent.ts'
 import type { Health } from '../sources/host.ts'
 import type { SourceRegistry } from '../sources/registry.ts'
-import type { Sessions } from './sessions.ts'
+import type { MainSession } from './main-session.ts'
 import type { Store } from './store.ts'
 import type { TextCache } from './cache.ts'
 import type { LinkTarget, ViewHost } from './views/records.ts'
 import type { Variable } from './execution-environment.ts'
+import type { ModelCatalogView } from './resources.ts'
 import { policyHistory } from './settings-history.ts'
 import { overview } from './views/overview.ts'
 import { settingsView } from './views/settings.ts'
@@ -34,10 +32,10 @@ export interface HttpHost {
   readonly sourceLinks: Pick<TextCache, 'entries'>
   readonly sources: SourceRegistry
   readonly prompts: Pick<Prompts, 'current' | 'version' | 'history' | 'preview' | 'save' | 'defaultChanged'>
-  readonly sessions: Pick<Sessions, 'status' | 'notify' | 'delivery'>
+  readonly sessions: Pick<MainSession, 'status' | 'notify' | 'delivery'>
   readonly settings: Pick<Settings, 'view' | 'save' | 'pause' | 'sync' | 'refreshLabels'>
   readonly engine: EngineForPeople
-  readonly executor: Pick<DshExecutor, 'activeCount'>
+  readonly executor: Pick<HostExecutor, 'activeCount'>
   readonly health: Record<string, Health>
   readonly machine: Machine
   readonly masterId: string
@@ -52,7 +50,7 @@ export interface HttpHost {
   ticketEnvironment(ticket: Ticket): Variable[]
   checkSetup(): void
   requestPass(): void
-  models(): Promise<ModelCatalog>
+  models(): Promise<ModelCatalogView>
 }
 /**
  * 表示管理路由解析或查找过程中抛出的面向客户端的 400 或 404 错误。
@@ -227,21 +225,19 @@ function match(table: Routes, method: string, segments: string[]) {
   }
   return undefined
 }
-export function registerHttp(ctx: Context, runtime: HttpHost): () => void {
-  if (ctx.webServer.host !== '127.0.0.1') throw new Error('编排器管理接口要求 Web 服务器绑定回环地址')
+/** 处理一次面板/管理请求；只接受同源请求，并等待编排器就绪。 */
+export async function handleHttp(runtime: HttpHost, req: IncomingMessage, res: ServerResponse, port: number): Promise<void> {
   const table = routes(runtime)
-  const disposers = [
-    ctx.webServer.register({ kind: 'prefix', path: '/orchestrator', handler: async (req, res) => {
-      const url = new URL(req.url ?? '/', 'http://localhost')
-      if (!url.pathname.startsWith('/orchestrator/api/')) { res.writeHead(404); res.end(); return }
-      if (!sameOrigin(req, ctx.webServer.port)) { json(res, 403, { error: '管理请求必须同源' }); return }
-      try {
-        await runtime.ready
-        const route = match(table, req.method ?? 'GET', url.pathname.slice('/orchestrator/api/'.length).split('/'))
-        if (!route) throw new RouteError(404, '未知操作')
-        const query = Object.fromEntries(url.searchParams)
-        json(res, 200, await route.run({ params: route.params as never, query, body: maxBytes => readBody(req, maxBytes) }))
-      } catch (error) { json(res, ...failure(error)) }
-    } })]
-  return () => { for (const dispose of disposers) dispose() }
+  const url = new URL(req.url ?? '/', 'http://localhost')
+  if (!url.pathname.startsWith('/orchestrator/api/')) {
+    res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }); res.end('未找到'); return
+  }
+  if (!sameOrigin(req, port)) { json(res, 403, { error: '管理请求必须同源' }); return }
+  try {
+    await runtime.ready
+    const route = match(table, req.method ?? 'GET', url.pathname.slice('/orchestrator/api/'.length).split('/'))
+    if (!route) throw new RouteError(404, '未知操作')
+    const query = Object.fromEntries(url.searchParams)
+    json(res, 200, await route.run({ params: route.params as never, query, body: maxBytes => readBody(req, maxBytes) }))
+  } catch (error) { json(res, ...failure(error)) }
 }

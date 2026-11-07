@@ -1,12 +1,12 @@
 /** 本地化、原因格式化、消息标记清理与相对时间戳辅助函数。 */
-import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
 import type { DshSuperagentKey } from './locales.ts'
 import type { Localized } from '../sources/kind.ts'
 import type { SetupProblem } from '../setup.ts'
 import type { Health } from '../sources/host.ts'
 import { reasonText, type Reason } from '../core/reasons.ts'
 
-export type T = Translate<DshSuperagentKey>
+/** 面板的翻译函数：`lang` 返回当前语言，其余键返回对应文案并可填充占位符。 */
+export type T = (key: DshSuperagentKey | 'lang', values?: Record<string, string | number>) => string
 export const errorText = (failure: unknown): string => failure instanceof Error ? failure.message : String(failure)
 export const localized = (t: T, text: Localized | string | undefined): string =>
   typeof text === 'string' ? text : text ? text[t('lang') === 'en' ? 'en' : 'zh'] : ''

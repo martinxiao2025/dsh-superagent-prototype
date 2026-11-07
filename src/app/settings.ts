@@ -1,5 +1,4 @@
 /** 按配置块校验设置、带乐观并发的保存、处理暂停控制，以及 Source 策略同步。 */
-import type { Context } from '@deepseek-ai/cordis'
 import { z } from 'zod'
 import { UserError, type EngineForSettings } from '../core/index.ts'
 import { EvalConfigSchema, ExecutorConfigSchema, PolicyConfigSchema, SettingsSchema, policyEffects, policyVersion } from '../policy.ts'
@@ -7,9 +6,8 @@ import type { Settings as SettingsValue, SettingsBlock, SettingsOrigin, Settings
 import type { SourceHost } from '../sources/host.ts'
 import type { HealthBoard, HealthEntry } from '../infra/health.ts'
 import type { SourceRegistry } from '../sources/registry.ts'
-import { resolveRoleModel } from './role-models.ts'
 import { changedPaths, settingsNotice } from './notices.ts'
-import type { Sessions } from './sessions.ts'
+import type { MainSession } from './main-session.ts'
 import { setupChanged, type Setup } from './setup.ts'
 import type { Store } from './store.ts'
 import { KV } from '../kv.ts'
@@ -60,11 +58,10 @@ export interface SettingsHost {
   readonly engine: EngineForSettings
   /** 健康面板，各 Source 的策略同步以 `sync:<id>` 上报。 */
   readonly health: Pick<HealthBoard, 'claim'>
-  /** 用于校验与解析角色模型的 DSH Cordis 上下文。 */
-  readonly context: Context
+  /** 用于校验与解析角色模型的宿主依赖（独立版本只做 schema 校验）。 */
   readonly lifetime: AbortSignal
   /** Session 管理器，主 Session 经它获知已保存的设置。 */
-  readonly sessions: Pick<Sessions, 'notify' | 'delivery'>
+  readonly sessions: Pick<MainSession, 'notify' | 'delivery'>
   /** 传给 Source 类型的策略同步与标签刷新的 Source 宿主。 */
   readonly sourceHost: SourceHost
   /** setup 状态、账号与命令检查，以及 setup 相关字段变化时的重启触发。 */
@@ -157,12 +154,6 @@ export class Settings {
     const parsed = rules.parse(value, sources, id)
     const current = store.settings()
     const candidate = rules.merge(current, parsed, id)
-    const model = block === 'eval' ? candidate.eval.model : block === 'executor' ? candidate.executor.model : null
-    const previous = block === 'eval' ? current.eval.model : block === 'executor' ? current.executor.model : null
-    if (model && JSON.stringify(model) !== JSON.stringify(previous)) {
-      try { await resolveRoleModel(this.host.context, model) }
-      catch (error) { throw new UserError('modelUnavailable', { block, error: error instanceof Error ? error.message : String(error) }) }
-    }
     rules.guard?.(current, candidate, origin)
     if (setupChanged(current, candidate)) await this.host.setup.checkAccounts(block, candidate)
     if (stale()) throw new SettingsConflict('设置在校验过程中发生了变化。请重新加载后再保存。')

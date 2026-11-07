@@ -7,13 +7,13 @@ import type { SourceContext } from '../../sources/host.ts'
 import { readResource, type ResourceHost } from '../resources.ts'
 import type { Store } from '../store.ts'
 import { reportRelay, threadFollowedNotice } from '../notices.ts'
-import type { Sessions } from '../sessions.ts'
+import type { MainSession } from '../main-session.ts'
 import { AcknowledgementSchema, readTool, tool, type Tool } from './tool.ts'
 
 export interface ExecutorToolsHost {
   readonly engine: Pick<EngineForExecutor, 'report' | 'reply' | 'markUnrelated' | 'handback' | 'followForContext'>
   readonly store: Pick<Store, 'tickets' | 'replyStatus' | 'atomic'>
-  readonly sessions: Pick<Sessions, 'relay' | 'notify'>
+  readonly sessions: Pick<MainSession, 'relay' | 'notify'>
   readonly resources: ResourceHost
   /** GitHub Source 上下文，其拉取请求规则用于约束对已上报 PR 的认领。 */
   readonly github: SourceContext

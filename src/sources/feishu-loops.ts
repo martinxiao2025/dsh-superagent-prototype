@@ -73,7 +73,7 @@ async function consume(ctx: SourceContext, signal: AbortSignal): Promise<void> {
       LARKSUITE_CLI_NO_SKILLS_NOTIFIER: '1' } })
   const stdout = createInterface({ input: child.stdout }); const stderr = createInterface({ input: child.stderr })
   let chain = Promise.resolve(); let diagnostic = ''; let ready = false
-  const stop = (): void => { child.stdin.end(); child.kill('SIGTERM') }
+  const stop = (): void => { child.stdin.end(); try { child.kill('SIGTERM') } catch { /* 已退出 */ } }
   signal.addEventListener('abort', stop, { once: true })
   const timeout = setTimeout(() => { diagnostic = '飞书事件消费者未在 45 秒内就绪'; stop() }, 45_000)
   stderr.on('line', (line: string) => {

@@ -1,27 +1,25 @@
 import { expect, it } from 'vitest'
 import { z } from 'zod'
-import { registerHttp } from '../src/app/http.ts'
+import { handleHttp } from '../src/app/http.ts'
 import { PromptConflict } from '../src/app/prompts.ts'
 import { SettingsConflict } from '../src/app/settings.ts'
 import type { HttpHost } from '../src/app/http.ts'
 import { SettingsSchema } from '../src/policy.ts'
 import { SetupError } from '../src/setup.ts'
 
-type Handler = (req: unknown, res: unknown) => Promise<void>
 type Headers = Record<string, string | undefined>
-/** 在假 Web 服务器上挂载管理 HTTP 路由，返回一个带默认面板请求头的请求辅助函数。 */
-function serve(runtime: Partial<Record<keyof HttpHost, unknown>>, host = '127.0.0.1') {
-  let handler: Handler = async () => {}
-  const ctx = { webServer: { host, port: 3082, register: (route: { handler: Handler }) => { handler = route.handler; return () => {} } } }
-  registerHttp(ctx as never, { ready: Promise.resolve(), ...runtime } as unknown as HttpHost)
+/** 用面板实际端口处理一次管理请求，返回一个带默认面板请求头的请求辅助函数。 */
+function serve(runtime: Partial<Record<keyof HttpHost, unknown>>, port = 3082) {
+  const host = { ready: Promise.resolve(), ...runtime } as unknown as HttpHost
   return async (method: string, path: string, body?: unknown, headers: Headers = {}) => {
     let status = 0, text = ''
     const chunks = body === undefined ? [] : [Buffer.from(typeof body === 'string' ? body : JSON.stringify(body))]
     const sent = Object.fromEntries(Object.entries({ host: '127.0.0.1:3082', 'x-orchestrator-request': '1', ...headers }).filter(([,
       value]) => value !== undefined))
     const req = { method, url: `/orchestrator/api/${path}`, headers: sent, async *[Symbol.asyncIterator]() { yield* chunks } }
-    await handler(req, { writeHead: (code: number) => { status = code }, end: (data: string) => { text = data } })
-    return { status, body: JSON.parse(text) as Record<string, unknown> }
+    const res = { headersSent: false, writeHead: (code: number) => { status = code }, end: (data: string) => { text = data } }
+    await handleHttp(host, req as never, res as never, port)
+    return { status, body: text.startsWith('{') ? JSON.parse(text) as Record<string, unknown> : { text } }
   }
 }
 
@@ -76,8 +74,9 @@ it('answers only a same-origin request from the panel on the loopback address', 
       body: { error: '管理请求必须同源' } })
   }
   expect(await post({ host: 'localhost:3082', origin: 'http://localhost:3082' })).toMatchObject({ status: 200 })
-  // 管理路由要求回环地址上的 Web 服务器。
-  expect(() => serve({}, '0.0.0.0')).toThrow('编排器管理接口要求 Web 服务器绑定回环地址')
+  // 同源校验使用面板实际监听的端口：端口不符时拒绝。
+  expect(await serve({ sessions: { delivery: async () => 'injected' }, engine: { unsubscribe: () => true } }, 3999)(
+    'POST', 'threads/github%3A1/unsubscribe')).toEqual({ status: 403, body: { error: '管理请求必须同源' } })
 })
 
 it('answers a prompt save that lost a race with 409, and a settings body over 128 KiB with 400', async () => {

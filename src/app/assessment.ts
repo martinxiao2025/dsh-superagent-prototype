@@ -1,5 +1,4 @@
 /** 主 Session 的主动候选评估：中继候选卡片、提供有界上下文读取，并记录结果。 */
-import type { Agent } from '@deepseek-ai/dsh-agent'
 import { z } from 'zod'
 import { reasonText, threadKey, type Assessor, type AssessmentOutcome, type Candidate, type EngineForMainSession,
   type Trigger } from '../core/index.ts'
@@ -39,7 +38,7 @@ const FINISHED = '本次评估已结束：它已被判定、超时或重启'
 const EXPLICIT = '这是一个显式请求，应直接路由而不是评估：请用 orchestrator_route，传入它的 trigger_id 和 kind accept、attach、stop 或 ignore'
 type AssessmentContext = Awaited<ReturnType<typeof admissionContext>>
 type ReadCache = {
-  snapshots: Map<string, string>; images: Map<string, { id: string; text: string }>; messages: Map<string, string>; cursors: Set<string>
+  snapshots: Map<string, string>; messages: Map<string, string>; cursors: Set<string>
 }
 /** Eval 运行期间保留的每次评估状态：已提供的读取缓存、已加载的 thread 上下文（或错误），以及正在进行的初始加载。 */
 interface EvalReads { cache: ReadCache; context?: AssessmentContext; error?: string; loading?: Promise<void> }
@@ -114,7 +113,7 @@ export class MasterAssessor implements Assessor {
     const trigger = candidate.triggers.find(item => item.id === triggerId)!
     return { candidate, trigger }
   }
-  /** 返回或初始化 `evalId` 的读取缓存，并预置 trigger 自身的消息与图片引用；若 `evalId` 已结束则抛错。 */
+  /** 返回或初始化 `evalId` 的读取缓存，并预置 trigger 自身的消息；若 `evalId` 已结束则抛错。 */
   private reads(evalId: string, trigger: Trigger): EvalReads {
     let reads = this.evals.get(evalId)
     if (!reads) {
@@ -122,18 +121,10 @@ export class MasterAssessor implements Assessor {
       if (!this.live(evalId, trigger)) throw new Error(FINISHED)
       const context = this.host.threadContext(trigger)
       const messages = new Map([[context?.messageId ?? '', trigger.text]])
-      reads = { cache: { snapshots: new Map(), images: new Map(), messages, cursors: new Set() } }
+      reads = { cache: { snapshots: new Map(), messages, cursors: new Set() } }
       this.evals.set(evalId, reads)
-      this.imageReferences(context, trigger, trigger.text, context?.messageId ?? '', reads.cache)
     }
     return reads
-  }
-  private imageReferences(context: TriggerContext | undefined, trigger: Trigger, text: string, messageId: string, cache: ReadCache) {
-    return (context?.images(text) ?? []).map(imageKey => {
-      const imageId = `${messageId}/${imageKey}`
-      cache.images.set(imageId, { id: messageId, text })
-      return { message_id: messageId, image_key: imageKey, read: { trigger_id: trigger.id, resource: 'image', image_id: imageId } }
-    })
   }
   /** 每次评估只加载并缓存一次初始的有界 thread 窗口（宿主重启后也会重新加载）。 */
   private async seed(evalId: string, trigger: Trigger, caller?: AbortSignal): Promise<void> {
@@ -157,10 +148,7 @@ export class MasterAssessor implements Assessor {
           reads.context = context
           // 允许分页从初始窗口的末尾继续。
           if (context.next) reads.cache.cursors.add(context.next)
-          for (const message of context.messages) if (!message.deleted) {
-            reads.cache.messages.set(message.id, message.text)
-            this.imageReferences(thread, trigger, message.text, message.id, reads.cache)
-          }
+          for (const message of context.messages) if (!message.deleted) reads.cache.messages.set(message.id, message.text)
         } catch (error) {
           caller?.throwIfAborted()
           if (current()) reads.error = `Thread 上下文不可用：${String(error).slice(0, 300)}。在依据缺失上下文做判定之前，请先使用 orchestrator_eval_read。`
@@ -185,9 +173,6 @@ export class MasterAssessor implements Assessor {
     await this.seed(candidate.evalId, trigger, signal)
     const { context, error } = this.evals.get(candidate.evalId) ?? {}
     const source = this.host.threadContext(trigger)
-    const images = (text: string) => source?.images(text) ?? []
-    const imageIds = (id: string, text: string) => { const keys = images(text); return keys.length
-      ? { images: keys.map(key => `${id}/${key}`) } : {} }
     const cut = (text: string, limit: number) => text.length <= limit ? { text } : { text: `${text.slice(0, limit)}…`, chars: text.length }
     const thread = context ? (() => {
       const shown = new Map(context.window.entries.map(entry => [entry.message.id, entry]))
@@ -199,7 +184,7 @@ export class MasterAssessor implements Assessor {
         // trigger 自身的文本已在顶层包含一次。
         if (index === at) return { ...author, at: message.at, trigger: true }
         const near = at >= 0 && Math.abs(index - at) <= 2
-        return { ...author, at: message.at, ...cut(message.text, near ? NEAR_CHARS : WINDOW_CHARS), ...imageIds(message.id, message.text) }
+        return { ...author, at: message.at, ...cut(message.text, near ? NEAR_CHARS : WINDOW_CHARS) }
       })
       return { complete: context.complete, loaded_messages: context.messages.length, source_found: context.window.source_found,
         ...context.next ? { next_cursor: context.next } : {}, messages }
@@ -209,7 +194,7 @@ export class MasterAssessor implements Assessor {
     return { trigger_id: trigger.id, strength: candidate.strength, mode: settings.eval.mode,
       source: { kind: trigger.source, actor: trigger.actor.id, thread: threadKey(trigger.threads[0]!), ...(trigger.url
         ? { url: trigger.url } : {}) },
-      ...cut(trigger.text, TRIGGER_CHARS), ...imageIds(source?.messageId ?? '', trigger.text),
+      ...cut(trigger.text, TRIGGER_CHARS),
       ...others.length ? { batch: others.map(item => {
         const text = cut(item.text, WINDOW_CHARS)
         return { trigger_id: item.id, actor: item.actor.id, at: item.at, ...text, ...'chars' in text ? { read: `trigger/${item.id}` } : {} }
@@ -219,24 +204,18 @@ export class MasterAssessor implements Assessor {
       thread }
   }
   /**
-   * 为 `orchestrator_eval_read` 提供来自评估 thread 上下文或仓库的分页有界文本或图片附件；
-   * `agent` 是主 Session（以附件形式接收图片），MCP 调用方则没有。
+   * 为 `orchestrator_eval_read` 提供来自评估 thread 上下文或仓库的分页有界文本；
+   * 图片附件在独立版本中不可用（已知限制），读取 `image` 会得到可操作的中文错误。
    */
-  async read(agent: Agent | undefined, read: EvalRead, signal: AbortSignal) {
+  async read(read: EvalRead, signal: AbortSignal) {
       const { candidate, trigger } = this.evalFor(read.trigger_id)
       await this.seed(candidate.evalId, trigger, signal)
       const { cache } = this.reads(candidate.evalId, trigger)
-      const { snapshots, images, messages, cursors } = cache
+      const { snapshots, messages, cursors } = cache
       const commands = this.host.commands.withSignal(AbortSignal.any([this.controller.signal, signal]))
       if (read.resource === 'image') {
-        if (!agent) throw new Error('读取图片需要 DSH 主 Session。请在此处读取 Thread 文本，或在 DSH 中打开该 Thread 再读取图片。')
-        if (read.offset !== 0) throw new Error('图片不支持分页；请使用 offset 0')
-        const image = images.get(read.image_id!)
-        if (!image) throw new Error('未知的图片引用。请先读取该 Trigger 的 source/root/thread，再复制其图片读取参数。')
-        const source = this.host.threadContext(trigger)
-        if (!source) throw new Error(NO_CONTEXT)
-        const key = read.image_id!.slice(read.image_id!.indexOf('/') + 1)
-        return source.image(agent, commands, image, key, this.host.deployment.stateDir, signal)
+        // 已知限制：独立版本没有能接收附件的 DSH 主 Session。后续若要加回，就在此分支把图片附加到回合。
+        throw new Error('本期版本不支持读取图片附件（已知限制）：请在此处读取 Thread 文字，或让发送者在消息中重述图片内容。')
       }
       const cacheKey = JSON.stringify([read.resource, read.path, read.cursor, read.message_id])
       if (read.offset > 0) {
@@ -255,13 +234,10 @@ export class MasterAssessor implements Assessor {
         if (!source) throw new Error(NO_CONTEXT)
         if (read.cursor !== undefined && !cursors.has(read.cursor)) throw new Error('未知的 Thread 游标。请先调用 {resource:"thread"}；然后原样复制返回的 next_read。')
         const result = await source.read(commands, read.resource, read.cursor)
-        const references = result.messages.filter(message => !message.deleted).flatMap(message => {
-          messages.set(message.id, message.text)
-          return this.imageReferences(source, trigger, message.text, message.id, cache)
-        })
+        for (const message of result.messages) if (!message.deleted) messages.set(message.id, message.text)
         if (result.next) cursors.add(result.next)
         const next = result.next ? { trigger_id: trigger.id, resource: 'thread', cursor: result.next } : null
-        body = JSON.stringify({ images: references, next_read: next, ...result.body })
+        body = JSON.stringify({ next_read: next, ...result.body })
       }
       else {
         body = await readRepositoryPath(commands, read.path!, read.resource === 'directory' ? 'directory' : 'file')

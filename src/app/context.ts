@@ -1,7 +1,12 @@
 /** 面向 orchestrator 与 worker Session 的内置提示词片段、角色策略与对话记录投影。 */
 import { bundledSkills, promptFile } from './skill-files.ts'
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
 export { textPage } from './cards.ts'
+
+/** 一条落库的对话记录：只保留角色与文本/工具块，省略推理与用量统计。 */
+export interface TranscriptEntry {
+  type: 'user/message' | 'assistant/message' | 'tool/result'
+  message: { role: 'user' | 'assistant'; content: { type: string; text?: string }[] }
+}
 
 /** 所有 Session 共享的内置宿主投递与工具使用规则；团队可以覆盖（`builtInParts`）。 */
 export const sharedPrompt = promptFile('shared')
@@ -25,9 +30,5 @@ export const handoffPolicy = (role: 'orchestrator' | 'worker'): string => `${han
 
 export const autoMergeThreshold = (lines: number): string => `变更行数少于 ${lines} 行（新增与删除合计）；`
 
-/** 保留消息内容，同时省略流式分块、用量统计与推理块。 */
-export function transcriptEntry(event: SessionEvent) {
-  if (event.type !== 'user/message' && event.type !== 'tool/result' && event.type !== 'assistant/message') return undefined
-  const message = event.type === 'user/message' ? event.data : event.data.message
-  return { type: event.type, message: { role: message.role, content: message.content.filter(block => block.type !== 'reasoning') } }
-}
+/** 原样返回一条落库的对话记录；保留此投影是为了让资源视图与历史引用保持稳定。 */
+export const transcriptEntry = (entry: TranscriptEntry): TranscriptEntry => entry
