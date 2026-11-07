@@ -164,7 +164,7 @@ copilot -p "<中文操作指令>" --plugin-dir ./lib/plugin --allow-all-tools -s
 | `tests/health.spec.ts`（旧三例） | 部分 | 逐部件健康项改为：`models` 回合失败/恢复、`reply` 重试、同名通知去重三条，断言对象改为 Runtime 实际维护的条目 |
 | `tests/panel-deployment.spec.tsx`（旧例） | 是 | 部署页改为只读展示：限制展示、禁用输入、无保存栏、setup 失败提示与重新检查 |
 
-`pnpm check` 在本批收口时为退出码 0：56 个测试文件（55 通过、1 个整组跳过）、990 通过、26 跳过（全部为 POSIX 专属对象的范围外跳过），构建与插件校验通过。这个总数已包含 §12 的真实端到端用例。
+`pnpm check` 在本批收口时为退出码 0：55 个测试文件（54 通过、1 个整组跳过）、983 通过、12 跳过、0 失败，构建与插件校验通过。这个总数已包含 §12 的真实端到端用例；2026-11-07 的清理删除了 15 项只在 POSIX 上运行的 `service-script` 用例，因此跳过数由 26 变为 12（11 项 POSIX 专属 + 1 项无桥时的 e2e 整组跳过）。
 
 ## 11. 已知限制：图片附件
 
@@ -205,7 +205,7 @@ copilot -p "<中文操作指令>" --plugin-dir ./lib/plugin --allow-all-tools -s
 | `src/executor/copilot.ts` | `CopilotCliHost` 只被 `tests/host.spec.ts` 引用；`src/index.ts` 只构造 `VsCodeLmHost`，配置里也没有选择宿主的键 | 否。经 `copilot` CLI 跑回合的能力随支持范围收敛而终止（理由见 13.4） | `VsCodeLmHost`（`vscode.lm` 扩展桥），是本机唯一真实模型通路 |
 | `tests/host.spec.ts` | 整文件只覆盖 `CopilotCliHost` 与 `parseTurnOutput` | 否，被测对象已删除 | `tests/vscode-lm.spec.ts` 覆盖宿主与桥协议 |
 
-删除后跳过用例由 26 项降为 11 项，均为仍在产品的 POSIX 专属对象（worker shim、飞书消费者假 CLI、权限位断言）。
+删除后跳过用例由 26 项降为 11 项，均为仍在产品的 POSIX 专属对象（worker shim、飞书消费者假 CLI、权限位断言）；再加上 `tests/e2e-bridge.spec.ts` 在无桥时的整组跳过，本机全量为 12 项跳过。
 
 ### 13.2 代码注释中的 DSH 残留
 

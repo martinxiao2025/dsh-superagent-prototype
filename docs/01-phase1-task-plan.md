@@ -25,7 +25,7 @@
 4. **批次 5 改为「按验收问题修复」**：A4（Copilot）与 A6（保活）需要用户环境配合，不预设修复内容，按实测结果逐项提交。
 5. **细节修正**：MCP 的 DNS rebinding 白名单改为按实际监听端口生成（测试用 `mcpPort: 0` 时不能写死 3083）；T0.1 记录本机 pnpm 已为 11.7.0；新增 §11 执行记录，逐批写入真实输出。
 6. **运行环境范围收敛（2026-11-06，用户确认）**：项目只支持 Windows + VS Code Stable 的官方 Copilot / Copilot Chat。验收矩阵与文档中的 POSIX 专属项（`#!/bin/sh` worker shim、systemd、POSIX 权限位、`scripts/dsh-superagent` 服务脚本）由「待验证」改为「范围外」；A4 固定为 Windows + VS Code Copilot，A6 只保留 Windows 保活演练，Copilot CLI 不计入正式验收。26 项跳过用例保留跳过并注明「范围外」，不伪装成通过。
-7. **去 DSH 收尾（2026-11-07，用户确认）**：B1–B5 完成全量去 DSH 后，POSIX 服务脚本 `scripts/dsh-superagent`（依赖 `dsh --profile`）连同 `tests/service-script.spec.ts` 一并删除，作为已废止历史记录在 `docs/010` 第 13 节；跳过数由 26 降为 11。上一条中的「26 项跳过」只描述 2026-11-06 当时的基线。
+7. **去 DSH 收尾（2026-11-07，用户确认）**：B1–B5 完成全量去 DSH 后，POSIX 服务脚本 `scripts/dsh-superagent`（依赖 `dsh --profile`）连同 `tests/service-script.spec.ts` 一并删除，作为已废止历史记录在 `docs/010` 第 13 节；随后又删除了无人消费的 `src/executor/copilot.ts` 与 `tests/host.spec.ts`。跳过数由 26 降为 12（11 项 POSIX 专属 + 1 项无桥时的 e2e 整组跳过），通过 983 项。上一条中的「26 项跳过」只描述 2026-11-06 当时的基线。
 
 **关键裁决**（§10 Q1–Q5，均按默认建议执行）：端口错误走健康条目；新增 `mcpEnabled`/`mcpPort`；不填占位地址；A4/A6 待用户配合；`AGENTS.md` 随 T4.4 纳入提交。
 

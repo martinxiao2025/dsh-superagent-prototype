@@ -23,7 +23,7 @@ dsh-superagent 是面向**单个 GitHub 仓库**的主动式编码代理，作�
 - POSIX 专属对象为**范围外**：产品生成的 `#!/bin/sh` worker shim、systemd 单元、POSIX 权限位断言、飞书消费者假 CLI 的 shebang 执行。对应测试在 Windows 上保持跳过并注明「范围外」，不当作通过。
 - **已废止历史**：POSIX 服务脚本 `scripts/dsh-superagent`（依赖 `dsh --profile`、tmux、`ps`、`fcntl`）在去 DSH 后无法工作，已于 2026-11-07 连同 `tests/service-script.spec.ts` 一并删除；它曾提供的 start/stop/status/drill 由 Windows 脚本承接。
 - Windows 上的守护启停用 [`scripts/dsh-superagent-windows.ps1`](scripts/dsh-superagent-windows.ps1)，不依赖第三方服务包装器。
-- 既有产品配置中沿用 POSIX 绝对路径语义的字段（如 `stateDir` 需以 `/` 开头）属于产品现状，不在本阶段跨平台改造范围内。
+- 绝对路径统一用 `node:path.isAbsolute` 判断，`stateDir`、工单目录根等字段在 Windows 上可直接写 `C:\...`（2026-11-07 修正了此前只认 `/` 开头的问题）。
 
 ## 快速开始
 
@@ -31,7 +31,7 @@ dsh-superagent 是面向**单个 GitHub 仓库**的主动式编码代理，作�
 
 | 项 | 要求 | 说明 |
 | --- | --- | --- |
-| Node.js | `^22.19.0` 或 `>=24.0.0` | 本机验证版本 `v24.19.0` |
+| Node.js | `^22.19.0` 或 `>=24.0.0` | 本机验证版本 `v24.2.0` |
 | pnpm | `11.7.0` | 由 `package.json` 的 `packageManager` 锁定；可用 `corepack enable` 启用 |
 | VS Code | Stable，已登录可用语言模型的账号 | 模型回合经 `extension/dsh-lm-bridge` 调用 `vscode.lm` |
 | 其他（完整部署） | git 2.32+、GitHub CLI 2.48+ | 飞书来源另需 `lark-cli`；详见 [SETUP.md](SETUP.md) |
@@ -140,6 +140,10 @@ worker 侧另有 5 个自有工具（`orchestrator_ack`、`orchestrator_report`�
 
 除 `stateDir`、`panelPort`、`host`、`mcpEnabled`、`mcpPort` 外，其余限额保存后即可生效。端口被占用不会让编排停摆：进程继续运行，健康面板的 `mcp` 条目显示 `error` 与占用端口。
 
+### VS Code 扩展通知（可选）
+
+语言模型桥扩展带一个可选的主动提醒，由扩展自己的两个设置键控制，Runtime 不读它们：`dsh.superagent.notify`（默认 `false`，即不打扰）开启后每 60 秒轮询本机面板的 `GET /orchestrator/api/overview`，只在出现新的「等待人工处理」工单时提醒一次，并附「打开面板」按钮；关闭时不发起任何轮询。`dsh.superagent.panelUrl`（默认 `http://127.0.0.1:3082`）指定轮询与按钮地址，只接受回环 `http`。详见 `docs/006-deployment.md`。
+
 > `stateDir` 按运行时判断绝对路径，Windows 的 `D:\...` 与 POSIX 的 `/...` 都接受；相对路径会被拒绝并给出可读原因。
 
 ## 验证与测试
@@ -156,7 +160,7 @@ node scripts/validate-plugin.mjs [--dir <path>]   # 单独校验某个插件目�
 
 `plugin:check` 依赖先构建：它同时校验 `plugin/`（1 个技能）与 `lib/plugin/`（3 个技能）。校验覆盖官方 schema、`$schema` 版本一致性、`plugin.version` 与 `package.json` 一致、MCP URL 必须是回环 `http://…/mcp`、技能目录结构与 frontmatter，以及所有文本文件的 UTF-8（无 BOM）；任一项失败退出码为 1 并打印原因。
 
-当前基线（2026-11-07，Windows）：`pnpm check` 退出 0，全量测试 **990 通过 / 26 跳过 / 0 失败**（56 个测试文件）。跳过的 26 项都源于被测对象本身是 POSIX 专属实现（产品生成的 `#!/bin/sh` worker shim、飞书消费者的假 CLI、一处 POSIX 权限位断言）；它们在 Windows 上**范围外**，测试文件内用 `skipIf(platform)` 写明原因，保留跳过但不当作通过，也不计入剩余待办。`tests/e2e-bridge.spec.ts` 走真实 VS Code 语言模型桥，找不到桥时整组跳过，不计入通过。
+当前基线（2026-11-07，Windows）：`pnpm check` 退出 0，全量测试 **983 通过 / 12 跳过 / 0 失败**（55 个测试文件）。跳过项分两类：11 项源于被测对象本身是 POSIX 专属实现（产品生成的 `#!/bin/sh` worker shim、飞书消费者的假 CLI、一处 POSIX 权限位断言），在 Windows 上**范围外**，测试文件内用 `skipIf(platform)` 写明原因；1 项是 `tests/e2e-bridge.spec.ts` 在找不到 VS Code 语言模型桥时整组跳过。两者都不计入通过，也不计入剩余待办。
 
 ## 已知限制
 
