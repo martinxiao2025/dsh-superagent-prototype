@@ -105,7 +105,7 @@ MCP 端点暴露的是 **DSH 主会话的同一批 14 个工具**，没有第二
 | --- | --- | --- |
 | 读取 | `orchestrator_read` | 读取资源的下一页：工单、会话、设置块、策略、概览，以及 `github/...`、`feishu/...` 快捷路径 |
 | 评估 | `orchestrator_eval` | 按 `trigger_id` 载入候选的评估窗口 |
-| 评估 | `orchestrator_eval_read` | 按 id 读取整条消息、后续会话页或仓库文本（图片需 DSH 主会话，MCP 侧会被拒绝） |
+| 评估 | `orchestrator_eval_read` | 按 id 读取整条消息、后续会话页或仓库文本（图片附件本期不可读，见「已知限制」） |
 | 评估 | `orchestrator_eval_decide` | 按已启用规则记录评估结论 |
 | 路由 | `orchestrator_route` | 一次受理 1–20 条决策：接受、附加、停止或忽略 |
 | 工单 | `orchestrator_ticket_retry` | 重试工单的启动 |
@@ -151,13 +151,13 @@ node scripts/validate-plugin.mjs [--dir <path>]   # 单独校验某个插件目�
 
 `plugin:check` 依赖先构建：它同时校验 `plugin/`（1 个技能）与 `lib/plugin/`（3 个技能）。校验覆盖官方 schema、`$schema` 版本一致性、`plugin.version` 与 `package.json` 一致、MCP URL 必须是回环 `http://…/mcp`、技能目录结构与 frontmatter，以及所有文本文件的 UTF-8（无 BOM）；任一项失败退出码为 1 并打印原因。
 
-当前基线（2026-11-06，Windows）：`pnpm check` 退出 0，全量测试 **1179 通过 / 26 跳过 / 0 失败**。跳过的 26 项都源于被测对象本身是 POSIX 专属实现（产品生成的 `#!/bin/sh` worker shim、`scripts/dsh-superagent` 服务脚本、飞书消费者的假 CLI、一处 POSIX 权限位断言）；它们在 Windows 上**范围外**，测试文件内用 `skipIf(platform)` 写明原因，保留跳过但不当作通过，也不计入剩余待办。
+当前基线（2026-11-07，Windows）：`pnpm check` 退出 0，全量测试 **988 通过 / 26 跳过 / 0 失败**。跳过的 26 项都源于被测对象本身是 POSIX 专属实现（产品生成的 `#!/bin/sh` worker shim、`scripts/dsh-superagent` 服务脚本、飞书消费者的假 CLI、一处 POSIX 权限位断言）；它们在 Windows 上**范围外**，测试文件内用 `skipIf(platform)` 写明原因，保留跳过但不当作通过，也不计入剩余待办。
 
 ## 已知限制
 
 - **研究原型**：不保证生产可用，接口与行为可能变化。
 - **回环即身份**：端点只监听 `127.0.0.1` 并启用 DNS rebinding 防护，但不引入 token/OAuth；任何能访问本机回环端口的进程都能调用这些工具，信任边界是操作系统用户与权限。
-- **图片读取**：MCP 侧没有 DSH 主会话的附件通道，`orchestrator_eval_read` 的图片分支会被拒绝并给出原因。
+- **图片附件不可读（已知限制）**：本期不读取工单中的图片附件，**带图工单只能读文字**；`orchestrator_eval_read` 的图片分支返回固定错误并说明不可读，评估指令据此要求依赖截图措辞或视觉事实时给出 `unavailable`。后续加回位置是 `src/app/assessment.ts` 的 `read()` 中 `resource === 'image'` 分支，详见 [docs/010](docs/010-runtime-verification.md) §11。
 - **客户端差异**：agent plugins 目录与启用方式由各客户端约定；规范未定义 `streamable-http` 的重连语义，断线重试由客户端负责。
 - **必须常驻守护进程**：插件只是客户端入口，端点由 `scripts/dsh-superagent-windows.ps1 -Action start` 启动的守护进程提供。
 - **未闭合的人工验收**：VS Code Copilot 冒烟（A4）客户端已就位、待 IDE 内人工验证（CLI 与 Insiders 不计入）；真实 GitHub/飞书触发（A5 第二轮）未执行，当前只报告自动化回归结果。

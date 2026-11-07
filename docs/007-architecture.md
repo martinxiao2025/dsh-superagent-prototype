@@ -578,6 +578,8 @@ worker 预设在 `cordis.patch.yml` 中定义，并通过 `WORKER_PRESET` 选择
 
 原始记录的消息以单一紧凑形态读取，`{id, from, at, text, reply_to?, path?, line?, url?}`，而不是 GitHub 或飞书记录它们的方式。
 
+**已知限制（图片附件）**：本期不读取图片附件，带图工单只能读文字。评估侧 `orchestrator_eval_read` 的 `resource === 'image'` 分支返回固定错误，`prompts/admission.md` 相应要求依赖截图措辞或视觉事实时给出 `unavailable`；`feishuThreadContext` 只提供文字。后续在此处（`src/app/assessment.ts` 的 `read()`）加回图片读取，详见 `docs/010` §11。
+
 执行器会话只读取自己的工单、其线程、到达它或由其请求持有的触发、它工作过的提示词版本与原始记录，其页面省略它无法读取的内容的 id、决策与其他工单。
 
 页面显示的每个 id 都通过这些之一读取，因此会话从一个对象走到下一个；不用于读取任何内容的哈希，例如评估 id 或策略版本，不会出现在页面上。

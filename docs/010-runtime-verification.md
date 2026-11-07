@@ -140,3 +140,32 @@ copilot -p "<中文操作指令>" --plugin-dir ./lib/plugin --allow-all-tools -s
 ## 9. 结论
 
 中文化后的提示词、工具描述与 SKILL.md 在真实模型会话中可用：工具选择正确、参数完整、中文拒绝可读、审核门有效。发现的三个问题均属文案层，已修复并复验；没有为了通过验证而放宽任何测试断言。剩余未覆盖项集中在 VS Code 内的 A4 人工验证、DSH 宿主与真实凭据，已在 §7 如实保留。
+
+## 10. B1/B2：去 DSH 的行为迁移与删除证据
+
+移除 DeepSeek Harness 后，`Runtime` 不再是宿主服务，面板由自建回环网页提供（`src/app/panel.ts` + `src/client/main.tsx`），worker 与主会话都经 `AgentHost` 运行。下表的每一行回答两个问题：被删测试**测的行为是否仍存在**，以及**由谁取代**。凡记「能力终止」的条目，均已在 `009` 的能力清单中确认为本期放弃，不是遗漏。
+
+| 被删/重写的测试 | 被测行为是否仍存在 | 取代者或终止理由 |
+| --- | --- | --- |
+| `tests/background.spec.ts` | 否 | DSH 会话的 shell 作业（`ctx.jobs`）与子智能体（`ctx.subagents`）随宿主移除；`AgentHost` 的回合只有 dispatch/collect，没有后台作业概念。能力终止（清单第 4 条） |
+| `tests/bundle-patch.spec.ts` | 否 | bundle 补丁与执行器会话的智能体 preset 属 DSH 安装形态；插件包改用官方 schema 校验，preset 能力终止（清单第 3 条） |
+| `tests/client.spec.tsx` | 部分 | 客户端插件注册、侧边栏与跨会话轮询终止；页面渲染仍由 `panel-*.spec.tsx` 覆盖，导入约束由 `controls.spec.tsx` 覆盖 |
+| `tests/delivery.spec.ts` | 是，形式不同 | 投递去重从 DSH 智能体事件的 `AgentDelivery` 变为 `MainSession` 的后台回合 + 按 requestId 持久去重；由 `runtime.spec.ts`、`followups.spec.ts` 的 relay 断言覆盖 |
+| `tests/feishu-image.spec.ts` | 否 | 图片附件读取本期放弃，见「已知限制」；`assessment.read` 的 image 分支保留加回位置 |
+| `tests/navigation.spec.ts` | 否 | 从面板跳进 DSH 会话终止；面板改为独立网页，不再有宿主会话可跳转（清单第 1 条） |
+| `tests/retry-health.spec.ts` | 部分 | 模型预算重试的 DSH 健康项终止（清单第 8 条）；主会话回合失败改为上报 `models` 健康，由 `health.spec.ts` 覆盖 |
+| `tests/role-models.spec.ts` | 部分 | 用角色模型初始化 DSH 会话终止；两种角色的模型仍从设置读取，由 `tools.spec.ts` 合成模型、`model-surface.spec.ts` 覆盖 |
+| `tests/runtime-concurrency.spec.ts` | 是 | 重叠工作不再由宿主事件驱动，而由执行器按工单串行 + effect 队列保证；`runtime.spec.ts` 覆盖并发 `stop()` 只停一次、失败不阻塞后续回合 |
+| `tests/runtime.spec.ts`（旧 1705 行） | 是 | 重写为在 `AgentHost` 替身与回环 HTTP 上运行整个应用：启动、接收/接受、环境与转录、暂停补跑、回合失败、并发停止 |
+| `tests/tools.spec.ts` 的「`agent/disposed` 释放工具」 | 否 | 工具面不再按 DSH 智能体生命周期挂载；`Runtime.tools(ticket?)` 每次按工单组装，由同一文件的工具形状断言覆盖 |
+| `tests/settings.spec.ts` 的模型名校验竞态 | 部分 | 模型可用性检查依赖 DSH 会话；保留设置块保存与暂停去重，模型名不再在建会话时校验 |
+| `tests/health.spec.ts`（旧三例） | 部分 | 逐部件健康项改为：`models` 回合失败/恢复、`reply` 重试、同名通知去重三条，断言对象改为 Runtime 实际维护的条目 |
+| `tests/panel-deployment.spec.tsx`（旧例） | 是 | 部署页改为只读展示：限制展示、禁用输入、无保存栏、setup 失败提示与重新检查 |
+
+`pnpm check` 在本批收口时为退出码 0：54 个测试文件、988 通过、26 跳过（全部为 POSIX 专属对象的范围外跳过），构建与插件校验通过。
+
+## 11. 已知限制：图片附件
+
+本期不读取工单中的图片附件。具体表现：**带图工单只能读文字**，`orchestrator_eval_read` 的图片分支返回固定错误并说明不可读，评估指令也据此要求「依赖截图措辞或视觉事实时给出 `unavailable`」；面板与 MCP 两侧行为一致。
+
+后续加回位置：`src/app/assessment.ts` 的 `read()` 中 `resource === 'image'` 分支——把它从固定错误恢复为读取附件并交给评估；同时恢复 `prompts/admission.md` 的图片段落与 `tests/feishu-image.spec.ts` 级别的覆盖。该限制同时写入仓库根 `README.md` 的「已知限制」与 `docs/007` 的「读取资源」一节。
