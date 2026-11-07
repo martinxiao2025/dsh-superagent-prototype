@@ -34,8 +34,8 @@ import { mcpTools } from './mcp-tools.ts'
 import { Outbox } from './outbox.ts'
 import { Passes } from './passes.ts'
 import { Setup } from './setup.ts'
-import { feishuSettings, startFeishu } from '../sources/feishu.ts'
-import { startGithub } from '../sources/github.ts'
+import { feishuKind, feishuSettings, startFeishu } from '../sources/feishu.ts'
+import { githubKind, startGithub } from '../sources/github.ts'
 import { health, type Health, type SourceContext, type SourceHost } from '../sources/host.ts'
 import { MainSession } from './main-session.ts'
 import { Settings } from './settings.ts'
@@ -86,6 +86,8 @@ export class Runtime implements SourceHost {
   private readonly panelHealth = this.board.claim('panel', { state: 'starting', detail: '' })
   private mcp?: McpEndpoint
   private panel?: PanelServer
+  /** setup 之前注册的 Source kind 的注销函数；进程停止时释放它们的健康条目。 */
+  private readonly sourceReleases: (() => void)[] = []
   readonly masterId: string
   private readonly sourceLinks = new TextCache(200_000)
   private readonly stopped = new AbortController()
@@ -241,6 +243,10 @@ export class Runtime implements SourceHost {
     // 在 setup 完成之前启动面板，使运维者能在 UI 中修复 setup 问题。
     await this.startPanel()
     if (!await this.setup.run(this.store.settings())) {
+      // 等待 setup 时也要注册 Source kind，否则面板无法列出 `source:github` 与 `source:feishu` 设置块，
+      // 管理员就无处填写仓库、CLI 与机器人配置（保存会被判成「Source 不存在」）；轮询仍等 setup 通过后才启动。
+      if (!this.sources.kind('feishu')) this.sourceReleases.push(this.sources.register(feishuKind))
+      if (!this.sources.kind('github')) this.sourceReleases.push(this.sources.register(githubKind))
       this.runtimeHealth.set({ ...health('paused', 'setupPending'), at: now() })
       return
     }
@@ -315,6 +321,8 @@ export class Runtime implements SourceHost {
       await this.panel?.stop()
       this.panel = undefined
       this.assessor.stop()
+      // 先释放 setup 之前注册的 Source kind，避免健康条目在关闭后仍被占用。
+      for (const release of this.sourceReleases.splice(0)) release()
       // worker 回合与主会话回合都在宿主里跑：先等在途回合收尾，再停宿主。
       await Promise.allSettled([passes, this.effects.drain(), this.executor.shutdown()])
       this.executor.dispose()

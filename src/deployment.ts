@@ -80,11 +80,15 @@ export function executable(name: string, path: string, exclude?: string): string
   throw new Error(`${name} 不是可执行文件${isAbsolute(name) ? '' : '（在 PATH 中）'}`)
 }
 
-export type Probe = (argv: string[]) => Promise<string>
-/** 通过 DSH 的 worker 子进程服务执行启动检查，并从 PATH 中移除 worker shim 目录，好让 `gh` 包装脚本找到真正的二进制文件。 */
+/** 以 worker 的限制运行一次启动检查；`env` 覆盖宿主环境中的同名变量。 */
+export type Probe = (argv: string[], env?: Record<string, string>) => Promise<string>
+/**
+ * 通过 worker 子进程服务执行启动检查，并从 PATH 中移除 worker shim 目录，好让 `gh` 包装脚本找到真正的二进制文件。
+ * PATH 经子进程的 `env` 传入而不是用 POSIX 的 `env` 前缀，因为 Windows 上没有该可执行文件。
+ */
 export function workerProbe(subprocess: SubprocessRuntime, stateDir: string, cwd: string, signal: AbortSignal): Probe {
   const path = withoutDirectory(process.env.PATH ?? '', workerBin(stateDir))
-  return argv => runAsWorker(subprocess, ['env', `PATH=${path}`, ...argv], cwd, AbortSignal.any([signal, AbortSignal.timeout(60_000)]))
+  return (argv, env) => runAsWorker(subprocess, argv, cwd, AbortSignal.any([signal, AbortSignal.timeout(60_000)]), { PATH: path, ...env })
 }
 
 const GithubUser = z.object({ login: z.string().regex(/^[A-Za-z0-9-]+$/), id: z.number().int().positive() })
@@ -129,7 +133,8 @@ export async function resolveFeishuBot(machine: Machine, feishu: unknown, probe:
   const fail = (error: unknown): never => { throw error instanceof SetupError ? error : new SetupError('feishuCliFailed', { output: reason(error) }) }
   let cli = ''
   try { cli = executable(name, path, workerBin(machine.stateDir)) } catch (error) { fail(error) }
-  const run = (...args: string[]): Promise<string> => probe(['env', 'LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1', 'LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1', cli, ...args]).catch(fail)
+  const run = (...args: string[]): Promise<string> =>
+    probe([cli, ...args], { LARKSUITE_CLI_NO_UPDATE_NOTIFIER: '1', LARKSUITE_CLI_NO_SKILLS_NOTIFIER: '1' }).catch(fail)
   const text = await run('auth', 'status')
   const status = parsed(AuthStatus, text.slice(text.indexOf('{')))
   if (!status) return fail(new SetupError('feishuNoApp'))

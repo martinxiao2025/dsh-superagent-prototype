@@ -49,6 +49,7 @@
 - **A4（VS Code Copilot 冒烟）**：范围限定 **Windows + VS Code Stable 的官方 Copilot Chat**；2026-11-06 已在 Stable `1.145.2`（内置 `GitHub.copilot-chat@0.73.0`）内实测通过：插件 `dsh-superagent@0.1.0` 与三个技能可见、`tools/list` 14 个、用 `DeepSeek V4.1 Flash`（`deepseek-flash`）真实调用 `orchestrator_read`/`orchestrator_route`/`orchestrator_reply`（第三个被领域规则以 `notReady` 拒绝，属真实结果）。Copilot CLI 只作前置证据，**不计入 A4 验收**；Insiders 已由用户卸载，不纳入验证范围。明细见 `docs/009-copilot-plugin.md` §11。
 - **A6（保活演练）**：Windows 机制演练已用 `scripts/dsh-superagent-windows.ps1 -Action drill` 对真实 `Runtime` 完成并通过（强杀后 30.1 秒恢复、14 工具可用），证据见 `docs/009` §10；真实 `node lib/index.js` 进程配合真实语言模型桥、以及计划任务开机自启在 Windows 范围内仍未验证；systemd 与其它 POSIX 调度为**范围外**（见 §2.1）。
 - **真实 GitHub/飞书触发（A5 第二轮）**：需要真实凭据与仓库，未执行前只报告测试回归结果。
+- **A4 复验与 A5（2026-11-07）**：本机 `gh` 未登录（`gh auth status` 退出码 1，`GH_TOKEN`/`GITHUB_TOKEN` 未设置，无 `hosts.yml`），setup 停在 `repositoryUnset`，`startMcp()` 不执行，`127.0.0.1:3083` 不监听；因此 `docs/010` §15 记录为「A4 本轮未重跑、A5 未执行」，不得据此判定通过。`lark-cli` 存在但 `auth status` 为 `not_configured`（`feishuNoApp`），飞书是可选 Source。setup 探针在 Windows 上曾因 POSIX `env` 前缀必然失败（已修，见 `docs/010` §15.3）。
 - **官方 schema 的远端可用性**：已下载到本地校验输入目录后，校验过程禁止联网；schema 内容以本地文件为准。
 
 冲突处理原则：**代码事实 > 计划文档 > 方案文档**。无法用代码裁决时，写入本节并上报，不自行假设。

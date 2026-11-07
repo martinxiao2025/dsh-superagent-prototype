@@ -106,9 +106,12 @@ export const githubKind: SourceKind<GithubConfig> = {
     cli: { zh: `当前账号 @${deployment.github.login}`, en: `Current account @${deployment.github.login}` },
   } : {},
 }
-/** 注册 GitHub Source 并启动轮询；`lifetime` 中止时停止轮询。 */
+/**
+ * 启动 GitHub 轮询；`lifetime` 中止时停止轮询。`Runtime` 在 setup 之前就注册了 Source kind
+ * （等待 setup 时面板仍需列出并保存仓库与 CLI），因此这里只在尚未注册时补注册，供独立调用方使用。
+ */
 export async function startGithub(host: SourceHost, lifetime: AbortSignal): Promise<void> {
-  const registered = host.sources.register(githubKind)
+  const registered = host.sources.kind(SOURCE) ? undefined : host.sources.register(githubKind)
   const source = sourceContext(host, githubKind)
   const controller = new AbortController()
   const stop = () => controller.abort()
@@ -120,7 +123,7 @@ export async function startGithub(host: SourceHost, lifetime: AbortSignal): Prom
       escaped = true
       source.report('github', { state: 'error', detail: String(error) })
     })
-  } finally { lifetime.removeEventListener('abort', stop); if (!escaped) registered() }
+  } finally { lifetime.removeEventListener('abort', stop); if (!escaped) registered?.() }
 }
 /** 连续 `failures` 次轮询失败后返回 error 健康状态；否则返回 undefined，使单次网络中断保持静默。 */
 export function pollFailure(failures: number, threshold: number, error: unknown): Health | undefined {

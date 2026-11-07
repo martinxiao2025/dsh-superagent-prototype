@@ -85,3 +85,14 @@ it('records nothing for a pause that changes nothing, refuses a sync while setup
   vi.mocked(Setup.prototype.configured).mockRestore()
   expect(() => settings.block('source:x')).toThrow(new UserError('unknownBlock', { block: 'source:x' }))
 })
+it('lets an operator save the GitHub source while setup waits, instead of reporting it as unknown', async () => {
+  const run = vi.spyOn(Setup.prototype, 'run').mockResolvedValue(false)
+  try {
+    h = await startRuntime()
+    const block = h.runtime.settings.block('source:github')
+    const value = block.value as { enabled: boolean; config: Record<string, unknown> }
+    await h.runtime.settings.save('source:github', { ...value, config: { ...value.config, repository: 'acme/widgets' } },
+      block.revision, 'panel')
+    expect(h.runtime.store.settings().sources.github!.config).toMatchObject({ repository: 'acme/widgets' })
+  } finally { run.mockRestore() }
+})

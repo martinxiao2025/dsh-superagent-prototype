@@ -126,12 +126,15 @@ export const feishuKind: SourceKind<FeishuConfig> = {
 /** 返回飞书 Source 的设置；飞书插件禁用时回退到 schema 默认值。 */
 export const feishuSettings = (sources: SourceRegistry): FeishuConfig => sources.instance<FeishuConfig>(SOURCE)?.config ?? FeishuConfigSchema.parse({})
 
-/** 注册飞书 Source 并启动轮询；`lifetime` 中止时停止轮询。 */
+/**
+ * 启动飞书轮询；`lifetime` 中止时停止轮询。`Runtime` 在 setup 之前就注册了 Source kind
+ * （等待 setup 时面板仍需列出并保存机器人配置），因此这里只在尚未注册时补注册，供独立调用方使用。
+ */
 export async function startFeishu(host: SourceHost, lifetime: AbortSignal): Promise<void> {
-  const registered = host.sources.register(feishuKind)
+  const registered = host.sources.kind(SOURCE) ? undefined : host.sources.register(feishuKind)
   const controller = new AbortController()
   const stop = () => controller.abort()
   lifetime.addEventListener('abort', stop, { once: true })
   try { await runFeishu(sourceContext(host, feishuKind), controller.signal) }
-  finally { lifetime.removeEventListener('abort', stop); registered() }
+  finally { lifetime.removeEventListener('abort', stop); registered?.() }
 }

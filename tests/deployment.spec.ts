@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Config, executable, machineOf, resolveDeployment, resolveFeishuBot, type Machine, type Probe } from '../src/deployment.ts'
+import { Config, executable, machineOf, resolveDeployment, resolveFeishuBot, workerProbe, type Machine, type Probe } from '../src/deployment.ts'
+import type { SubprocessRuntime } from '../src/infra/subprocess.ts'
 import { gitEnv } from './fixtures/git.ts'
 
 const exec = promisify(execFile)
@@ -37,14 +38,15 @@ const lark = (status: object, mode = 'bot', bot: object = { bot: { open_id: 'ou_
 // 配置 schema 描述的是 POSIX 绝对路径；下面的 setup 用例改用真实目录。
 const minimal = (overrides: Record<string, unknown> = {}) => ({ stateDir: '/srv/state', ...overrides })
 const machine = (overrides: Partial<Machine> = {}): Machine => ({ ...machineOf(Config.parse(minimal())), stateDir: join(dir, 'state'), ...overrides })
-/** 在飞书探测添加的 `env` 前缀之后，应答 worker shell 本会启动的那个 CLI。 */
-const probe: Probe = async argv => {
-  let at = 0
-  if (argv[0] === 'env') { at = 1; while (at < argv.length && argv[at]!.includes('=')) at++ }
-  const file = argv[at]!
+/** 在飞书探测交给子进程的环境变量中，记录最近一次，供断言使用。 */
+let lastEnv: Record<string, string> | undefined
+/** 应答 worker shell 本会启动的那个 CLI。 */
+const probe: Probe = async (argv, env) => {
+  lastEnv = env
+  const file = argv[0]!
   const answers = programs.get(file)
   if (!answers) throw new Error(`${file} is not an executable file`)
-  return answers(argv.slice(at + 1))
+  return answers(argv.slice(1))
 }
 const setupError = (place: string, code: string, values: Record<string, unknown> = {}) => expect.objectContaining({ place, code, values: expect.objectContaining(values) })
 
@@ -84,6 +86,23 @@ describe('configuration schema', () => {
   })
 })
 
+describe('worker probe', () => {
+  it('passes PATH and extra variables through the spawn environment instead of a POSIX env prefix', async () => {
+    const spawn = vi.fn((_spec: { argv: readonly string[]; env?: Record<string, string> }) => {
+      const reader = { readFrom: () => ({ text: 'ok', next: 2 }) }
+      return { done: Promise.resolve({ exitCode: 0 }), collected: { stdout: reader, stderr: reader } }
+    })
+    const worker = workerProbe({ spawn } as unknown as SubprocessRuntime, join(dir, 'state'), dir, new AbortController().signal)
+    expect(await worker(['gh', 'api', 'user'], { LARKSUITE_CLI_NO_UPDATE_NOTIFIER: '1' })).toBe('ok')
+    const spec = spawn.mock.calls[0]![0]
+    // 命令本身不带 `env` 前缀；Windows 上没有该可执行文件，带前缀会让 setup 永远失败。
+    expect(spec.argv).toEqual(['gh', 'api', 'user'])
+    expect(spec.env).toMatchObject({ LARKSUITE_CLI_NO_UPDATE_NOTIFIER: '1' })
+    // worker shim 目录必须从 PATH 中移除，好让 shim 去找真正的二进制文件。
+    expect(spec.env?.PATH?.split(delimiter)).not.toContain(join(dir, 'state', 'worker-bin'))
+  })
+})
+
 describe('setup', () => {
   it('reads the repository from the GitHub Source and the accounts from their CLIs, skipping the worker shims', async () => {
     const deployment = await resolveDeployment(machine(), { repository: 'acme/widgets', cli: 'gh' }, probe, path)
@@ -116,6 +135,8 @@ describe('setup', () => {
   it('reads the Feishu bot from a bot-only lark-cli, or finds none when the Feishu Source names no CLI', async () => {
     expect(await resolveFeishuBot(machine(), {}, probe, path)).toBeUndefined()
     expect(await resolveFeishuBot(machine(), { cli: 'lark-cli' }, probe, path)).toEqual({ cli: join(dir, 'bin', 'lark-cli'), appId: 'cli_bot', brand: 'lark', botId: 'ou_bot', name: 'Widgets Bot' })
+    // 关闭通知改由子进程环境传入；POSIX 的 `env` 前缀在 Windows 上不存在。
+    expect(lastEnv).toMatchObject({ LARKSUITE_CLI_NO_UPDATE_NOTIFIER: '1', LARKSUITE_CLI_NO_SKILLS_NOTIFIER: '1' })
     const refuses = async (code: string, values: Record<string, unknown> = {}) => expect(resolveFeishuBot(machine(), { cli: 'lark-cli' }, probe, path)).rejects.toEqual(setupError('feishu', code, values))
     program(join(dir, 'bin', 'lark-cli'), lark({ identities: { bot: { status: 'ready' } } }))
     await refuses('feishuNoApp')

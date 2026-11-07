@@ -291,3 +291,66 @@ copilot -p "<中文操作指令>" --plugin-dir ./lib/plugin --allow-all-tools -s
 
 像素级证据缺失的原因：扩展开发宿主窗口以管理员权限运行且被编辑器窗口遮挡，非提权进程的 `SetForegroundWindow` 被 UIPI 拒绝，`PrintWindow` 只能取到未重绘的旧帧，因此没有拿到通知卡片的截图。通知调用的证据是扩展日志中的原文，判定与文案逻辑由 `tests/extension-notify.spec.ts` 的 5 项用例覆盖。
 
+## 15. B8：打通 setup 的 Windows 缺陷与真实验收状态
+
+本轮目标是把 setup 在真实机器上跑通，再进 Copilot Chat 验证工具面与技能面。结论是：**setup 链路已修好，唯一剩余阻塞是 `gh` 未登录；A4 本轮未重跑，A5 未执行。**
+
+### 15.1 凭据与工具盘点（只读，不含任何 token 内容）
+
+| 项目 | 实测 |
+| --- | --- |
+| `gh` | 便携版 `2.103.3`，位于 `%LOCALAPPDATA%\Programs\GitHub CLI\gh.exe`（未加入 PATH） |
+| `gh auth status` | 退出码 `1`：`You are not logged into any GitHub hosts. To log in, run: gh auth login` |
+| `gh api user` | 退出码 `4`：`gh: To use GitHub CLI in automation, set the GH_TOKEN environment variable.` |
+| 环境变量 | `GH_TOKEN`、`GITHUB_TOKEN` 均未设置；`%APPDATA%\GitHub CLI\hosts.yml` 不存在 |
+| 仓库与远端 | `origin git@github.com:martinxiao2025/dsh-superagent-prototype.git`；SSH 认证可用（`git ls-remote` 成功），但产品只通过配置项 `cli` 调用 `gh`，不读取 ssh 凭据 |
+| `lark-cli` | 存在 `1.0.98`（`~/.trae-cn/plugins/.../lark-cli.exe`），`auth status` 返回 `ok:false, not_configured`，因此按 `feishuNoApp` 处理；飞书是可选 Source，不阻塞 GitHub |
+
+### 15.2 缺陷一：等待 setup 时面板无法保存 Source 配置
+
+| 项目 | 内容 |
+| --- | --- |
+| 现象 | setup 未完成时 `GET settings` 里没有 `source:github`/`source:feishu`；`PUT /orchestrator/api/settings/source:github` 返回 404，无法填写仓库与 CLI，形成「要配置才能过 setup、要过 setup 才能配置」的死锁 |
+| 根因 | Source kind 只由 `startGithub`/`startFeishu` 注册，而它们排在 `Setup.run()` 成功之后；`Settings.save` 对未注册 kind 抛 `sourceNotInstalled`，路由对未注册实例返回 404 |
+| 修复 | `Runtime.initialize()` 在 setup 失败分支提前注册两个 kind 并记下注销函数，`shutdown()` 时释放；`startGithub`/`startFeishu` 改为「未注册才补注册」，避免重复注册 |
+| 回归 | `tests/settings.spec.ts`：setup 被 mock 为未完成时保存 `source:github` 成功（修复前报「github 这个 Source 类型未安装」） |
+| 现场 | 重启运行时后 `GET settings` 返回 `feishu installed=True`、`github installed=True`，`PUT` 从 404 变为进入账号校验（400），链路已通 |
+
+### 15.3 缺陷二：probe 使用 POSIX `env` 前缀，Windows 上 setup 永远失败
+
+| 项目 | 内容 |
+| --- | --- |
+| 现象 | `PUT source:github` 返回 400 `agentCliSignedOut`，`output` 为 `env PATH=… gh.exe api user 在完成前被停止`——即使 CLI 已登录也会失败 |
+| 根因 | `workerProbe` 以 `['env', 'PATH=…', …argv]` 启动；Windows 没有 `env` 可执行文件，`NodeSubprocess` 的 `child.on('error')` 以 `exitCode = null` 结束，`runAsWorker` 把它翻译成「在完成前被停止」。`resolveFeishuBot` 同样用 `env` 传 `LARKSUITE_CLI_NO_*`，存在同一问题 |
+| 修复 | `Probe` 增加可选的 `env` 参数；`workerProbe` 改用 `runAsWorker` 的 `env` 选项传 `PATH`；`resolveFeishuBot` 用同一通道传两个 `LARKSUITE_CLI_NO_*` 变量。命令本身不再带前缀，POSIX 与 Windows 行为一致 |
+| 回归 | `tests/deployment.spec.ts` 新增「worker probe」用例，断言 `argv` 不含 `env`、`PATH` 经 `spawn` 的 `env` 传入且已剔除 worker shim 目录；飞书用例断言两个通知变量经 `env` 传入 |
+| 现场 | 修复后真实 `PUT` 的 `output` 变为 `gh: To use GitHub CLI in automation, set the GH_TOKEN environment variable.`，即 CLI 自己的输出——证明探针确实执行了 `gh`，只剩登录问题 |
+
+### 15.4 本轮真实命令与结果
+
+| 项目 | 实测 |
+| --- | --- |
+| 运行时 | `node lib/index.js --config C:\Users\61054\.dsh-superagent\config.json`，面板 `http://127.0.0.1:3082` |
+| 设置读取 | `GET /orchestrator/api/settings`（带同源 `Origin`/`Referer` 与 `x-orchestrator-request: 1`）`200`，两个 Source 均 `installed=True` |
+| 设置保存 | `PUT /orchestrator/api/settings/source:github`，`repository=martinxiao2025/dsh-superagent-prototype`、`cli=<gh.exe 绝对路径>`，返回 `400` `agentCliSignedOut`，`output` 为 gh 自身提示 |
+| 测试基线 | `pnpm check` 全绿：985 通过 / 12 跳过 / 0 失败（55 个测试文件，其中 1 个整组跳过） |
+
+### 15.5 A4 与 A5 的真实状态
+
+| 项 | 状态 | 依据 |
+| --- | --- | --- |
+| A4（VS Code Stable + Copilot Chat 冒烟） | **本轮未重跑**；历史记录仍为 `009` §11 的通过记录 | setup 未通过时 `Runtime.initialize()` 不执行 `startMcp()`，`127.0.0.1:3083/mcp` 不可用，Copilot Chat 无法列出工具与技能；本轮没有构造替代证据，也不把插件校验通过当作 A4 通过 |
+| A5 第二轮（真实 GitHub 事件触发） | **未执行** | 缺可用的 `gh` 登录，运行时停在 `repositoryUnset`；没有真实事件进入队列 |
+| 通知卡片截图 | **未取得** | 原因同 §14.4（UIPI 拒绝前台切换），本轮未重试，不用日志冒充截图 |
+
+### 15.6 剩余缺口与唯一手工步骤
+
+要让 setup 真正通过，需要在本机由人工完成 **`gh auth login`**（浏览器或一次性码），或由运维人员自行设置 `GH_TOKEN`；本文与任何提交都不记录该值。完成后重启运行时，`repositoryUnset` 应消失，`GET /orchestrator/api/overview` 的 `github/repositoryUnset` 问题项清除，`3083/mcp` 开始监听。
+
+之后才算能进入下一轮验收：
+
+1. A4：在 Stable + Copilot Chat 中确认插件加载、3 个技能可见、`tools/list` 为 14 个，并真实调用 `orchestrator_read` 与 `orchestrator_route`。
+2. A5：向目标仓库投放一条真实事件，确认进入候选并完成一次路由。
+3. 通知截图：在非提权的前台会话中触发，补一张像素证据（不提交）。
+
+
