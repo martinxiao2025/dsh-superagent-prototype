@@ -15,14 +15,16 @@
     start / supervise / stop / status / drill。supervise 是内部循环，由 start 以隐藏进程方式拉起。
 
 .PARAMETER Profile
-    DSH profile 名，默认取环境变量 DSH_SUPERAGENT_PROFILE 或 `superagent`。
+    实例名，用于分隔 PID、日志与停止标记，默认取环境变量 DSH_SUPERAGENT_PROFILE 或 `superagent`。
 
 .PARAMETER Url
     管理 API 基地址，默认取 DSH_SUPERAGENT_URL 或 `http://127.0.0.1:3082`。
 
+.PARAMETER Config
+    机器配置文件，默认取 DSH_SUPERAGENT_CONFIG 或 `$HOME/.dsh-superagent/config.json`。
+
 .PARAMETER Command
-    要守护的命令行。缺省为 `dsh --profile <Profile> --no-open`。
-    本机没有 dsh 宿主时，演练可用 `node --experimental-transform-types scripts/keepalive-host.mjs`。
+    要守护的命令行。缺省为 `node lib/index.js --config <Config>`。
 
 .PARAMETER RestartDelaySeconds
     子进程退出后到下一次拉起之间的等待秒数，默认 1。
@@ -35,8 +37,7 @@
 
 .EXAMPLE
     pwsh -NoProfile -File scripts/dsh-superagent-windows.ps1 -Action start
-    pwsh -NoProfile -File scripts/dsh-superagent-windows.ps1 -Action drill `
-        -Command 'node --experimental-transform-types scripts/keepalive-host.mjs'
+    pwsh -NoProfile -File scripts/dsh-superagent-windows.ps1 -Action drill
 #>
 [CmdletBinding()]
 param(
@@ -44,6 +45,7 @@ param(
     [string]$Action = 'status',
     [string]$Profile = $(if ($env:DSH_SUPERAGENT_PROFILE) { $env:DSH_SUPERAGENT_PROFILE } else { 'superagent' }),
     [string]$Url = $(if ($env:DSH_SUPERAGENT_URL) { $env:DSH_SUPERAGENT_URL } else { 'http://127.0.0.1:3082' }),
+    [string]$Config = $(if ($env:DSH_SUPERAGENT_CONFIG) { $env:DSH_SUPERAGENT_CONFIG } else { Join-Path $HOME '.dsh-superagent\config.json' }),
     [string]$Command = $(if ($env:DSH_SUPERAGENT_COMMAND) { $env:DSH_SUPERAGENT_COMMAND } else { '' }),
     [int]$RestartDelaySeconds = 1,
     [int]$MaxRestarts = 0,
@@ -68,10 +70,10 @@ function Quote-Arg([string]$Value) {
     return $Value
 }
 
-# 返回缺省命令行；本机安装 dsh 后即为产品真实启动方式。
+# 返回缺省命令行：产品的独立进程入口，机器配置由 -Config 指定。
 function Get-ServiceCommand {
     if ($Command) { return $Command }
-    return "dsh --profile $Profile --no-open"
+    return "node lib/index.js --config $(Quote-Arg $Config)"
 }
 
 # 追加一行带时间戳的守护日志，编码为 UTF-8 无 BOM。
@@ -192,7 +194,7 @@ function Invoke-Start {
     }
     Clear-State
     $arguments = @('-NoProfile', '-File', (Quote-Arg $PSCommandPath), '-Action', 'supervise', '-Profile', (Quote-Arg $Profile), '-Url', (Quote-Arg $Url),
-        '-RestartDelaySeconds', "$RestartDelaySeconds", '-MaxRestarts', "$MaxRestarts")
+        '-Config', (Quote-Arg $Config), '-RestartDelaySeconds', "$RestartDelaySeconds", '-MaxRestarts', "$MaxRestarts")
     if ($Command) { $arguments += @('-Command', (Quote-Arg $Command)) }
     $supervisor = Start-Process -FilePath 'pwsh' -ArgumentList $arguments -WorkingDirectory $Root -WindowStyle Hidden -PassThru
     Set-Content -LiteralPath $SupervisorPidFile -Value $supervisor.Id -Encoding utf8
@@ -274,10 +276,15 @@ function Invoke-Drill {
     Clear-State
     Remove-Item -LiteralPath $StopMarker -ErrorAction SilentlyContinue
 
-    # 上一次硬杀可能留下 proper-lockfile 的锁目录；等过 30 秒 stale 窗口再启动，避免把失败当结论。
-    $stateDir = if ($env:KEEPALIVE_STATE_DIR) { $env:KEEPALIVE_STATE_DIR } else { Join-Path $Root '.artifacts\keepalive\state' }
-    $lockDir = "$stateDir.lock"
-    if (Test-Path -LiteralPath $lockDir) {
+    # 上一次硬杀可能留下 proper-lockfile 的锁目录：从机器配置读取 stateDir，
+    # 等过 30 秒 stale 窗口再启动，避免把锁等待造成的失败当成演练结论。
+    $stateDir = ''
+    if (Test-Path -LiteralPath $Config) {
+        try { $stateDir = [string](Get-Content -LiteralPath $Config -Raw | ConvertFrom-Json).stateDir } catch { $stateDir = '' }
+    }
+    $result.stateDir = $stateDir
+    $lockDir = if ($stateDir) { "$stateDir.lock" } else { '' }
+    if ($lockDir -and (Test-Path -LiteralPath $lockDir)) {
         $age = ((Get-Date) - (Get-Item -LiteralPath $lockDir).LastWriteTime).TotalSeconds
         if ($age -lt 31) {
             $wait = [int](32 - $age)

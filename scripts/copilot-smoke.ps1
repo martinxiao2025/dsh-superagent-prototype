@@ -237,7 +237,7 @@ $report = [ordered]@{
         'Stable 打开后按 Ctrl+Shift+P，运行 “Chat: Install Plugin from Source”（workbench.action.chat.installPluginFromSource），输入插件目录的绝对路径（实测 file:/// URI 会被拒，例如 D:\WorkSpace\dsh-superagent-prototype\lib\plugin）；或在用户设置写入 chat.pluginLocations（该键为机器级 MACHINE，工作区设置无效）。',
         '在 Copilot Chat 里登录有 Copilot 权限的 GitHub 账号；本脚本只报登录状态存在性，不读取任何凭据。',
         '确认 Copilot 的插件列表中 dsh-superagent 处于启用状态，且技能 dsh-superagent、dsh-superagent-github、dsh-superagent-feishu 均可见。',
-        '先在仓库根启动宿主与 MCP 端点（scripts/dsh-superagent-windows.ps1 -Action start -Profile a4 -Command "node --experimental-transform-types scripts/keepalive-host.mjs"），再在 Copilot Chat 中确认工具可列并可调用：orchestrator_read(tickets) → orchestrator_route → orchestrator_reply。',
+        '先在仓库根启动守护与 MCP 端点（pwsh -NoProfile -File scripts/dsh-superagent-windows.ps1 -Action start -Config <机器配置文件>），再在 Copilot Chat 中确认工具可列并可调用：orchestrator_read(tickets) → orchestrator_route → orchestrator_reply。',
         '把插件页、技能列表与工具调用截图保存到 .artifacts/screenshots/（不提交），然后把结果回填 docs/009-copilot-plugin.md 的 §11。'
     )
 }

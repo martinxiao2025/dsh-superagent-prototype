@@ -13,14 +13,15 @@
 | 事实 | 依据（可直接复核） |
 | --- | --- |
 | 主会话工具为 **14 个**；worker 自有工具 **5 个**，加上共享的 `orchestrator_read`，每个执行器注册 **6 个** | `src/app/tools/main.ts`、`executor.ts`、`tool.ts` 的 `name:` 字面量；`tests/model-surface.spec.ts` 断言 worker 侧 6 个名称 |
-| 主会话工具依赖真实 `Agent`：`prompt-preview` 用 `agent.id`，`orchestrator_eval_read` 的图片分支需要 `agent.ctx` 与 `agent.session` | `src/app/tools/main.ts`、`src/app/assessment.ts` 的 `read()` |
+| 主会话工具不再依赖宿主 `Agent`：`Runtime.tools(ticket?)` 现场组装；`orchestrator_eval_read` 的 `image` 分支返回固定中文错误（图片附件的已知限制） | `src/app/tools/main.ts`、`src/app/assessment.ts` 的 `read()` |
+| 代码、测试、脚本与 `package.json` 中 `@deepseek-ai/*` 引用为 **0**；DSH 主机产物（`cordis.patch.yml`、`scripts/keepalive-host.mjs`）已删除 | `grep -r '@deepseek-ai' src tests scripts package.json` |
 | 管理 API 要求 `x-orchestrator-request: 1` 且同源 | `src/app/http.ts` 的 `sameOrigin()` |
 | 端口失败若走 `SetupError`，`Setup.run()` 返回 `false` 后 `Runtime.initialize()` 直接 `return`，整个编排停摆 | `src/app/setup.ts`、`src/app/runtime.ts` 的 `initialize()` |
 | `lib/` 被 `.gitignore` 忽略，且 tsdown 第一份配置 `clean: true` 会清空它 | `.gitignore`、`tsdown.config.ts` |
 | 现有编号文档为 `000`–`010`，编号连续且只能链接更早文档 | `tests/docs.spec.ts` |
 | `docs/007-architecture.md` 的模块表必须覆盖 `src` 全部文件、测试表必须覆盖全部 `*.spec.ts(x)` | `tests/docs.spec.ts` |
 | 每个 `class` 声明前必须有 JSDoc | `tests/class-docs.spec.ts` |
-| `skills/` 下的技能会被加载进 DSH 会话，且测试断言内置技能恰为 `dsh-superagent-feishu`、`dsh-superagent-github` | `src/app/skill-files.ts`、`tests/tools.spec.ts` |
+| `skills/` 下的技能会被加载进会话，且测试断言内置技能恰为 `dsh-superagent-feishu`、`dsh-superagent-github` | `src/app/skill-files.ts`、`tests/tools.spec.ts` |
 | 面板文案必须中英双语，键与占位符一致 | `src/client/locales.ts`、`tests/locales.spec.ts` |
 | 模型可见表面（工具、提示词、技能、输入）受防漂移测试约束 | `tests/model-surface.spec.ts` |
 | Node 满足 `engines` 最低支持版本（当前 `^22.19.0 || >=24.0.0`），不锁定具体版本；本机记录为 `v24.2.0`，pnpm `11.7.0` | `node -v`、`pnpm -v`、`package.json` |
@@ -46,7 +47,7 @@
 ### 1.3 无法在当前环境确认、需标记而非假设
 
 - **A4（VS Code Copilot 冒烟）**：范围限定 **Windows + VS Code Stable 的官方 Copilot Chat**；2026-11-06 已在 Stable `1.145.2`（内置 `GitHub.copilot-chat@0.73.0`）内实测通过：插件 `dsh-superagent@0.1.0` 与三个技能可见、`tools/list` 14 个、用 `DeepSeek V4.1 Flash`（`deepseek-flash`）真实调用 `orchestrator_read`/`orchestrator_route`/`orchestrator_reply`（第三个被领域规则以 `notReady` 拒绝，属真实结果）。Copilot CLI 只作前置证据，**不计入 A4 验收**；Insiders 已由用户卸载，不纳入验证范围。明细见 `docs/009-copilot-plugin.md` §11。
-- **A6（保活演练）**：Windows 机制演练已用 `scripts/dsh-superagent-windows.ps1 -Action drill` 对真实 `Runtime` 完成并通过（强杀后 30.1 秒恢复、14 工具可用），证据见 `docs/009` §10；真实 `dsh --profile` 宿主与计划任务开机自启在 Windows 范围内仍未验证；systemd 与其它 POSIX 调度为**范围外**（见 §2.1）。
+- **A6（保活演练）**：Windows 机制演练已用 `scripts/dsh-superagent-windows.ps1 -Action drill` 对真实 `Runtime` 完成并通过（强杀后 30.1 秒恢复、14 工具可用），证据见 `docs/009` §10；真实 `node lib/index.js` 进程配合真实语言模型桥、以及计划任务开机自启在 Windows 范围内仍未验证；systemd 与其它 POSIX 调度为**范围外**（见 §2.1）。
 - **真实 GitHub/飞书触发（A5 第二轮）**：需要真实凭据与仓库，未执行前只报告测试回归结果。
 - **官方 schema 的远端可用性**：已下载到本地校验输入目录后，校验过程禁止联网；schema 内容以本地文件为准。
 
@@ -66,7 +67,7 @@
 
 ## 2. 项目定位与目录结构
 
-`dsh-superagent` 是面向单个 GitHub 仓库的主动式编码代理，以 DSH bundle 形式运行；阶段一目标是新增合规插件包与 MCP 端点，不改领域逻辑。
+`dsh-superagent` 是面向单个 GitHub 仓库的主动式编码代理，作为独立进程运行（`node lib/index.js`，面板为自建回环网页，模型回合经 `AgentHost`）；阶段一目标是新增合规插件包与 MCP 端点，不改领域逻辑。
 
 ### 2.1 支持的运行环境（2026-11-06 用户确认）
 
@@ -86,7 +87,7 @@
 | `src/client/` | React 面板 | 可改文案键；只允许从宿主导入类型与少数纯值模块 |
 | `src/infra/` | CLI 传输、环境、路径、HealthBoard | 可改；不得承载领域规则 |
 | `prompts/` | 内置提示词，**每行一句** | 可改；评估指令只在 `prompts/admission.md` |
-| `skills/` | DSH 内置技能（feishu、github） | 可改；**不得新增**会被加载的第三个内置技能 |
+| `skills/` | 会话内置技能（feishu、github） | 可改；**不得新增**会被加载的第三个内置技能 |
 | `docs/` | 设计文档 `000`–`010` + 计划文档 `00`/`01` | 可改；新增编号只能续到 `010` 之后的下一个，且只能链接更早编号 |
 | `locale/` | 面板双语文案 `en.json` / `zh.json` | 可改；键必须成对 |
 | `tests/` | vitest 测试与共享夹具 | 可改；**禁止**为通过验证而删测试或放宽断言 |
@@ -204,7 +205,7 @@ Get-ChildItem -Recurse -File src,tests,scripts,plugin,docs -Include *.ts,*.tsx,*
 | `pnpm check` | 提交前必跑 |
 | `node scripts/validate-plugin.mjs [--dir <path>]` | 离线校验插件包 |
 | `pwsh -File scripts/dsh-superagent-windows.ps1 -Action start\|stop\|status` | Windows 守护启停与状态 |
-| `pwsh -File scripts/dsh-superagent-windows.ps1 -Action drill -Command '<cmd>'` | A6 强制终止保活演练 |
+| `pwsh -File scripts/dsh-superagent-windows.ps1 -Action drill` | A6 强制终止保活演练 |
 | `pwsh -File scripts/copilot-smoke.ps1` | A4 只读盘点（Stable-only；默认不装扩展、不调模型，`-Install` 才尝试安装） |
 | `node scripts/build-plugin.mjs` | 组装 `lib/plugin/` |
 | `git diff --cached --name-only` | 提交前核对暂存范围 |

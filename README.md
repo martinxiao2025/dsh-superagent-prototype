@@ -6,14 +6,14 @@
 
 ## 这是什么
 
-dsh-superagent 是面向**单个 GitHub 仓库**的主动式编码代理，以 [DeepSeek Harness](https://www.deepseek.com/en/harness/)（DSH）bundle 的形式运行。它监听 GitHub（可选飞书）：当允许名单中的人请求工作时，它建立工单（ticket），在独立的 DSH 会话（Session）与目录中执行，最后回到原对话答复，例如给出一个 Pull Request。Web 面板显示哪些事项需要人来处理。
+dsh-superagent 是面向**单个 GitHub 仓库**的主动式编码代理，作为独立的本地进程运行（`node lib/index.js`）。它监听 GitHub（可选飞书）：当允许名单中的人请求工作时，它建立工单（ticket），在独立目录与 worker 会话中执行，最后回到原对话答复，例如给出一个 Pull Request。自带的面板网页显示哪些事项需要人来处理；模型回合经 VS Code 语言模型桥执行。
 
 它的工作方式本身也是一种主张：**尽量少占用人的注意力，尽量多交付价值。** 会替整个团队行动的代理，也可能浪费整个团队的注意力；因此它只在被请求、或团队写下的规则允许时才行动，只在有人必须行动或能用到结果时才说话。[docs/000-philosophy.md](docs/000-philosophy.md) 说明了这条原则以及对运营者的要求。
 
 阶段一新增了两样东西，领域逻辑没有改动：
 
 1. 符合 agent-plugins-spec 1.0.0 的插件包 [`plugin/`](plugin)（清单、MCP 声明、主技能）；
-2. 只绑定 `127.0.0.1` 的 MCP Streamable HTTP 端点，把 DSH 主会话的 14 个工具原样暴露给 VS Code Copilot 等 agent-plugins 客户端。
+2. 只绑定 `127.0.0.1` 的 MCP Streamable HTTP 端点，把主会话的 14 个工具原样暴露给 VS Code Copilot 等 agent-plugins 客户端。
 
 ## 支持的运行环境
 
@@ -32,8 +32,8 @@ dsh-superagent 是面向**单个 GitHub 仓库**的主动式编码代理，以 [
 | --- | --- | --- |
 | Node.js | `^22.19.0` 或 `>=24.0.0` | 本机验证版本 `v24.19.0` |
 | pnpm | `11.7.0` | 由 `package.json` 的 `packageManager` 锁定；可用 `corepack enable` 启用 |
-| DSH | 满足 `engines.dsh`（`^0.2.1-alpha.2`） | 只有安装成 bundle 时才需要；公开版 `0.2.1-rc.3` 可用 |
-| 其他（完整部署） | git 2.32+、tmux、Python 3.8+、GitHub CLI 2.48+ | 飞书来源另需 `lark-cli`；详见 [SETUP.md](SETUP.md) |
+| VS Code | Stable，已登录可用语言模型的账号 | 模型回合经 `extension/dsh-lm-bridge` 调用 `vscode.lm` |
+| 其他（完整部署） | git 2.32+、GitHub CLI 2.48+ | 飞书来源另需 `lark-cli`；详见 [SETUP.md](SETUP.md) |
 
 ### 从源码构建与自检
 
@@ -45,20 +45,20 @@ pnpm check     # typecheck + test + build + plugin:check
 
 `pnpm build` 的顺序不能颠倒：tsdown 的第一份配置带 `clean: true`，会清空 `lib/`，插件打包必须在其之后执行。
 
-### 安装成 DSH bundle
+### 启动与守护
 
-完整安装（账号、profile、机器配置、设置、验证）交给编码代理与运营者一起完成，指令在 [SETUP.md](SETUP.md)，细节在 [docs/006-deployment.md](docs/006-deployment.md)。最小路径是：
+完整安装（账号、机器配置、设置、验证）交给编码代理与运营者一起完成，指令在 [SETUP.md](SETUP.md)，细节在 [docs/006-deployment.md](docs/006-deployment.md)。最小路径是：
 
 ```powershell
-npm install -g @deepseek-ai/dsh@0.2.1-rc.3
 pnpm install; pnpm build
-dsh superagent --from-default-profile web --dump-config > $null   # 仅在 profile 不存在时执行
-dsh plugin --profile superagent add "link:$PWD"
+# 首次运行前写一份机器配置，默认读取 ~/.dsh-superagent/config.json
 pwsh -NoProfile -File scripts/dsh-superagent-windows.ps1 -Action start
 pwsh -NoProfile -File scripts/dsh-superagent-windows.ps1 -Action status
 ```
 
-`--from-default-profile` 会替换已有 profile 并删除其中的 `cordis.patch.yml`；profile 已存在时不要执行它，改为编辑该文件。
+最小机器配置只需 `{"stateDir": "C:\\Users\\me\\.dsh-superagent"}`；`panelPort`（默认 `3082`）与 `mcpPort`（默认 `3083`）可按需修改。守护脚本用 `-Config` 指定配置文件，日志与控制文件在 `.artifacts/` 下。
+
+也可以前台直接运行 `node lib/index.js --config <配置文件>`，Ctrl+C 优雅退出。
 
 ### 接入 Copilot 等 agent-plugins 客户端
 
@@ -72,22 +72,23 @@ pwsh -NoProfile -File scripts/dsh-superagent-windows.ps1 -Action status
 .
 ├── src/
 │   ├── core/       领域核心：Engine、模型、ports；不做 I/O，不改领域行为
-│   ├── app/        应用层：Runtime、Store、HTTP、Sessions、Settings、Prompts、MCP（mcp.ts / mcp-tools.ts）
-│   ├── executor/   DshExecutor 与 worker 会话
+│   ├── app/        应用层：Runtime、Store、HTTP、MainSession、Settings、Prompts、MCP（mcp.ts / mcp-tools.ts）
+│   ├── executor/   HostExecutor、AgentHost 与 worker 回合
 │   ├── sources/    GitHub / 飞书来源插件与注册表
 │   ├── client/     React 面板
 │   └── infra/      CLI 传输、环境、路径、HealthBoard
 ├── prompts/        内置提示词，每行一句
-├── skills/         DSH 内置技能（dsh-superagent-github、dsh-superagent-feishu）
+├── skills/         会话内置技能（dsh-superagent-github、dsh-superagent-feishu）
 ├── plugin/         插件源：plugin.json、mcp.json、skills/dsh-superagent/SKILL.md
 ├── locale/         面板双语文案 en.json / zh.json
 ├── docs/           设计文档 000–010 与计划文档 00、01
-├── examples/       示例 profile 配置
+├── extension/      VS Code 语言模型桥扩展（dsh-lm-bridge）
 ├── scripts/
 │   ├── build-plugin.mjs    组装 lib/plugin/
 │   ├── validate-plugin.mjs 离线校验插件包
 │   ├── schemas/            agent-plugins 1.0.0 官方 schema 离线副本
-│   └── dsh-superagent      部署后的服务管理脚本（start/stop/restart/status）
+│   ├── dsh-superagent-windows.ps1  Windows 守护脚本（start/stop/status/drill）
+│   └── dsh-superagent      POSIX 服务脚本（范围外，仅保留既有实现）
 ├── tests/          vitest 测试与共享夹具
 ├── lib/            构建产物（gitignore，不提交）
 └── SETUP.md        与编码代理一起安装的指令
@@ -99,7 +100,7 @@ pwsh -NoProfile -File scripts/dsh-superagent-windows.ps1 -Action status
 
 插件包由三部分组成：`plugin/plugin.json`（清单，版本与 `package.json` 同步）、`plugin/mcp.json`（一个 `streamable-http` 服务）、`plugin/skills/dsh-superagent/SKILL.md`（面向 Copilot 的操作指南）。构建时还会把 `skills/` 下的两个内置技能拷入 `lib/plugin/skills/`，形成 3 个技能目录。
 
-MCP 端点暴露的是 **DSH 主会话的同一批 14 个工具**，没有第二套实现；每次调用等价于一次面板操作，同样经过 Policy 与 Mandate 复验。
+MCP 端点暴露的是 **主会话的同一批 14 个工具**，没有第二套实现；每次调用等价于一次面板操作，同样经过 Policy 与 Mandate 复验。
 
 | 分组 | 工具 | 用途 |
 | --- | --- | --- |
@@ -122,20 +123,23 @@ worker 侧另有 5 个自有工具（`orchestrator_ack`、`orchestrator_report`�
 
 ## 配置项
 
-机器配置在 profile 的 `cordis.patch.yml`（示例见 [examples/profile.cordis.patch.yml](examples/profile.cordis.patch.yml)），首次启动后也可在 **Settings → Deployment** 或 DeepSeek Harness Plugin Manager 中修改。
+机器配置是一个 JSON 文件，默认 `~/.dsh-superagent/config.json`，可用 `--config` 或环境变量 `DSH_SUPERAGENT_CONFIG` 指定；首次启动后，面板的 **Settings → Deployment** 可以修改除进程级键以外的限额。
 
 | 键 | 默认 | 说明 |
 | --- | --- | --- |
 | `stateDir` | 无（必填） | 绝对路径：数据库、锁文件、`worker-bin` 中的命令 shim、代理的 git 配置，以及默认情况下 `work` 中的工单目录。升级前请备份；无法在面板中修改 |
+| `panelPort` | `3082` | 面板网页与管理 API 的回环端口；修改后需重启 |
+| `host` | `127.0.0.1` | 面板与 MCP 端点的回环主机名，只允许 `127.0.0.1` 或 `localhost` |
 | `mcpEnabled` | `true` | 是否启动回环 MCP 端点；修改后需重启 |
 | `mcpPort` | `3083` | 回环端口；修改后需重启，并同步修改 `plugin/mcp.json` 的 URL。`0` 表示由系统挑一个空闲端口，仅用于测试 |
+| `model` | 无 | 语言模型桥使用的模型 id；缺省使用 VS Code 里选中的模型 |
 | `promptMaxChars` | `100000` | 保存的提示词配置的最大长度 |
 | `admissionContextMaxPages` | `10` | 一次评估最多读取多少个会话（thread）页 |
 | `admissionContextTimeoutMs` | `15000` | 一次评估读取上下文的超时（毫秒） |
 
-除 `stateDir`、`mcpEnabled`、`mcpPort` 外，其余限额保存后即可生效。端口被占用不会让编排停摆：进程继续运行，健康面板的 `mcp` 条目显示 `error` 与占用端口。
+除 `stateDir`、`panelPort`、`host`、`mcpEnabled`、`mcpPort` 外，其余限额保存后即可生效。端口被占用不会让编排停摆：进程继续运行，健康面板的 `mcp` 条目显示 `error` 与占用端口。
 
-> `stateDir` 的校验要求以 `/` 开头的绝对路径，沿用 POSIX 语义；原生 Windows 路径（如 `D:\...`）会被拒绝。这是既有产品行为，**不在本阶段的跨平台改造范围内**；本项目不因该限制把 Linux/WSL 列为支持环境。
+> `stateDir` 按运行时判断绝对路径，Windows 的 `D:\...` 与 POSIX 的 `/...` 都接受；相对路径会被拒绝并给出可读原因。
 
 ## 验证与测试
 

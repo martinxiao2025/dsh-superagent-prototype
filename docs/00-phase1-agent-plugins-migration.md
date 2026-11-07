@@ -4,6 +4,8 @@
 > 状态:方案定稿 | 语言:简体中文 | 编码:UTF-8(无 BOM)
 > 规范依据:[agent-plugins-spec 1.0.0](https://github.com/agentplugins/agent-plugins-spec)([agent-plugins.org](https://agent-plugins.org))
 
+> **2026-11-07 修订(去 DSH)**:用户已选定「全量去 DSH」,领域逻辑不动,但宿主由 DeepSeek Harness bundle 改为独立进程 + 自建回环面板 + `AgentHost`(本仓库实现为 VS Code 语言模型桥)。因此本文中凡以 DSH bundle / `cordis.patch.yml` / DSH 会话为前提的段落均已失效:插件包、MCP 端点与 14 个工具的结论仍然有效,`@deepseek-ai/*` 依赖、preset、DSH 会话内嵌面板已删除。迁移证据见 `docs/009-copilot-plugin.md` §10 与 `docs/010-runtime-verification.md` §10。
+>
 > **2026-11-06 修订(以代码事实为准)**:本文保留原始方案,实施口径与偏差裁决见 [01-phase1-task-plan.md](01-phase1-task-plan.md) §0/§2。已知差异:A3 的工具数是 **14**(非 20);worker 自有工具 **5** 个(加共享 `orchestrator_read`,每个执行器注册 6 个);端口冲突只写 `mcp` 健康条目,不走 `SetupError`;MCP 不使用 `x-orchestrator-request` 自定义头,只绑回环并启用 DNS rebinding 防护;`plugin.json` 不写占位 `homepage`;内置技能留在仓库 `skills/`,构建时拷入 `lib/plugin/skills/`。
 
 ## 1. 定位与迁移思路

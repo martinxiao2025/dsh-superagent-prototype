@@ -4,7 +4,7 @@
 
 ## 核心类与粘合层
 
-核心类在小接口背后持有领域概念与外部边界。粘合层把工具参数、HTTP 请求、来源（Source）负载和 DeepSeek Harness 事件翻译成对这些类的调用，再把结果变成卡片、视图与消息。
+核心类在小接口背后持有领域概念与外部边界。粘合层把工具参数、HTTP 请求、来源（Source）负载和宿主回合结果翻译成对这些类的调用，再把结果变成卡片、视图与消息。
 
 ```mermaid
 flowchart TB
@@ -15,7 +15,7 @@ flowchart TB
   engine -->|Policy| policy[Policy]
   engine -->|SourceScope| registry[SourceRegistry]
   engine -->|Assessor| assessor[MasterAssessor]
-  engine -->|Executor| executor[DshExecutor]
+  engine -->|Executor| executor[HostExecutor]
   assessor -->|decide| engine
   engine -->|Outbox| outbox[Outbox]
   executor -->|assignmentStarted, inputsDelivered, report| engine
@@ -39,7 +39,7 @@ flowchart TB
 | Setup | `src/app/setup.ts` | 按 worker shell 的实际运行方式探测各 CLI，解析仓库与账号，写入并应用 worker 的环境与命令 shim，并保留 setup 问题；设置通过它检查变更后的账号，也通过它重启，重启会再次运行 setup |
 | Passes | `src/app/passes.ts` | 一次只跑一个轮次，每两秒一次，并在任何命令要求时运行：先处理到期副作用，再调用 `Engine.evaluateDue`；来源的触发通过它到达引擎 |
 | Outbox | `src/app/outbox.ts` | 引擎的 `Outbox` 端口，也是回执的唯一写入者：`send` 在同一事务中保存消息回执并排队其 `reply` 副作用，副作用的处理器通过 `SourceRegistry.send` 发送；来源关闭时消息等待，会话不存在或未被监听时消息被丢弃 |
-| Notices | `src/app/notices.ts` | 把领域事件与 worker 活动转换成主会话消息。`eventNotice` 处理领域通知；`reportRelay` 立即转发问题、把普通进度留在其工单上，并转发其他汇报；`followupRelay` 指出拥有人工跟进的工单。回合进行中到达的转发会在下一步通过 DeepSeek Harness 收件箱一起投递 |
+| Notices | `src/app/notices.ts` | 把领域事件与 worker 活动转换成主会话消息。`eventNotice` 处理领域通知；`reportRelay` 立即转发问题、把普通进度留在其工单上，并转发其他汇报；`followupRelay` 指出拥有人工跟进的工单。回合进行中到达的转发会缓存在 `MainSession`，在下一回合前缀里一起投递 |
 
 ### 引擎
 
@@ -89,7 +89,7 @@ flowchart TB
 | Executor | `markUnrelated(ticketId, thread, reason)` | 只放弃该工单对某个附加线程的订阅（它认为该线程不相关），并连同原因交回该工单在该处决策的跟进 |
 | Executor | `followForContext(ticketId, thread)` | 让打开的工单为上下文订阅相关线程：该线程的消息到达工单，但不给它跟进强度，也不会恢复它 |
 | Executor | `handback(ticketId, triggerId, reason)` | 记录工单交回一个到达它的触发，及其候选携带的原因，并在没有其他工单决策它时把它排队等待新的评估（若本工单曾决策它）；它回答是否已排队。工单对每个触发只交回一次，并保留其订阅 |
-| Executor | `assignmentInterrupted(ticketId, assignmentId)` | 宿主停止时正在运行的任务分派：工作中途被中断的，或在最新汇报之后收到输入的，会带着恢复说明和已投递给它但其执行器会话未取走的输入重新开始，如同重试；此后已汇报过的任务分派保留其会话。DshExecutor 在启动时按最旧工单优先的顺序报告每一个（`resume`），并再次排队等待中的启动 |
+| Executor | `assignmentInterrupted(ticketId, assignmentId)` | 宿主停止时正在运行的任务分派：工作中途被中断的，或在最新汇报之后收到输入的，会带着恢复说明和已投递给它但其执行器会话未取走的输入重新开始，如同重试；此后已汇报过的任务分派保留其会话。HostExecutor 在启动时按最旧工单优先的顺序报告每一个（`resume`），并再次排队等待中的启动 |
 | Passes | `evaluateDue()` | 除非处理已暂停：为有排队触发等待的线程启动评估，每个线程一次，把期间排队的触发作为一个批次；把超过截止时间的评估的触发再次排队两次，第三次记录为 `unavailable`；并恢复暂停期间人的消息到达的已结束工单，若其授权仍然有效。候选尚未到达主会话的评估不会过期。处理暂停期间没有评估过期，一旦恢复，每个截止时间按暂停时长顺延 |
 | Settings | `policyChanged(from, to, effects)` | 告诉每个活动工单该变更如何影响它（`src/policy.ts` 中的 `policyEffects`：它被接受时所依据的规则发生变化或不再适用、其请求者可能不再能启动工作，或主动工作不再被接受），并在新版本下重启进行中的评估 |
 
@@ -114,7 +114,7 @@ flowchart TB
 
 核心的代码，例如 `timeout`、`policyChanged`、`routed` 与 `startedTicket`，属于 `REASONS`，带有智能体通过 `reasonText` 读取的英文；门禁或来源作用域给出自己的代码，例如 `not_a_member`；`said` 携带评估器或人写下的话。面板用 `reason.<code>` 表述每个代码，被来源过滤的触发也以同样方式记录来源的代码。
 
-工单对每个事实只保留一次。它在没有 `ended` 时是打开的，`ended` 记录何时、由谁、为什么以及以什么结果结束；它最后说的是其最新的任务分派汇报（`latestReport`）；其执行器会话以它命名（`src/executor/dsh.ts` 中的 `workerSessionId`）。
+工单对每个事实只保留一次。它在没有 `ended` 时是打开的，`ended` 记录何时、由谁、为什么以及以什么结果结束；它最后说的是其最新的任务分派汇报（`latestReport`）；其执行器会话以它命名（`src/executor/messages.ts` 中的 `workerSessionId`）。
 
 其字段是有类型的：`origin`，为评估批次提供强度以及批次本身的可准入触发（`triggerId`、`triggerIds`）；`execution`，执行器选择的内容（`name`、`directory` 与 `assignment`）；`delivery`，最近一次失败的输入投递（`error`、`at`），直到一次投递成功、新的任务分派开始或工单结束；以及 `follows`，来源让它跟随的线程，每个为 `{thread, own, closed?}`：工单打开它时 `own` 为真，关闭后带有 `at` 与 `outcome`。只有工单写入 `follows`；GitHub 来源用 `pullsOf` 与 `pullOf` 读取其拉取请求（`src/sources/github-pull.ts`）。
 
@@ -172,10 +172,10 @@ flowchart TB
 | 类型 | 处理器 | 作用 | 并发 | 重试 |
 | --- | --- | --- | --- | --- |
 | `assessment` | MasterAssessor | 把评估的候选卡片引入主会话的回合，然后告诉引擎它已投递，从而启动该评估的截止时间 | 4，暂停时为 0 | 2 秒起，翻倍至 60 秒 |
-| `launch` | DshExecutor | 启动待处理的任务分派：准备命令、执行器会话、任务分派消息 | 空闲 worker 槽位数，暂停时为 0 | 模型提供方或网络的短暂失败在 5 秒后重试，翻倍至 300 秒，共三次；其他任何失败，以及准备命令失败，会使其工单失败。因暂停或 worker 槽位已满而被搁置的，在 5 秒后重试 |
-| `delivery` | DshExecutor | 按顺序把工单等待中的输入交给其正在运行的任务分派 | 4，暂停时为 0 | 2 秒起，翻倍至 60 秒；等待 worker 槽位的在 2 秒后重试 |
-| `relay` | Sessions | 把 worker 的汇报或问题，或人的跟进，引入主会话的回合 | 1，按队列顺序 | 2 秒起，翻倍至 60 秒 |
-| `notice` | Sessions | 向主会话注入通知而不唤醒它 | 1，按队列顺序 | 2 秒起，翻倍至 60 秒 |
+| `launch` | HostExecutor | 启动待处理的任务分派：准备目录、组装工具与提示词、发出第一轮 | 空闲 worker 槽位数，暂停时为 0 | 模型提供方或网络的短暂失败在 5 秒后重试，翻倍至 300 秒，共三次；其他任何失败，以及准备命令失败，会使其工单失败。因暂停或 worker 槽位已满而被搁置的，在 5 秒后重试 |
+| `delivery` | HostExecutor | 按顺序把工单等待中的输入交给其正在运行的任务分派 | 4，暂停时为 0 | 2 秒起，翻倍至 60 秒；等待 worker 槽位的在 2 秒后重试 |
+| `relay` | MainSession | 把 worker 的汇报或问题，或人的跟进，引入主会话的回合 | 1，按队列顺序 | 2 秒起，翻倍至 60 秒 |
+| `notice` | MainSession | 向主会话注入通知而不唤醒它 | 1，按队列顺序 | 2 秒起，翻倍至 60 秒 |
 | `reply` | Outbox | 通过来源为某个渠道发送消息，在其工单发往该会话且未失败三次的更早消息之后；撤回消息会取消它 | 1，暂停时为 0 | 5 秒起，翻倍至 300 秒；来源关闭或排在更早消息之后的，在 5 秒后重试 |
 
 每种 kind 都在其名称下有一个健康条目。当它的某个副作用连续失败三次时报告错误，`delivery` 除外，其失败显示在其工单上。转发保持顺序，通知也是如此；失败的会挡住同类的后续项。
@@ -194,17 +194,21 @@ flowchart TB
 
 该上下文提供部署与命令、setup 就绪状态（`ready`、`configured`、`problem`）、配置、`receive`、`atomic` 以及带类型的 `state`。它还暴露线程读取与元数据写入、工单读取与绑定/关闭命令、触发读取、通过发件箱的 `notify`，以及针对已声明健康条目的 `report`。
 
-### DshExecutor
+### HostExecutor
 
-`DshExecutor`（`src/executor/dsh.ts`）为每个工单提供一个会话与目录。`start` 与 `deliver` 会将 `launch` 与 `delivery` 副作用入队。`stop` 通过 `Store.afterCommit` 取消回合，因此回滚的结束不会停止 worker。
+`HostExecutor`（`src/executor/agent.ts`）为每个工单提供一个会话与目录，是 `Executor` 端口的唯一实现。它只依赖窄接口 `HostExecutorHost`：`AgentHost`、`engine`、`store`、`effects`、`health`、`toolkit`、`environment`、`sourceLink`、`repliedTo`、`closing`、`paused` 与可选的 `model`。
+
+`start` 与 `deliver` 会把 `launch` 与 `delivery` 副作用入队。`stop` 通过 `Store.afterCommit` 取消回合，因此回滚的结束不会停止 worker。同一工单的回合按 `serialize(ticketId, …)` 串行执行，投递在每次之前重新读取工单，结束或换手即停止。
 
 `prepare(ticket, outcome)` 提供引擎的 `prepareTicket` 钩子：短名称、目录与 `ticketExecution` 任务分派文本。`workerSessionId(ticket.id)` 推导会话 id。
 
 `WorkerSlots` 在启动或唤醒空闲 worker 的投递之前预留容量。人的消息可以使用超出 `maxWorkers` 的一个槽位，唤醒优先于启动。`activeCount` 提供面板负载。
 
-模型提供方与网络的短暂失败获得三次重试。启动使用副作用退避；失败的回合在 15、30 与 60 秒后收到继续消息。`inputMessage` 根据当前工单状态渲染每个输入，`mandateInstructions` 为推断工作添加匹配规则的限制。
+一个回合就是一次 `AgentHost.dispatch` + `collect`：提示词首轮带角色与目录说明，此后只发消息；工具与 `callTool` 由 `Runtime.tools(ticket)` 现场组装。回合的请求与回复写入 `KV.transcript`（上限 200 条），失败写 `[回合失败] <error>`，并同步刷新 `worker` 健康条目。
 
-`install` 订阅会话事件；`dispose` 取消订阅。回合结束通常汇报等待，就绪之后或需要人工操作时除外。错误汇报失败。启动时，`resume` 通过 `assignmentInterrupted` 报告被中断的任务分派，并重新排队不等待人的待处理启动，最旧工单优先。
+模型提供方与网络的短暂失败获得三次重试，失败回合按 15 秒起、翻倍至 60 秒的退避收到继续消息。`inputMessage` 根据当前工单状态渲染每个输入，`mandateInstructions` 为推断工作添加匹配规则的限制。
+
+回合结束通常汇报 `waiting` 并把结果转发给主会话，已交接给人或最新汇报之后才算结束。永久错误汇报失败。启动时，`resume` 通过 `assignmentInterrupted` 报告被中断的任务分派，并重新排队不等待人的待处理启动，最旧工单优先。
 
 ### MasterAssessor
 
@@ -230,15 +234,17 @@ flowchart TB
 
 校验会从已保存的覆盖继承省略的 base，丢弃已保存数据中已存在的被移除部分，并拒绝空白文本或其他未知键。这允许保存工具对它读取的配置做往返。`environmentSection` 与 `policySection` 只使用自有键，一次性替换模板值。没有覆盖的配置使用默认值。
 
-### 会话
+### 主会话与回合宿主
 
-`Sessions`（`src/app/sessions.ts`）管理两种角色的 DeepSeek Harness 会话。`ensure` 用其角色的模型创建会话。`install` 跟随智能体事件，并为受管会话注册提示词、技能与工具。
+`MainSession`（`src/app/main-session.ts`）持有唯一的主会话。`prompt` 按 `requestId` 持久去重、派发即返回，回合在后台经 `AgentHost` 执行并按会话串行回收；失败上报 `models` 健康条目，下一次成功回合后恢复。
 
-`prompt` 每个请求 id 投递一次。`relay` 与 `notify` 排队由 `relay` 与 `notice` 副作用处理的主会话消息。`src/app/notices.ts` 定义其内容；`delivery` 检查消息是否到达。
+`relay` 与 `notify` 排队由 `relay` 与 `notice` 副作用处理的主会话消息。`notify` 先写入 `notices` 缓存，下一回合开头拼进前缀；同名通知后者覆盖前者。`src/app/notices.ts` 定义其内容。
 
-每次模型请求都会把会话绑定到当前提示词修订。它使用的修订被持久存储：`promptVersion` 标识活动修订，`mayRead` 限制 worker 可以检查哪些版本。注册记录按每个智能体一个映射跟踪。
+每次请求都把会话绑定到当前提示词修订：`promptVersion` 标识活动修订，`mayRead` 限制 worker 可以检查哪些版本。`status` 服务面板与设置页。
 
-`status` 与 `promptVersion` 服务提示词页面。保存通过 `Prompts.save` 进行并通知主会话。`modelRetry` 暴露模型预算重试状态。
+`AgentHost`（`src/executor/host.ts`）是回合宿主端口：`start`、`health`、`dispatch`、`collect`、`stop`。本仓库的实现是 VS Code 语言模型桥（`src/executor/bridge.ts` + `extension/dsh-lm-bridge`），它把提示词与工具交给 `vscode.lm` 并回传文本、工具调用与用量。`tests/fixtures/host.ts` 提供同一接口的测试替身。
+
+保存提示词通过 `Prompts.save` 进行并通知主会话；`modelRetry` 与预算重试随宿主一起移除，模型问题改由 `models` 健康条目呈现。
 
 ### 粘合层
 
@@ -254,8 +260,8 @@ flowchart TB
 
 ## 依赖规则
 
-- **显式、窄依赖。** 每个类接收一个命名其所用内容的接口，多数是其他类的 `Pick` 类型：核心类使用 `ExecutorHost`、`AssessorHost`、`SessionsHost`、`SettingsHost`、`SetupHost`、`PassesHost` 与 `OutboxHost`，粘合层使用 `HttpHost`、`MainToolsHost`、`ExecutorToolsHost`、`ResourceHost`、`LinkHost` 与 `SourceContextDeps`，引擎则以调用它的角色的 `Pick` 形式出现。运行时只在这样的接口之后传递自身。来源插件注入 `orchestrator` 服务，其类型命名为 `SourceHost`：注册表与 `context(kind)`；其 kind 的代码只看到自己的 `SourceContext`。
-- **什么可以导入什么。** `src/core` 除 Node 的哈希外不导入自身之外的内容，也不做 I/O。`src/sources` 不导入 `src/app` 的任何内容。面板只从宿主侧导入类型，以及 `src/admission.ts`、`src/limits.ts`、`src/setup.ts`、`src/navigation.ts`、`src/sources/host.ts`、`src/core/errors.ts`、`src/core/reasons.ts` 的纯值和 `src/app/api.ts` 的过滤列表。
+- **显式、窄依赖。** 每个类接收一个命名其所用内容的接口，多数是其他类的 `Pick` 类型：核心类使用 `ExecutorHost`、`AssessorHost`、`MainSessionHost`、`SettingsHost`、`SetupHost`、`PassesHost` 与 `OutboxHost`，粘合层使用 `HttpHost`、`MainToolsHost`、`ExecutorToolsHost`、`ResourceHost`、`LinkHost` 与 `SourceContextDeps`，引擎则以调用它的角色的 `Pick` 形式出现。运行时只在这样的接口之后传递自身。来源插件注入 `orchestrator` 服务，其类型命名为 `SourceHost`：注册表与 `context(kind)`；其 kind 的代码只看到自己的 `SourceContext`。
+- **什么可以导入什么。** `src/core` 除 Node 的哈希外不导入自身之外的内容，也不做 I/O。`src/sources` 不导入 `src/app` 的任何内容。面板只从宿主侧导入类型，以及 `src/admission.ts`、`src/limits.ts`、`src/setup.ts`、`src/sources/host.ts`、`src/core/errors.ts`、`src/core/reasons.ts` 的纯值和 `src/app/api.ts` 的过滤列表。
 - **每种状态一个写入者。** 每种状态只有一个写入者，其他方读取它或询问该写入者。
 
   | 状态 | 写入者 |
@@ -266,7 +272,7 @@ flowchart TB
   | 提示词版本 | Prompts |
   | 副作用行 | Effects |
   | 发件箱回执 | 发件箱：引擎的消息与来源的 `notify` 经由其 `send`，其 `reply` 副作用标记它们 |
-  | 健康条目 | 在 `HealthBoard`（`src/infra/health.ts`）上认领它的部件，第二次认领会遭拒绝：`runtime` 为运行时（轮次通过它上报），`evals` 为每次轮次后的运行时，`models` 为会话，每种副作用 kind 为 Effects，`worker` 为 DshExecutor，来源 kind 的条目为该 kind 的来源对应的 SourceRegistry，`sync:<id>` 为设置 |
+  | 健康条目 | 在 `HealthBoard`（`src/infra/health.ts`）上认领它的部件，第二次认领会遭拒绝：`runtime` 为运行时（轮次通过它上报），`evals` 为每次轮次后的运行时，`models` 为主会话，每种副作用 kind 为 Effects，`worker` 为 HostExecutor，来源 kind 的条目为该 kind 的来源对应的 SourceRegistry，`sync:<id>` 为设置 |
 
   来源只通过 `SourceContext.tickets.bindThread` 与 `threadClosed` 更改工单，这两个方法调用引擎。
 - **请求与事实。** 请求某物的方法用祈使动词及其宾语命名，例如 `stopTicket` 或 `bindThread`，且可以被拒绝；记录适配器所做之事的方法用过去时命名，例如 `assignmentStarted` 或 `deliveryFailed`。每个宿主以其需要的角色类型接收引擎。
@@ -328,8 +334,8 @@ flowchart TB
 | `src/app/prompts.ts` | 提示词、`builtInParts`（团队可覆盖的内置部分）以及 `promptParts`（角色提示词各节的顺序） |
 | `src/app/context.ts` | 内置提示词文本，从 `prompts/` 读取，以及会话读取的记录条目 |
 | `src/app/skill-files.ts` | 打包文本：`promptFile`（把文件每行一句连接成段落）与内置技能 |
-| `src/app/main-session.ts` | `MainSession`：用 `AgentHost` 回合维持的主会话（去 DSH 版 `Sessions`）：`prompt` 按 `requestId` 去重、派发即返回、回合按会话串行回收；`inject` 通知缓存到下一回合前缀；`status`/`promptVersion`/`mayRead` 与 `Models 健康` 语义与原实现一致 |
-| `src/app/retry-health.ts` | `RetryHealth`：哪些会话在等待模型预算重试，供 `models` 健康条目使用 |
+| `src/app/main-session.ts` | `MainSession`：经 `AgentHost` 回合维持的主会话：`prompt` 按 `requestId` 去重、派发即返回、回合按会话串行回收；`notify` 缓存到下一回合前缀；`status`/`promptVersion`/`mayRead` 服务面板与设置页，回合失败上报 `models` 健康 |
+| `src/app/retry-health.ts` | `RetryHealth`：记录哪些回合在等待重试，供 `models` 健康条目使用 |
 | `src/app/assessment.ts` | MasterAssessor、评估 schema，以及 `orchestrator_eval` 回答的窗口 |
 | `src/app/execution-environment.ts` | 执行环境：其变量、工单的值、目录根，以及提示词各节的文本行，`src/app/prompts.ts` 会把它们填入其模板 |
 | `src/app/source-context.ts` | `sourceContextOf`：每个来源 kind 的 `SourceContext` |
@@ -352,7 +358,7 @@ flowchart TB
 | `src/app/views/settings.ts` | 设置页视图：每个块及其修订、每个来源的设置及其 kind 的表单，以及执行环境 |
 | `src/app/views/overview.ts` | 概览：需要人的工单、问题、最后一天的流转与执行器负载 |
 | `src/executor/agent.ts` | `HostExecutor`：worker 执行器，经 `AgentHost` 执行回合；工具面由 `workspaceTools` 与编排工具组成，经回合工具回调执行，启动与投递走持久 effect 队列，同一工单串行，失败按临时/永久分流并指数退避；已由 `Runtime` 接线 |
-| `src/executor/messages.ts` | 工单与 trigger 的消息格式化、执行元数据与临时失败判定；从原 DSH 执行器拆出，不依赖任何宿主 |
+| `src/executor/messages.ts` | 工单与 trigger 的消息格式化、执行元数据与临时失败判定；从执行器拆出，不依赖任何宿主 |
 | `src/executor/slots.ts` | `WorkerSlots`：worker 并发槽位的占用、预留与释放，上限来自执行的 `maxWorkers` |
 | `src/executor/host.ts` | 宿主与 agent 执行的抽象：`AgentHost` 的启动、健康检查、派发回合、结果回收与停止，以及回合请求、回执、结果与 MCP 服务器的类型。Runtime 只依赖它，换宿主不影响领域规则 |
 | `src/executor/copilot.ts` | `CopilotCliHost`：用 `copilot` CLI 的非交互模式运行真实回合，提示词经 stdin 送达，`parseTurnOutput` 解析文本与 JSONL 输出；Windows 上 `.cmd` 垫片无法以 `shell: false` 启动时记为健康错误，而不是抛出 |
@@ -364,7 +370,7 @@ flowchart TB
 | `src/infra/environment.ts` | 智能体的进程环境：命令 shim、git 配置与凭证助手、`runAsWorker`，以及环境与工单目录的检查 |
 | `src/infra/logger.ts` | `Logger` 的最小接口与 `consoleLogger`/`redactingLogger`：`%s` 占位符日志，并在写出前脱敏 `Bearer`、`token=`、`gh?_…` 等凭据 |
 | `src/infra/paths.ts` | 包的根目录，即打包文件所在位置 |
-| `src/infra/subprocess.ts` | `SubprocessRuntime` 的本地 `node:child_process` 实现：argv、cwd、env 覆盖、有上限的输出收集与中止宽限，替代 DSH 的 subprocess 服务 |
+| `src/infra/subprocess.ts` | `SubprocessRuntime` 的本地 `node:child_process` 实现：argv、cwd、env 覆盖、有上限的输出收集与中止宽限，替代宿主提供的子进程服务 |
 | `src/infra/text.ts` | 字数统计与聊天消息上限、`fill` 与 `sameName` |
 | `src/infra/health.ts` | `HealthBoard`，每个部件的健康条目，各自由其唯一写入者认领 |
 | `src/sources/kind.ts` | `SourceKind` 协议 |
@@ -394,9 +400,9 @@ flowchart TB
 | `src/client/settings-kit.tsx` | 设置块的构件：阶段分组共享的设置、`useBlockDraft`、字段（其中包括来源 kind 的字段），以及保存历史 |
 | `src/client/prompts.tsx` | 提示词设置：页面拥有它读取的视图，编辑器拥有草稿，编辑、完整提示词与历史标签页由它们渲染；内置部分的编辑器显示已变更的默认值，并保留或丢弃覆盖 |
 | `src/client/prompt-config.ts` | 按节划分的提示词配置、团队各节、技能名称、内置部分（`part/<key>`，带 `withOverride`）与提示词视图给出的部分标题，以及完整提示词的逐行差异，均以纯函数实现 |
-| `src/client/deployment.tsx` | 部署设置，也显示在 DeepSeek Harness 的插件管理器中 |
+| `src/client/deployment.tsx` | 部署页：展示机器配置解析出的值（只读）、setup 问题与「重新检查」，以及面板侧可改的限额 |
 | `src/client/draft.tsx` | 设置草稿：`draftReducer`、其状态及其与更新已保存修订的合并、`saveBarText`（保存栏的文本）以及保存栏 |
-| `src/client/controls.tsx` | DeepSeek Harness 控件的本地副本，遵循其标记、键盘行为与设计令牌，因为 bundle 不导入 `@deepseek-ai/dsh-client-ui-primitives`；它们不读取上下文 |
+| `src/client/controls.tsx` | 面板自带的基础控件（按钮、开关、输入、选择等）：统一标记、键盘行为与设计令牌，不读取面板上下文，因此可被任意页面复用 |
 | `src/client/widgets.tsx` | 页面共享的小组件，读取面板上下文：分节、页头、加载状态、时间、链接、需确认的操作、setup 检查与 Markdown |
 | `src/client/rows.tsx` | 页面共享的行：工单、线程与决策，线程的 chip，以及连续自动消息的折叠 |
 | `src/client/markdown.ts` | 汇报与问题的 Markdown 子集，以及消息中的裸地址，作为块与内联部分 |
@@ -405,7 +411,7 @@ flowchart TB
 | `src/client/locales.ts` | 两种语言的全部文案，以及 [001 领域模型](001-domain.md) 的术语表 |
 | `src/client/client.css`、`css.d.ts` | 面板样式表，以文本加载 |
 
-`src/sources/github.ts` 与 `src/sources/feishu.ts` 也是两个来源插件的入口，由 `tsdown.config.ts` 构建，并在 `package.json` 中导出为 `./github-watch` 与 `./feishu-watch`。bundle 的 `cordis.patch.yml` 插入这三个插件，其中飞书处于禁用状态。
+`src/sources/github.ts` 与 `src/sources/feishu.ts` 也是两个来源插件的入口，由 `tsdown.config.ts` 构建，并在 `package.json` 中导出为 `./github-watch` 与 `./feishu-watch`。`Runtime` 在进程内把它们与面板一起注册，飞书默认处于禁用状态。
 
 ## 测试
 
@@ -444,8 +450,8 @@ flowchart TB
 | `tests/model-surface.spec.ts` | 模型读取的一切：工具、提示词、技能与输入，对照工具 schema、执行环境与术语表检查，并受每角色大小预算约束 |
 | `tests/mcp.spec.ts` | MCP 表面：与 `main.ts` 逐工具相等、握手、列表、读取与回环路由、参数拒绝后可继续服务、过期 revision 被拒，以及保持为健康错误的端口占用 |
 | `tests/deployment.spec.ts`、`tests/environment.spec.ts`、`tests/index.spec.ts` | 插件配置与 setup、智能体的进程环境、插件入口 |
-| `tests/service-script.spec.ts` | `scripts/dsh-superagent` 对假 `ps`、`tmux` 与 `dsh` 的测试 |
-| `tests/controls.spec.tsx` | 本地控件，以及面板的导入（无循环、不引用 DSH 包） |
+| `tests/service-script.spec.ts` | `scripts/dsh-superagent` 对假 `ps`、`tmux` 与 `dsh` 的测试（POSIX 专属，Windows 上跳过） |
+| `tests/controls.spec.tsx` | 本地控件，以及面板的导入（无循环、不引用已移除的宿主包） |
 | `tests/panel-overview.spec.tsx`、`panel-source.spec.tsx`、`panel-trigger.spec.tsx`、`panel-eval.spec.tsx`、`panel-execution.spec.tsx` | 面板的每个页面，对按路由应答的假管理 API |
 | `tests/panel-settings.spec.tsx`、`panel-prompts.spec.tsx`、`panel-deployment.spec.tsx`、`panel-panel.spec.tsx` | 设置分组、草稿与历史、提示词、部署页面，以及面板的搜索、术语表与路由记忆 |
 | `tests/draft.spec.ts`、`tests/prompt-config.spec.ts`、`tests/markdown.spec.ts`、`tests/marks.spec.ts` | 草稿状态、合并与保存栏文本；按节划分的提示词配置与逐行差异；Markdown 子集及其链接；视图分类的每个状态的标记 |
@@ -453,7 +459,7 @@ flowchart TB
 | `tests/class-docs.spec.ts` | `src` 中每个类前都有 JSDoc 块 |
 | `tests/docs.spec.ts` | 编号文档只链接更早的文档、每个本地链接可解析、没有文档含合并冲突标记，以及本文档的表格列出每个模块与每个测试 |
 
-`tests/fixtures/` 保存多个测试共享的内容：`host.ts`，一个模拟的 DeepSeek Harness 宿主；`panel-server.ts` 与 `panel.tsx`，假管理 API 与页面周围的面板；`deployment.ts`，一个已解析的部署；`git.ts`，测试启动的每个 git 的环境，不指名任何仓库；以及 `async.ts`。
+`tests/fixtures/` 保存多个测试共享的内容：`host.ts`，一个实现 `AgentHost` 的测试替身，附带 `startRuntime`（起真实 Runtime 与回环 HTTP）；`panel-server.ts` 与 `panel.tsx`，假管理 API 与页面周围的面板；`deployment.ts`，一个已解析的部署；`git.ts`，测试启动的每个 git 的环境，不指名任何仓库；以及 `async.ts`。
 
 ## 持久化
 
@@ -512,15 +518,13 @@ flowchart TB
 
 设置保存选择 `policy`、`eval`、`executor`、`pause` 或 `source`；最后一个还要指名其来源 id。带 `preview: true` 的提示词保存只组合文本而不保存。
 
-主会话还有 DeepSeek Harness 的 `skill`、`bash`、`read`、`read_image`、`job_output`、`job_list` 与 `job_kill`。避免读取代码是一条提示词规则，而不是工具限制。
+主会话的工具面就是上表这 14 个，没有额外的宿主内置工具；worker 的 6 个见下一节。回合由 `AgentHost` 执行，工具经回合的 `callTool` 回调在同一进程内调用。
 
-### 预设与等待限制
+### 回合工具与预算
 
-新的主会话使用 `dsh-superagent-router`（`ROUTER_PRESET`）。shell 命令与作业等待在 5 秒后返回。若 Web UI 在首个回合前选择了其他预设，`Sessions` 会恢复此预设，或为 worker 恢复 `WORKER_PRESET`。
+工具不再由宿主按会话类型注入白名单，也不再区分 preset：主会话拿 `src/app/tools/main.ts` 的 14 个，worker 拿 `src/app/tools/executor.ts` 的 5 个自有工具加共享的 `orchestrator_read`。`Runtime.tools(ticket?)` 每次按角色与工单现场组装，工单结束后工具调用会被引擎拒绝。
 
-`src/app/sessions.ts` 中的 `noWait` 守卫拒绝在命令位置调用 `sleep` 的主会话 shell 命令、超过 30 秒的 shell `timeoutMs`，以及超过 5 秒的 `job_output` 等待。汇报与作业结果会自动到达，因此等待只会延迟传入的候选。
-
-`standard` 上现有的主会话也需要为前台命令与作业等待显式超时；否则该预设的默认值会分别让步骤保持 60 秒与 30 秒。宿主通过 `presetForSession` 确定当前预设，回退到会话投影或页头，若无法读取该值则假定为 `standard`。
+主会话的 shell 守卫、作业等待上限与 preset 恢复随宿主移除（能力终止）：主会话不再有 shell 或后台作业，等待传入候选的唯一代价就是推迟下一回合。
 
 ### 执行器工具
 
@@ -537,7 +541,7 @@ flowchart TB
 
 如果另一个工单仍拥有该消息，或本工单从未拥有它，交回会返回 `queued: false`。例如，机器人消息独立地进入评估。
 
-worker 预设在 `cordis.patch.yml` 中定义，并通过 `WORKER_PRESET` 选择。`src/app/sessions.ts` 中的 `WORK_TOOLS` 保留可用的文件、搜索、shell、作业、web、技能、todo 与子智能体工具。worker 不会收到用于向人询问或展示、更改配置、在 worker 槽位之外调度工作、启动或向其他会话发消息，或编辑外部文档的工具。工单结束后，工具调用会被拒绝。
+worker 的工作区工具由 `src/executor/workspace-tools.ts` 提供（`read_file`、`write_file`、`edit_file`、`list_files`、`search`、`run_command`），全部限定在工单目录内，越界拒绝、输出有上限、命令超时后终止整棵进程树。worker 不会收到更改配置、在 worker 槽位之外调度工作、向其他会话发消息或编辑外部文档的工具。工单结束后，工具调用会被拒绝。
 
 ### 结果形状与评估上下文
 
@@ -613,15 +617,15 @@ worker 内联接收任务分派与输入。第一条消息包括标题、最多 
 
 ## 配置重载
 
-除 `stateDir` 外，每个插件配置键都可以在运行时变更。面板的部署设置与 DeepSeek Harness 的插件管理器通过 DeepSeek Harness 的配置表单编辑它们；宿主写入 `cordis.patch.yml` 并原地更新值，dsh-superagent 在使用每个限制时读取它，因此变更无需重启即可生效。
+`stateDir`、`panelPort`、`host` 与 `mcpPort` 属于进程级配置，改后需要重启；其余限额存在设置库里，由面板的部署页与 `orchestrator_settings_save` 修改，每次使用时读取，因此无需重启即可生效。
 
-一次更改 setup 读取的来源字段（例如账号的 CLI）的设置保存，以及 setup 等待期间的任何保存，都会重启 dsh-superagent。DeepSeek Harness 的设置服务在该重启期间不提供该条目，因此在自身重启后，dsh-superagent 请求它再次读取该条目，打开的表单重新可编辑。
+一次更改 setup 读取的来源字段（例如账号的 CLI）的设置保存，以及 setup 等待期间的任何保存，都会重新运行 setup；面板在期间显示进度，结束后恢复可编辑。
 
 ## 对照真实数据审查变更
 
-把 `DSH_HOME` 指向临时目录，并在那里创建新配置。从备份复制数据库，禁用每个来源、暂停处理并移除主会话 id。为 GitHub 与飞书 CLI 提供只读替身。
+写一份指向临时 `stateDir` 的机器配置并从那里启动。从备份复制数据库，禁用每个来源、暂停处理并移除主会话 id。为 GitHub 与飞书 CLI 提供只读替身。
 
 ## 待解问题
 
 - 信任：哪些触发字段可信，例如来源的参与者和线程成员关系，哪些不可信，例如正文与引用。
-- 部署隔离：智能体的配置位于其自己固定版本的 DeepSeek Harness 安装上，因此其他地方升级 DeepSeek Harness 不会破坏它。
+- 部署隔离：智能体作为独立进程运行在自己的 `stateDir` 与机器配置上，因此升级 VS Code 或其他工具不会改变它的数据；但语言模型桥依赖 VS Code，宿主侧的可用性仍是单点。

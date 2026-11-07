@@ -103,7 +103,7 @@ export class HostExecutor implements Executor {
   }
   /** 入队一个 `delivery` effect。 */
   deliver(ticket: Ticket, _assignment: Assignment): void { this.host.effects.enqueue('delivery', ticket.id, { ticketId: ticket.id }) }
-  /** 没有需要订阅的外部事件；保留该方法以与 `DshExecutor` 的调用点一致。 */
+  /** 没有需要订阅的外部事件；回合由本类自己派发，该方法仅为满足 `Executor` 端口。 */
   install(): void {}
   /** 宿主重启后核对未结工单：运行中的 assignment 标记为中断，待启动的重新入队。 */
   resume(): void {

@@ -6,6 +6,12 @@
 > 状态：执行中（批次 1/5 起） | 语言：简体中文 | 编码：UTF-8（无 BOM）
 > **支持环境（2026-11-06 用户确认）：只支持并验证 Windows + VS Code Stable 的官方 Copilot / Copilot Chat。** Linux、macOS、WSL、其它编辑器/宿主、VS Code Insiders（已卸载）与 Copilot CLI（仅前置证据）均不在支持与验收范围；POSIX 专属对象（`#!/bin/sh` worker shim、systemd、POSIX 权限位、`scripts/dsh-superagent`）一律标为范围外，不再计入待办。详见 `AGENTS.md` §2.1。
 
+## 0.0 后置修订：全量去 DSH（2026-11-07）
+
+用户已选定**全量去 DSH**（方案 B）：删除 `@deepseek-ai/*` 依赖、`cordis.patch.yml`、DSH preset 与内嵌面板，`Runtime` 改为普通类并注入 `AgentHost`，面板改为自建回环网页，主会话由 `MainSession` 承担。执行顺序 B1（Runtime + MainSession）→ B2（测试迁移与删除证据）→ B3（DSH 清算）→ B4（持久队列、读游标与 `unread` 摘要）→ B5（真实端到端与生产收口），每片 `pnpm check` → 提交 → 推送。
+
+因此本文件 §5 的任务表与 §7 验收矩阵中凡以 DSH 宿主 / bundle / preset 为对象的事项，以 B1–B5 的实际结果为准；编号文档侧的删除证据见 `docs/009` §10 与 `docs/010` §10。
+
 ## 0. 修订说明（2026-11-06）
 
 **核对依据**：`docs/00-phase1-agent-plugins-migration.md`、本仓库 `main@8c32a9d` 基线与 `feat/phase1-agent-plugins` 分支当前代码、官方 1.0.0 两份 schema（已下载实读）、`AGENTS.md` 的约束基线。

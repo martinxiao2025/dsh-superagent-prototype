@@ -17,16 +17,16 @@
 
 在当前检出目录中执行一次，结果只留给自己看：
 
-```sh
-node -v; pnpm -v; git --version; tmux -V; python3 --version; gh --version | head -1; dsh --version
+```powershell
+node -v; pnpm -v; git --version; gh --version | Select-Object -First 1
 gh api user --jq .login
-command -v lark-cli
-grep -l -E 'id: dsh-superagent\b' "${DSH_HOME:-$HOME/.dsh}"/profiles/*/cordis.patch.yml 2>/dev/null
+Get-Command lark-cli -ErrorAction SilentlyContinue
+Test-Path "$HOME\.dsh-superagent\config.json"
 ```
 
-- **前置条件：** Node.js 22.19+ 或 24+、pnpm、git 2.32+、tmux、Python 3.8+、GitHub CLI 2.48+，以及版本落在 `package.json` 的 `engines.dsh` 范围内的 DSH。缺失的项会成为计划里的一条，而不是一个问题。DSH 还需要一个模型提供方；如果运营者从未带模型运行过 DSH，那么配置模型提供方是一个运营者步骤。
+- **前置条件：** Node.js 22.19+ 或 24+、pnpm、git 2.32+、GitHub CLI 2.48+，以及已登录可用语言模型的 VS Code Stable（回合经 `extension/dsh-lm-bridge` 调用 `vscode.lm`）。缺失的项会成为计划里的一条，而不是一个问题。若 VS Code 从未选过模型，选择模型是一个运营者步骤。
 - **运营者登录名：** `gh api user` 的结果是运营者本人的 GitHub 登录名，用作第 5 个问题的推荐值。
-- **已存在的 profile：** 若某个 profile 中已有 `dsh-superagent` 条目，说明此前安装过：询问是否继续使用它、是否保留其配置，并阅读 `docs/006-deployment.md` 的「升级」一节。
+- **已存在的配置：** 若 `~/.dsh-superagent/config.json` 或 `stateDir` 下的数据库已存在，说明此前安装过：询问是否继续使用它、是否保留其数据，并阅读 `docs/006-deployment.md` 的「升级」一节。
 
 ## 2. 提问
 
@@ -52,8 +52,8 @@ grep -l -E 'id: dsh-superagent\b' "${DSH_HOME:-$HOME/.dsh}"/profiles/*/cordis.pa
 
 对于已有良好默认值的项不要提问，改为在计划中列出：
 
-- profile `superagent`，它是 DSH Web profile 的一份副本，与运营者日常使用的 profile 分开保存，这样它重启时不会关掉运营者的会话；端口 `3082`；状态目录 `<home>/.dsh/state/superagent`，使用绝对路径；
-- 从运营者自己的 profile 发出的每小时检查，在 dsh-superagent 未运行时修复它；
+- 机器配置 `~/.dsh-superagent/config.json`：面板端口 `3082`、MCP 端口 `3083`，状态目录 `<home>/.dsh-superagent`，使用绝对路径；
+- 一个独立于代理进程的每小时检查（计划任务或运营者自己的会话语义），在 dsh-superagent 未运行时按 `docs/006-deployment.md` 的「每小时检查」修复它；
 - 分支前缀 `agent/`；
 - 接受模式 `observe`，它只记录主动式工作而不实际执行，以及默认规则和默认提示词段落；
 - 如果使用飞书：机器人只读取 @ 提及，并且开启私聊消息。
@@ -65,15 +65,15 @@ grep -l -E 'id: dsh-superagent\b' "${DSH_HOME:-$HOME/.dsh}"/profiles/*/cordis.pa
 ## 4. 执行
 
 1. **先做运营者步骤。** 阅读 `docs/006-deployment.md` 的「账号」一节，自己编写 CLI 包装脚本，然后用一条消息说明只有运营者能做的事：创建代理账号；若启用自动合并，登录一个用于开启自动合并的账号的 CLI；以代理账号身份接受仓库邀请；对每个包装脚本执行 `auth login`；如果使用飞书，创建并发布机器人应用，并用它的密钥执行 `config init` 命令。等运营者说已完成，再用 `<wrapper> api user --jq .login` 逐个核对登录。
-2. **安装并启动。** 按照 `docs/006-deployment.md` 的「安装」「机器配置」「启动与停止」三节操作。跳过本仓库的 `git clone`：你已经在它的检出目录中。如果第 7 个问题要求新建克隆，就克隆第 2 个问题里的仓库。若已有 profile，跳过 `dsh superagent --from-default-profile` 命令，因为它会替换该 profile 并删除其中的 `cordis.patch.yml`；改为编辑那个文件，而不是替换它。
-3. **设置。** 通过 `docs/006-deployment.md` 中的管理 API 保存设置，顺序如下：`github` 来源；如果使用飞书，`feishu` 来源；带允许名单的 `policy` 配置块（飞书要先借助机器人的 CLI 查出群 id）；以及 `executor` 配置块，其准备命令来自第 7 个问题的回答。然后保存提示词，把第 8 个问题的提交身份和第 9 个问题的自动合并答案写进「交付要求」。若一次保存返回 `restarting: true`，说明 dsh-superagent 正在重启：在下一次请求之前，要等到 `scripts/dsh-superagent status` 不再以退出码 1 结束，并从 `GET settings` 重新读取修订号。
+2. **安装并启动。** 按照 `docs/006-deployment.md` 的「安装」「机器配置」「启动与停止」三节操作。跳过本仓库的 `git clone`：你已经在它的检出目录中。如果第 7 个问题要求新建克隆，就克隆第 2 个问题里的仓库。若配置文件已存在，只补缺失的键，不要覆盖已有值；`stateDir` 指向的目录会决定数据落在哪里。
+3. **设置。** 通过 `docs/006-deployment.md` 中的管理 API 保存设置，顺序如下：`github` 来源；如果使用飞书，`feishu` 来源；带允许名单的 `policy` 配置块（飞书要先借助机器人的 CLI 查出群 id）；以及 `executor` 配置块，其准备命令来自第 7 个问题的回答。然后保存提示词，把第 8 个问题的提交身份和第 9 个问题的自动合并答案写进「交付要求」。若一次保存返回 `restarting: true`，说明 dsh-superagent 正在重启：在下一次请求之前，要等到 `pwsh -NoProfile -File scripts/dsh-superagent-windows.ps1 -Action status` 以退出码 0 结束，并从 `GET settings` 重新读取修订号。
 4. **失败处理。** 被拒绝的保存会在响应体中给出安装问题名称。在 `docs/006-deployment.md` 的「故障排查」表中找到它，修复后继续。只向运营者询问你自己无法修复的部分。
 
 ## 5. 验证与交付
 
-`scripts/dsh-superagent status` 以退出码 0 结束且没有安装问题。如果你在运营者自己的 DSH profile 中运行，就用你的调度工具创建 `docs/006-deployment.md` 中「每小时检查」一节的检查；否则把它的提示词交给运营者，由其在那边调度。然后发送一条消息，控制在 300 词以内：
+`pwsh -NoProfile -File scripts/dsh-superagent-windows.ps1 -Action status` 以退出码 0 结束且没有安装问题。用你的调度工具创建 `docs/006-deployment.md` 中「每小时检查」一节的检查，或把它的提示词交给运营者，由其在那边调度。然后发送一条消息，控制在 300 词以内：
 
-- 面板 URL，并说明侧边栏中的 **Superagent** 条目就是要看的地方。
+- 面板 URL（默认 `http://127.0.0.1:3082`），并说明打开它就是全部要看的地方。
 - 如何试用：用允许名单上的账号，在仓库的某个 issue 上评论 `@<agent login> <request>`。大约一分钟内概览页就会出现一个工单。
 - 给运营者的三条规则，出自 `docs/000-philosophy.md` 的「责任」一节：窄范围起步、为更少噪音而调优、为代理说的话负责。
 - 更多内容在哪里读：`docs/` 中按顺序排列的编号文档。

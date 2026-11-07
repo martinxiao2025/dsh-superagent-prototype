@@ -33,7 +33,6 @@
 模块导入下列步骤所用的内容：
 
 ```ts
-import type { Context } from '@deepseek-ai/cordis'
 import { setTimeout as delay } from 'node:timers/promises'
 import { z } from 'zod'
 import { key, threadKey, type OutboundMessage, type Trigger } from '../core/index.ts'
@@ -252,22 +251,26 @@ export async function sendWebhook(host: Pick<SourceContext, 'commands'>, message
 ### 9. 插件入口及其循环
 
 ```ts
-export const name = 'dsh-superagent-webhook'
-export const inject = ['orchestrator']
-export function apply(ctx: Context): void {
-  ctx.effect(() => ctx.orchestrator.sources.register(webhookKind), 'webhook: source kind')
-  ctx.effect(() => {
-    const source = sourceContext(ctx.orchestrator, webhookKind)
-    const controller = new AbortController()
-    // DSH ends its process on an unhandled rejection, so a failure that escapes the loop becomes the Source's health.
-    const running = watch(source, controller.signal)
-      .catch((error: unknown) => { source.report('webhook', { state: 'error', detail: String(error) }) })
-    return async () => { controller.abort(); await running }
-  })
+export async function startWebhook(host: SourceHost, lifetime: AbortSignal): Promise<void> {
+  const registered = host.sources.register(webhookKind)
+  const controller = new AbortController()
+  const stop = (): void => controller.abort()
+  lifetime.addEventListener('abort', stop)
+  let escaped = false
+  try {
+    await watch(sourceContext(host, webhookKind), controller.signal).catch((error: unknown) => {
+      // 逃逸出循环的失败保留为来源的健康条目，而不是吞掉。
+      escaped = true
+      sourceContext(host, webhookKind).report('webhook', { state: 'error', detail: String(error) })
+    })
+  } finally {
+    lifetime.removeEventListener('abort', stop)
+    if (!escaped) registered()
+  }
 }
 ```
 
-插件注入 `orchestrator`。它的第一个 effect 注册类型，并在销毁时注销。第二个用 `SourceContext` 运行轮询循环。销毁会中止循环并等待其完成，包括在应用停止或重启期间。
+与 `startGithub`、`startFeishu` 形态一致：注册类型、随 `lifetime` 中止循环、在 `finally` 里注销。`Runtime` 在 setup 完成后与另外两个来源一起启动它，进程停止时 `lifetime` 中止，循环收尾。
 
 ```ts
 async function watch(ctx: SourceContext, signal: AbortSignal): Promise<void> {
@@ -339,15 +342,7 @@ entry: { index: 'src/index.ts', 'github-watch': 'src/sources/github.ts', 'feishu
   'webhook-watch': 'src/sources/webhook.ts' },
 ```
 
-然后通过把 `"./webhook-watch": "./lib/webhook-watch.js"` 加到 `exports`，在 `package.json` 中导出构建产物，并把插件加进 bundle 的 `cordis.patch.yml` 的 `insert` 列表，处于禁用状态，就像飞书那样：
-
-```yaml
-    - id: dsh-superagent-webhook
-      name: dsh-superagent/webhook-watch
-      disabled: true
-```
-
-在某个 profile 的 `cordis.patch.yml` 中用 `id: dsh-superagent-webhook` 与 `disabled: false` 启用该插件。构建并重启。新来源会出现在来源设置中，以及 **Eval → On each Source** 下。
+然后通过把 `"./webhook-watch": "./lib/webhook-watch.js"` 加到 `exports`，在 `package.json` 中导出构建产物，并在 `src/app/runtime.ts` 启动另外两个来源的那一行旁边加上 `void startWebhook(this, this.lifetime)`。构建并重启。新来源会出现在来源设置中，以及 **Eval → On each Source** 下，默认禁用，由设置里的开关启用。
 
 把它的模块与 spec 加入 [007 架构](007-architecture.md) 的模块表与测试表。`tests/docs.spec.ts` 会检查两张索引是否完整。
 
@@ -419,6 +414,6 @@ it('takes in what the queue holds after the cursor, once, and moves the cursor a
 6. 如果来源能读取线程，就为评估提供其线程上下文。
 7. 用 `allowed` 与准入行给它策略的一部分。
 8. 注册其执行环境变量。
-9. 编写插件入口与循环：等待安装、跟随开关、在 `receive` 之后推进游标、按条目保存错误、上报健康并在中止时停止；在 `KV` 中命名游标。
-10. 添加构建入口、导出与 `cordis.patch.yml` 的 insert，并在 007 的两个表中列出该模块及其 spec。
+9. 编写 `start<Kind>` 入口与循环：等待安装、跟随开关、在 `receive` 之后推进游标、按条目保存错误、上报健康并在中止时停止；在 `KV` 中命名游标。
+10. 添加构建入口与 `exports`，在 `Runtime` 里启动它，并在 007 的两个表中列出该模块及其 spec。
 11. 参照 `tests/sources.spec.ts` 测试其他来源的方式来测试它。
