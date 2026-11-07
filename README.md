@@ -160,7 +160,7 @@ node scripts/validate-plugin.mjs [--dir <path>]   # 单独校验某个插件目�
 
 `plugin:check` 依赖先构建：它同时校验 `plugin/`（1 个技能）与 `lib/plugin/`（3 个技能）。校验覆盖官方 schema、`$schema` 版本一致性、`plugin.version` 与 `package.json` 一致、MCP URL 必须是回环 `http://…/mcp`、技能目录结构与 frontmatter，以及所有文本文件的 UTF-8（无 BOM）；任一项失败退出码为 1 并打印原因。
 
-当前基线（2026-11-07，Windows）：`pnpm check` 退出 0，全量测试 **983 通过 / 12 跳过 / 0 失败**（55 个测试文件）。跳过项分两类：11 项源于被测对象本身是 POSIX 专属实现（产品生成的 `#!/bin/sh` worker shim、飞书消费者的假 CLI、一处 POSIX 权限位断言），在 Windows 上**范围外**，测试文件内用 `skipIf(platform)` 写明原因；1 项是 `tests/e2e-bridge.spec.ts` 在找不到 VS Code 语言模型桥时整组跳过。两者都不计入通过，也不计入剩余待办。
+当前基线（2026-11-07，Windows）：`pnpm check` 退出 0，全量测试 **983 通过 / 12 跳过 / 0 失败**（55 个测试文件）；本机有真实的 VS Code 语言模型桥时，`tests/e2e-bridge.spec.ts` 会实跑，结果是 **984 通过 / 11 跳过 / 0 失败**。跳过项分两类：11 项源于被测对象本身是 POSIX 专属实现（产品生成的 `#!/bin/sh` worker shim、飞书消费者的假 CLI、一处 POSIX 权限位断言），在 Windows 上**范围外**，测试文件内用 `skipIf(platform)` 写明原因；1 项是 `tests/e2e-bridge.spec.ts` 在找不到 VS Code 语言模型桥时整组跳过。两者都不计入通过，也不计入剩余待办。
 
 ## 已知限制
 

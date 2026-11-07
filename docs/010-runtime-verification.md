@@ -164,7 +164,7 @@ copilot -p "<中文操作指令>" --plugin-dir ./lib/plugin --allow-all-tools -s
 | `tests/health.spec.ts`（旧三例） | 部分 | 逐部件健康项改为：`models` 回合失败/恢复、`reply` 重试、同名通知去重三条，断言对象改为 Runtime 实际维护的条目 |
 | `tests/panel-deployment.spec.tsx`（旧例） | 是 | 部署页改为只读展示：限制展示、禁用输入、无保存栏、setup 失败提示与重新检查 |
 
-`pnpm check` 在本批收口时为退出码 0：55 个测试文件（54 通过、1 个整组跳过）、983 通过、12 跳过、0 失败，构建与插件校验通过。这个总数已包含 §12 的真实端到端用例；2026-11-07 的清理删除了 15 项只在 POSIX 上运行的 `service-script` 用例，因此跳过数由 26 变为 12（11 项 POSIX 专属 + 1 项无桥时的 e2e 整组跳过）。
+`pnpm check` 在本批收口时为退出码 0：55 个测试文件（54 通过、1 个整组跳过）、983 通过、12 跳过、0 失败，构建与插件校验通过。2026-11-07 的清理删除了 15 项只在 POSIX 上运行的 `service-script` 用例，因此跳过数由 26 变为 12（11 项 POSIX 专属 + 1 项无桥时的 e2e 整组跳过）。当本机有真实的 VS Code 语言模型桥时，`tests/e2e-bridge.spec.ts` 会实跑，同一套断言的结果是 **984 通过 / 11 跳过 / 0 失败**（见 §14.3）。
 
 ## 11. 已知限制：图片附件
 
@@ -248,3 +248,46 @@ copilot -p "<中文操作指令>" --plugin-dir ./lib/plugin --allow-all-tools -s
 | 错误码与文案不一致 | 拒绝一律 `UserError(code, values)`，`code` 来自 `USER_ERRORS`，由 `tests/errors.spec.ts` 与各工具用例覆盖 | 无漂移 |
 | 重复的统计逻辑 | 资源页 `tickets`/`triggers` 的 `unread` 只由 `src/app/resources.ts` 的 `unread()` 计算一次，面板不二次统计 | 无需合并 |
 | 一次性抽象 | `scripts/keepalive-probe.mjs` 被 Windows 守护脚本的 `drill` 调用，不是死文件 | 保留 |
+
+## 14. B7：真机验证（Windows + VS Code Stable）
+
+环境：Windows，VS Code Stable `1.145.2`，以 `code --extensionDevelopmentPath=extension/dsh-lm-bridge` 打开的扩展开发宿主；运行时 `node lib/index.js --config <stateDir 外的 config.json>`；桥发现文件 `~/.dsh-superagent/lm-bridge.json` 记录 `model: deepseek-flash`（DeepSeek V4.1 Flash）。
+
+### 14.1 发现并修复的缺陷：面板空白页
+
+| 项目 | 内容 |
+| --- | --- |
+| 现象 | `GET /` 返回 303 字节外壳，但页面空白；`GET /main.js` 与 `/panel/main.js` 均 404，浏览器控制台报 `#root` 为空、`/@vite/client` ERR_ABORTED |
+| 根因 | `PanelServer` 的默认静态目录多了一层 `'..'`：构建产物是 `lib/index.js` + `lib/panel/main.js`，而默认值指向仓库根 `panel/`（不存在） |
+| 修复 | `src/app/panel.ts` 的构造函数改为 `join(dirname(fileURLToPath(import.meta.url)), 'panel')`，即构建产物同级的 `lib/panel` |
+| 验证 | 重建后 `GET /main.js` 返回 `200 text/javascript`、1,171,690 字节；浏览器打开 `http://127.0.0.1:3082/` 渲染出「概览 / 待处理工单 0 / 系统问题 3 / 过去 24 小时 / 执行器」等真实文案，控制台只有一条 React DevTools 提示，无报错 |
+| 真实数据 | `GET /orchestrator/api/overview` 返回真实问题列表：`github/repositoryUnset`（GitHub Source 没有指定仓库）、`no-source`、`no-allowed`，`policyVersion` 为真实哈希 |
+
+### 14.2 MCP 与 Copilot Chat 的阻塞点
+
+运行时启动日志为「正在等待 setup：GitHub Source 没有指定仓库」，`Runtime.initialize()` 在 setup 未完成时不会执行 `startMcp()`，因此 `127.0.0.1:3083/mcp` 连不上（ECONNREFUSED）。本机没有 `gh` 命令、`lark-cli auth status` 返回 `ok:false, not_configured`，无法完成真实 setup，所以**真实 Copilot Chat 窗口内的 `tools/list` 与技能可见性本轮未能验证**。插件包本身的 14 个工具、3 个技能与 `$schema` 一致性由 `tests/mcp.spec.ts`、`tests/model-surface.spec.ts`、`pnpm plugin:check` 覆盖，此前的 A4 记录见 `docs/009-copilot-plugin.md` §11。
+
+### 14.3 真实端到端重跑
+
+| 项目 | 实测 |
+| --- | --- |
+| 命令 | `pnpm test -- tests/e2e-bridge.spec.ts`（桥由真实扩展提供） |
+| 结果 | `1 passed`，28177 ms；同一次 `pnpm check` 全量 984 通过 / 11 跳过 / 0 失败（55 个测试文件） |
+| 模型 | `deepseek-flash` |
+| 流程 | 飞书提及 → 受理 → 真实回合读 `README.md` → 改 `teh` 为 `the` → 汇报 `ready` → `orchestrator_reply` 返回 `{status:"sent"}` |
+
+### 14.4 主动通知开关的真机行为
+
+验证方式：用 `127.0.0.1:3089` 的桩服务返回与面板同形的 `overview.person`，把 VS Code 用户设置里的 `dsh.superagent.notify` 置为 `true`、`dsh.superagent.panelUrl` 指向桩服务，读取扩展输出日志（`%APPDATA%\Code\User\globalStorage\dsh-superagent.dsh-lm-bridge\bridge.log`）。
+
+| 步骤 | 观测 |
+| --- | --- |
+| 打开开关 | `05:41:21 通知已开启：每 60 秒轮询 http://127.0.0.1:3089` |
+| 新增 `T-1001` | `05:42:21 通知：dsh-superagent：修复登录页的 500 错误 等待你处理` |
+| 再新增 `T-1002`/`T-1003`/`T-1004` | 各只出现一条通知行；同一批未变化的工单不重复提醒 |
+| 关闭开关 | `05:51:34 通知已关闭（dsh.superagent.notify = false），不轮询面板` |
+| 关闭后新增 `T-1005` | 等待 70 秒无任何通知行，开关关闭时确实安静 |
+| 恢复 | 用户设置已还原（两个键都已移除） |
+
+像素级证据缺失的原因：扩展开发宿主窗口以管理员权限运行且被编辑器窗口遮挡，非提权进程的 `SetForegroundWindow` 被 UIPI 拒绝，`PrintWindow` 只能取到未重绘的旧帧，因此没有拿到通知卡片的截图。通知调用的证据是扩展日志中的原文，判定与文案逻辑由 `tests/extension-notify.spec.ts` 的 5 项用例覆盖。
+
