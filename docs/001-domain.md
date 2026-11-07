@@ -1,10 +1,10 @@
-# 001 Domain model
+# 001 领域模型
 
-This document names the concepts of dsh-superagent and the rules each one keeps. The code, the tools the agents call, the panel and the other documents use these terms and no others. Following [000 Philosophy](000-philosophy.md), the model holds only concepts the work needs, and a business need becomes an attribute of one of them.
+本文为 dsh-superagent-cn 的概念命名，并给出每个概念遵守的规则。代码、智能体调用的工具、管理面板和其余文档只用这些术语。遵循 [000 哲学](000-philosophy.md)，模型只保留工作需要的概念，一项业务需求成为其中之一的属性。
 
-## Flow
+## 流转
 
-Work moves from Trigger to Eval to execution. A Source produces Triggers. A Trigger fans out as context to the Tickets subscribed to its Threads. A person's message that reached a Ticket this way stays with that Ticket; every other Trigger enters Eval, which decides whether it asks for new work. When Eval accepts, it creates a Ticket with a Mandate. An Assignment hands the Ticket to an Executor, and results go back to the Source through a Channel.
+工作从触发到评估再到执行。Source 产生触发。一个触发作为上下文扇出到订阅了其线程的工单。人的消息经由这条路到达某个工单后留在该工单；其余每个触发进入评估，由评估决定它是否请求新工作。评估接受时，它创建一个带授权的工单。派工把工单交给一个执行器，结果经渠道回到 Source。
 
 ```mermaid
 flowchart LR
@@ -18,65 +18,65 @@ flowchart LR
   K -->|Channel| S
 ```
 
-## Concepts
+## 概念
 
-Source, Thread, Eval, Mandate and Subscription form the core domain; the rest supports them.
+Source、线程、评估、授权与订阅构成核心领域；其余概念支撑它们。
 
-| Concept | Definition | Rules it keeps | Why it exists |
+| 概念 | 定义 | 遵守的规则 | 为什么存在 |
 | --- | --- | --- | --- |
-| Source | A stream of events. A Source kind is a reusable implementation; a Source instance is one configuration of a kind: whether it runs and what it listens to | Holds its read position and its own bot identity. Defines what counts as an event, including conditions that only hold over time. Drops the bot's own messages and Triggers outside what it listens to before they enter the domain. Translates each Trigger into the Threads it belongs to and the Channel addresses to reply on | A restart must not replay events |
-| Trigger | One immutable event with the Source's own metadata, such as its actor | Belongs to one or more Threads. Accepting a Trigger twice creates one Ticket | The unit of audit and of idempotence |
-| Thread | Triggers in time order; the Source defines which Triggers form one Thread | At most one Eval runs on it at a time. It may have several Tickets. It holds its Subscriptions, the running Eval and its Decision history | Gives Eval a consistent view and its context |
-| Correlation | The relation between Threads that one Trigger belongs to | Adds context; never routes | Lets Eval follow related evidence |
-| Channel | The write side of a Thread; the Source defines its addresses | A Thread may have several Channels; a Ticket holds a set of them | Acknowledgements, replies, pull requests and resolved reviews are all writes |
-| Policy | The versioned assessment rules and each Source's part: who may originate work through that Source, in that Source's own identities, how the list is synchronized, and which bots may make candidates | The Policy version covers the rules, the accept mode and the Source parts. A change that bears on a live Ticket, such as a change to a rule it was accepted under, is delivered to its Assignment; it does not revoke Mandates. Identities on different Sources are never mapped to each other | When the rules change, a running Eval must be discarded |
-| Eval | The judgement on a batch of Triggers, in two layers: gate and assessment | Input: the Trigger batch, a Thread snapshot, every Ticket on the Thread including ended ones, and the current Policy. Output: a Decision. Holds no state | Decides whether new work starts, goes on or stops |
-| Mandate | What an accept grants: the Policy version, the scope, the strength, the matched rules, the sender's identity on that Source and how the Source received the Trigger | Immutable; wider scope means a new Ticket. A Ticket's end does not end it: only a person's stop withdraws it, and a Policy that no longer holds it revokes it. Revalidated against the current Policy before an ended Ticket resumes | States why the work may be done, and how far it may go |
-| Ticket | A unit of authorized work | Only Eval creates one. Refers to its Mandate; holds its Channels and Inputs. Goes open → ended, and back to open when a person's message on one of its Threads resumes it, unless a person stopped it. Defines its own state instead of following the Executor's | Owns the execution and its reports |
-| Assignment | The binding of a Ticket to one Executor instance | A Ticket has several over time. Goes pending → running → ended independently of the Ticket. Only its final report may end the Ticket on the Executor's side | The Executor is outside the domain, but who executes must be inside it |
-| Subscription | A many-to-many relation between Tickets and Threads, held by the Thread | A matching Trigger fans out to every live subscribed Ticket, with no check of who sent it; a person's message that reaches a Ticket this way takes no Eval. A Thread an Executor follows for context reaches its Ticket the same way, but lends it no authority and does not resume it. An ended Ticket keeps its Subscriptions, including that of a pull request that closed or merged: a person's message resumes it under the same Mandate, with no Eval or Decision; messages from bots and CI do not reach it, since its Executor reads its Threads again when it resumes. A Ticket a person stopped receives nothing. The main Session attaches a Thread to an existing Ticket only when its message points at that Ticket explicitly. A person can drop every Subscription on a Thread; an Executor can drop only its own Ticket's Subscription to a Thread it finds unrelated, except the Thread its Ticket started on and a Thread a Source made it follow, such as its pull request's | Later discussion reaches the Executor without anyone mentioning the agent again |
+| Source | 一条事件流。Source kind 是可复用的实现；Source instance 是一个 kind 的一份配置：是否运行、监听什么 | 保存自己的读取位置和自己的机器人身份。定义什么算作事件，包括只在时间上成立的条件。在进入领域之前丢弃机器人自己的消息和超出监听范围的触发。把每个触发翻译成它所属的线程和可回复的渠道地址 | 重启不得重放事件 |
+| 触发（Trigger） | 一条不可变事件，带 Source 自己的元数据，例如其行为人 | 属于一个或多个线程。同一触发被接受两次只产生一个工单 | 审计与幂等的单位 |
+| 线程（Thread） | 按时间排序的触发；由 Source 定义哪些触发构成一个线程 | 同一时刻至多一个评估在其上运行。它可以有多个工单。保存其订阅、运行中的评估和决定历史 | 给评估一个一致的视图及其上下文 |
+| 关联（Correlation） | 一个触发所属的多个线程之间的关系 | 只添加上下文；绝不路由 | 让评估能追踪相关证据 |
+| 渠道（Channel） | 线程的写侧；由 Source 定义其地址 | 一个线程可以有多个渠道；工单持有一组渠道 | 确认、回复、拉取请求和已解决的评审都是写 |
+| 策略（Policy） | 有版本的评估规则，以及每个 Source 的部分：谁可以经该 Source 发起工作、以该 Source 自己的哪些身份、名单如何同步、哪些机器人可以产生候选 | 策略版本覆盖规则、接受模式和 Source 部分。影响在跑工单的变更（例如其接受所依据的规则变了）会投递给它的派工；不撤销授权。不同 Source 上的身份永不互相映射 | 规则变化时，正在运行的评估必须作废 |
+| 评估（Eval） | 对一批触发的判断，分两层：准入与研判 | 输入：触发批次、线程快照、线程上的每个工单（含已结束的）和当前策略。输出：一个决定。不持有状态 | 决定新工作是否开始、继续或停止 |
+| 授权（Mandate） | 一次接受所授予的东西：策略版本、范围、强度、匹配的规则、发送者在该 Source 上的身份，以及 Source 如何收到该触发 | 不可变；更宽的范围意味着新工单。工单结束不结束它：只有人的停止会撤回它，不再满足它的策略会吊销它。已结束工单恢复前要对照当前策略重新校验 | 说明工作为什么可以做，以及可以做到哪 |
+| 工单（Ticket） | 一份获授权的工作单元 | 只有评估能创建。引用其授权；持有其渠道与输入。从开启到结束，当人的一条消息在其某个线程上恢复它时回到开启，除非是人停止了它。定义自己的状态，不跟随执行器的 | 拥有执行过程及其报告 |
+| 派工（Assignment） | 工单与一个执行器实例的绑定 | 一个工单随时间有多个派工。独立于工单地经历待启动 → 执行中 → 已结束。只有它的最终报告可以从执行器一侧结束工单 | 执行器在领域之外，但由谁执行必须在领域之内 |
+| 订阅（Subscription) | 工单与线程之间的多对多关系，由线程持有 | 匹配的触发扇出到每个存活的已订阅工单，不检查发送者；人的消息这样到达工单时不做评估。执行器为上下文而关注的线程以同样方式到达其工单，但不借出授权，也不恢复它。已结束的工单保留其订阅，包括已关闭或已合并拉取请求的：人的消息以同一授权恢复它，没有评估或决定；机器人和 CI 的消息不会到达它，因为其执行器恢复时会重新读取其线程。被人停止的工单什么也不接收。主 Session 只有在消息明确指向某个工单时才把线程挂到已有工单。人可以移除一个线程上的全部订阅；执行器只能移除自己工单对它认为无关的线程的订阅，但其工单起始的线程和 Source 要求它关注的线程（例如其拉取请求的）除外 | 后续讨论无需再次提及智能体即可到达执行器 |
 
-A person is not a domain concept. A Trigger carries its actor's identifier as the Source gives it. An allowed list is a Source's part of the Policy, in that Source's identities. That one person has accounts on several Sources is prompt text that the agents read when they need it.
+人不是领域概念。触发以 Source 给出的形式携带其行为人的标识。允许名单是策略的 Source 部分，用该 Source 自己的身份。"同一个人在多个 Source 上有账号"是智能体在需要时阅读的提示词文本。
 
-The Executor, with its Sessions and directories, is outside the domain and connects through Assignments.
+执行器及其会话与目录在领域之外，通过派工接入。
 
-Aggregates: a Source holds its read position. A Thread holds its Subscriptions, its running Eval, which runs serially and merges Triggers that arrive meanwhile into the next batch, and its Decision history. A Ticket holds its Assignments, Channels and Inputs, and refers to Decisions by id.
+聚合：Source 保存其读取位置。线程保存其订阅、运行中的评估（串行运行，把期间到达的触发合并进下一批）和决定历史。工单保存其派工、渠道与输入，按 id 引用决定。
 
-## Rejected concepts
+## 被否决的概念
 
-| Rejected | Reason |
+| 被否决 | 理由 |
 | --- | --- |
-| Principal or Membership as an entity, or mapping identities across Sources | A person is Trigger metadata; an allowed list is a Source's part of the Policy; a cross-Source mapping is prompt text |
-| Eval scheduling its own delayed Triggers | A condition that needs waiting is an ordinary Source, so Eval never depends back on Sources |
-| Waiting or revoked Eval states | Waiting belongs to Sources; an Eval that runs out of time queues its Triggers again, or ends `unavailable` |
-| At most one live Ticket per Thread | One Thread can carry several independent pieces of work; the assessment avoids duplicates from the Ticket list |
-| An "append to Ticket" Decision | Appending is Subscription fan-out and needs no Eval |
-| Admission checks on Subscriptions | A Subscription covers the whole Thread; the Mandate separates authorization from context |
-| Correlation that routes | Subscriptions route; Correlation only adds context |
-| Ticket state that follows the DSH Session | A Ticket can be handed off, resumed, or run by several Executors, so it defines its own state |
-| An Executor declaring that a person asked it to stop | Only Eval decides the strength of an end |
-| Cancelling running Tickets on a Policy change | A cancelled change leaves half-finished work; the change is recorded and delivered instead |
-| Locking all of an Executor Session's tools when it fails or blocks | It would refuse a person working directly in the Session, and the report after recovery; pausing automatic input is enough |
-| Inferring "waiting on a person" from a report's free text | The classification needs structured facts; the Executor asks through a structured field |
+| 把委托人或成员关系做成实体，或跨 Source 映射身份 | 人是触发元数据；允许名单是策略的 Source 部分；跨 Source 映射是提示词文本 |
+| 评估调度自己的延迟触发 | 需要等待的条件就是一个普通的 Source，评估绝不反向依赖 Source |
+| 等待中或已吊销的评估状态 | 等待属于 Source；超时的评估把其触发重新排队，或以 `unavailable` 结束 |
+| 每个线程至多一个存活工单 | 一个线程可以承载多件独立的工作；研判借工单列表避免重复 |
+| "追加到工单"决定 | 追加就是订阅扇出，不需要评估 |
+| 对订阅做准入检查 | 订阅覆盖整个线程；授权把授权与上下文分开 |
+| 会路由的关联 | 订阅负责路由；关联只添加上下文 |
+| 跟随 DSH Session 的工单状态 | 工单可以被交接、恢复或由多个执行器运行，所以它定义自己的状态 |
+| 执行器宣称是人让它停止的 | 只有评估决定一次结束的强度 |
+| 策略变更时取消在跑的工单 | 取消会留下半成品；变更是被记录并投递的 |
+| 执行器 Session 失败或阻塞时锁死其全部工具 | 那会拒绝在 Session 中直接工作的人，也拒绝恢复后的报告；暂停自动输入就够了 |
+| 从报告的自由文本推断"在等人" | 分类需要结构化事实；执行器通过结构化字段提问 |
 
-## What is reusable
+## 可复用的部分
 
-The concepts above and their rules are reusable. The Source implementations, the Policy contents, the Executor and the Channel implementations belong to a deployment. Each Source keeps its own words internally, such as message, chat or notification, and translates them into Triggers.
+上述概念及其规则可复用。Source 的实现、策略的内容、执行器与渠道的实现属于具体部署。每个 Source 内部保留自己的词汇，例如消息、聊天或通知，并把它们翻译成触发。
 
-| Part | In this repository |
+| 部分 | 本仓库中的实现 |
 | --- | --- |
-| Source | Feishu: live events, history recovery, polling of subscribed topics. GitHub: notifications, subscribed Issues and pull requests, CI changes, pull requests merged or closed, and, where switched on, every new Issue, pull request and comment in the repository and the default branch's CI |
-| Policy | Assessment rules, and each Source's allowed list, its sync, its bot list and its admission table |
-| Executor | A DSH Executor Session and a directory per Ticket, in an execution environment whose variables the Executor and the Sources register |
-| Channel | Feishu topic replies, GitHub comments and review thread replies |
+| Source | 飞书：实时事件、历史恢复、订阅话题的轮询。GitHub：通知、被订阅的 Issue 与拉取请求、CI 变化、拉取请求被合并或关闭，以及在开启时，仓库内每个新 Issue、拉取请求和评论及默认分支的 CI |
+| 策略 | 评估规则，以及每个 Source 的允许名单、其同步方式、机器人名单和准入表 |
+| 执行器 | 每 Ticket 一个 DSH 执行器 Session 和一个目录，处于一个由执行器与 Source 注册变量的执行环境中 |
+| 渠道 | 飞书话题回复、GitHub 评论与评审线程回复 |
 
-## Glossary
+## 术语表
 
-A reference list of the terms this and the later documents use, with their Chinese names; the later documents explain the terms not introduced above. The panel shows one language at a time; its (?) button opens this glossary with both languages. The messages agents send to people on GitHub and Feishu use plain language, not these terms.
+本文与后续文档所用术语的对照表，附中文名；上文未介绍的术语由后续文档解释。面板一次显示一种语言；其（?）按钮会以双语打开本术语表。智能体在 GitHub 和飞书上给人发的消息使用平实语言，不用这些术语。
 
 | Term | 中文 | Meaning |
 | --- | --- | --- |
-| Agent | 智能体 | The automated team member dsh-superagent runs, acting on Sources through identities such as a GitHub account and a Feishu bot |
+| Agent | 智能体 | The automated team member dsh-superagent-cn runs, acting on Sources through identities such as a GitHub account and a Feishu bot |
 | Main Session | 主 Session | The DSH Session that evaluates Triggers, accepts and dispatches Tickets, and replies; `orchestrator` in code and prompts |
 | Executor Session | 执行器 Session | The DSH Session an Executor runs for one Ticket; `worker` in code and prompts |
 | Source | 来源 | A stream of events: a kind that a plugin provides, plus one instance configuration |

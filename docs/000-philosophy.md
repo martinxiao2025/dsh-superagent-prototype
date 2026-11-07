@@ -1,33 +1,33 @@
-# 000 Philosophy
+# 000 哲学
 
-dsh-superagent is a framework, and also a way of working with an agent. Its core principle:
+dsh-superagent-cn 是一个框架，也是一种与智能体协作的做事方式。它的核心原则：
 
-**Take as little human attention as possible, and give as much value as possible.**
+**占用尽可能少的人的注意力，给出尽可能多的价值。**
 
-Every part of the project is judged by the attention it costs. A message, a notification, a question, a setting, a panel element and a paragraph of documentation each cost someone's attention, and each has to give more value than that, or it is removed.
+项目的每一部分都用它消耗的注意力来衡量。一条消息、一个通知、一个问题、一个设置、一个面板元素和一段文档，都会消耗某个人的注意力；每一项都必须给出超过该消耗的价值，否则就被移除。
 
-## What follows for the agent
+## 对智能体的推论
 
-- **It acts only when asked, or when a written rule allows it.** A request counts only when it addresses the agent directly and comes from a person the team allowed: one on an allowed list, or anyone in a conversation the team opened to requests. Work nobody asked for needs a rule the team wrote, and starts in a mode that only records what the agent would have done.
-- **It speaks only when a person must act or can use a result.** It confirms a request once and names what it will do. It stays quiet while it works. It writes again when a result is ready, when it needs a decision, or when it cannot finish. Messages are short and go to the conversation where the request was made.
-- **It asks one concrete question at a time,** in a structured form, so the question reaches the person instead of staying inside a long report.
-- **It stops by impact, not by effort.** A local change goes as far as a reviewable result. A change that needs a design decision stops with a clear question.
-- **It reports honestly.** A draft is marked unfinished, a failure is reported as a failure, and a limit is never bypassed to avoid asking.
+- **只在被要求时行动，或在成文规则允许时行动。** 一个请求只有在直接面向智能体、且来自团队允许的人时才算数：在允许名单上的人，或团队为接收请求而开放的会话中的任何人。没人要求的工作需要团队写下的一条规则，并且从一个只记录智能体本会做什么的模式开始。
+- **只在人必须行动或能用上结果时开口。** 它对请求确认一次并点名自己要做什么。工作期间保持安静。结果就绪、需要某个决定、或无法完成时再写。消息简短，发到请求所在的会话。
+- **一次只问一个具体问题**，以结构化的形式，让问题真正到达人，而不是埋在长报告里。
+- **按影响停下，而不是按工作量。** 局部改动做到可评审的结果为止。需要设计决策的改动以一个清晰的问题停下。
+- **如实报告。** 草稿标注为未完成，失败按失败报告，绝不为了免于求助而绕过限制。
 
-## What follows for the design
+## 对设计的推论
 
-- **Few concepts.** The design has only its domain concepts, such as a Source, and their concrete implementations, such as GitHub and Feishu. A business need becomes an attribute of one of them, or a prompt the agent follows. The design does not add a concept for it.
-- **Few settings.** A default replaces a setting when one value suits almost every team. Behaviour that a team describes in words is prompt text, not a setting.
-- **A panel that shows only what needs a person.** It lists first what waits for a person. A healthy state takes no space.
-- **Documents read in order.** Each numbered document builds only on the ones before it, so a reader never needs a concept that has not been introduced yet.
+- **少概念。** 设计只有领域概念，例如 Source，以及它们的具体实现，例如 GitHub 和飞书。一项业务需求变成其中之一的属性，或智能体遵循的一段提示词，设计不会为它新增概念。
+- **少设置。** 当一个默认值适合几乎所有团队时，它就取代一个设置。团队用语言描述的行为是提示词文本，不是设置。
+- **面板只展示需要人的部分。** 它把等待人的事项放在最前。健康的状态不占空间。
+- **文档按顺序阅读。** 每个编号文档只建立在它之前的文档上，读者永远不需要尚未介绍的概念。
 
-## Responsibility
+## 责任
 
-The agent comments, opens pull requests and messages people under accounts your team sees every day. Every message it sends costs your colleagues' attention, and you are responsible for it. The more the agent can do, the more care its operator owes the team:
+智能体以团队天天可见的账号评论、开拉取请求、给人发消息。它发出的每条消息都消耗同事的注意力，而你要为此负责。智能体能做的越多，运维者欠团队的用心就越多：
 
-- **Start narrow.** Begin with a short allowed list and with proactive work only recorded. Widen both once what the agent would have done looks right.
-- **Tune for less noise.** When the agent is noisy, make its prompts shorter and stricter, or pause it. Do not add more messages to explain the noise.
-- **Do not use it to produce volume.** Mass pull requests, broadcast messages and busywork cost the team more than they give.
-- **Own what it says.** Read what the agent posts in your name, and correct it in the prompts when it is wrong.
+- **从窄开始。** 以简短的允许名单、且主动工作只被记录的状态起步。等智能体"本会做什么"看起来没问题了，再放宽两者。
+- **为更少噪音调优。** 当智能体吵闹时，把它的提示词改得更短更严，或暂停它。不要用更多消息去解释噪音。
+- **不要用它制造数量。** 批量拉取请求、广播消息和事务性杂活，消耗团队的比给出的多。
+- **对它说的话负责。** 阅读它以你的名义发布的内容，错了就在提示词里纠正。
 
-The goal is the right help at the right time, and nothing at any other time.
+目标是在正确的时刻给出恰当的帮助，其余时刻什么也不做。
