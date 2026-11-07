@@ -1,4 +1,4 @@
-/** Downloads Feishu message images and commits them as model-visible attachments during assessment. */
+/** 下载飞书消息图片，并在研判期间将其存储为模型可见的附件。 */
 import { mkdtemp, readFile, realpath, rm, stat } from 'node:fs/promises'
 import { dirname, extname, join } from 'node:path'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -8,7 +8,7 @@ import { z } from 'zod'
 import type { Commands } from '../infra/commands.ts'
 import type { FeishuRef } from './feishu-read.ts'
 
-/** Extracts Feishu image keys from message text so keys remain paired with the originating message; arbitrary remote IDs are not accepted. */
+/** 从消息文本中提取飞书图片 key，使 key 始终与其来源消息配对；不接受任意的远端 ID。 */
 export function admissionImageKeys(text: string): string[] {
   return [...new Set(text.match(/\bimg_[a-zA-Z0-9_-]+\b/g) ?? [])]
 }

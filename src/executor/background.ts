@@ -1,38 +1,38 @@
 /**
- * A worker's background work in DSH: the shell jobs its Session owns (`ctx.jobs`) and its subagents (`ctx.subagents`). They
- * keep the worker busy after its turn ended, and they stop with its Assignment. A profile without either service has none.
+ * worker 在 DSH 中的后台工作：其 Session 所拥有的 shell 作业（`ctx.jobs`）与其子代理（`ctx.subagents`）。它们
+ * 会在 worker 的回合结束之后让它保持忙碌，并随其派工一起停止。没有这两项服务的 profile 则两者皆无。
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 
-/** What the Executor uses of DSH's job registry: the jobs a Session can see, their events, a wait for one and a kill. */
+/** 执行器对 DSH 作业注册表的使用：Session 可见的作业、其事件、对某个作业的等待与终止。 */
 interface Jobs {
   list(caller: string): readonly { id: string; owner?: string; status: string; label?: string }[]
   wait(id: string, timeoutMs: number, caller: string, signal?: AbortSignal): Promise<{ status: string }>
   kill(id: string, caller: string, reason?: string): unknown
   readonly events: { subscribe(filter: { owner: string }, listener: (event: { type: string }) => void): () => void }
 }
-/** What the Executor uses of DSH's subagents: joining a worker's subagents that work, its subagents, and releasing them. */
+/** 执行器对 DSH 子代理的使用：加入 worker 正在工作的子代理、列出其子代理，以及释放它们。 */
 interface Subagents {
   waitForChildren(parent: Agent): Promise<boolean>
   listChildren(parentSessionId: string): Promise<readonly { id: string }[]>
   drainChildren(parent: Agent, childIds: readonly string[]): Promise<void>
 }
-/** How long a stop waits for a killed job to end, collecting its end so the worker is not woken to hear of it. */
+/** 停止操作等待被终止的作业结束的时长，同时收集其结束，以免 worker 被唤醒去听取消息。 */
 const KILL_WAIT_MS = 10_000
-/** How long a release of subagents may take; it can hold up a shutdown, so DSH's own callers bound it too. */
+/** 释放子代理可以花费的时长；它可能拖慢关闭，因此 DSH 自己的调用方也对此设限。 */
 const DRAIN_LIMIT_MS = 10_000
-/** How long one wait that collects a job's end runs; one that ends with the job running is followed by the next. */
+/** 收集作业结束的单次等待的运行时长；以作业仍在运行告终的等待之后会跟上下一次。 */
 const COLLECT_WAIT_MS = 10 * 60_000
 
 const registry = (ctx: Context): Jobs | undefined => ctx.get('jobs') as Jobs | undefined
 const subagentsOf = (ctx: Context): Subagents | undefined => ctx.get('subagents') as Subagents | undefined
 const running = (status: string) => status === 'running' || status === 'stopping'
-/** The jobs the Session owns that run, but those in `except`, such as the ones left to a person. */
+/** Session 所拥有的仍在运行的作业，`except` 中的除外，例如留给人的那些。 */
 const owned = (jobs: Jobs, sessionId: string, except?: ReadonlySet<string>) =>
   jobs.list(sessionId).filter(job => job.owner === sessionId && running(job.status) && !except?.has(job.id))
-/** `work`, or false once `signal` aborts or `ms` pass first. */
+/** `work` 的结果；一旦 `signal` 中止或 `ms` 先到期则为 false。 */
 export function until<T>(work: Promise<T>, signal?: AbortSignal, ms?: number): Promise<T | false> {
   if (signal?.aborted) return Promise.resolve(false)
   let stop!: () => void
@@ -42,9 +42,9 @@ export function until<T>(work: Promise<T>, signal?: AbortSignal, ms?: number): P
   timer?.unref?.()
   return Promise.race([work, stopped]).finally(() => { signal?.removeEventListener('abort', stop); clearTimeout(timer) })
 }
-/** The workers whose turn a stop of their subagents cancelled, whose next idle ends that turn rather than one of their own. */
+/** 其子代理被停止操作取消了回合的 worker，其下一次空闲结束的是那次被取消的回合，而非它自己的一轮。 */
 export const cancelled = new WeakSet<Agent>()
-/** The pending join of each worker's subagents, which DSH cannot cancel, so a later look joins the same one. */
+/** 每个 worker 子代理的进行中加入等待，DSH 无法取消它，因此之后的检查会复用同一次等待。 */
 const joins = new WeakMap<Agent, Promise<boolean>>()
 function childrenEnd(subagents: Subagents, agent: Agent): Promise<boolean> {
   let join = joins.get(agent)
@@ -55,17 +55,17 @@ function childrenEnd(subagents: Subagents, agent: Agent): Promise<boolean> {
   return join
 }
 
-/** A job by its id and the first line of its label. */
+/** 用其 id 与 label 的第一行表示一个作业。 */
 const named = (job: { id: string; label?: string }) => { const line = job.label?.split('\n')[0]?.trim(); return line ? `${job.id} (${line})` : job.id }
-/** The shell jobs the Session owns that still run, but those in `except`, with their names. */
+/** Session 所拥有的仍在运行的 shell 作业（`except` 中的除外），连同其名称。 */
 export const runningJobs = (ctx: Context, sessionId: string, except?: ReadonlySet<string>): { id: string; name: string }[] => {
   const jobs = registry(ctx)
   return jobs ? owned(jobs, sessionId, except).map(job => ({ id: job.id, name: named(job) })) : []
 }
 
 /**
- * Wait until no shell job the Session owns runs; false at once when none ran, or when `signal` aborts first. The wait is
- * no waiter on any job, so each job's end still reaches the worker.
+ * 等待直到 Session 所拥有的 shell 作业都不再运行；没有任何作业在运行、或 `signal` 先中止时立即返回 false。
+ * 这次等待不是任何作业的等待者，因此每个作业的结束仍会到达 worker。
  */
 function jobsEnd(ctx: Context, sessionId: string, signal: AbortSignal, except?: ReadonlySet<string>): Promise<boolean> {
   const jobs = registry(ctx)
@@ -77,7 +77,7 @@ function jobsEnd(ctx: Context, sessionId: string, signal: AbortSignal, except?: 
       settled = true; unsubscribe(); signal.removeEventListener('abort', aborted); resolve(value)
     }
     const aborted = () => { done(false) }
-    // Only an end can leave no job running; a job's output does not.
+    // 只有结束事件才能使作业不再运行；作业的输出不能。
     const unsubscribe = jobs.events.subscribe({ owner: sessionId }, event => {
       if ((event.type === 'settled' || event.type === 'removed') && !owned(jobs, sessionId, except).length) done(true)
     })
@@ -87,11 +87,11 @@ function jobsEnd(ctx: Context, sessionId: string, signal: AbortSignal, except?: 
 }
 
 /**
- * Wait until nothing runs for a worker that went idle: its shell jobs, but those in `except`, and its subagents. A job's or a
- * subagent's end wakes the worker with its result, which ends this look: the turn it starts ends with an idle of its own,
- * which looks afresh.
- * @returns true once all of it ended with the worker idle; false when the worker runs again, or when `signal` aborts first,
- * as when the host stops or the look's time is up.
+ * 等待直到已空闲的 worker 再无任何东西在运行：其 shell 作业（`except` 中的除外）与其子代理。作业或
+ * 子代理的结束会带着其结果唤醒 worker，从而结束本次检查：它所开启的那一轮以自己的空闲结束，
+ * 那时会重新检查一次。
+ * @returns 当全部结束且 worker 空闲时返回 true；当 worker 再次运行、或 `signal` 先中止时返回 false，
+ * 例如宿主停止或检查时间已到。
  */
 export async function untilQuiet(ctx: Context, agent: Agent, signal: AbortSignal, except?: ReadonlySet<string>): Promise<boolean> {
   for (;;) {
@@ -104,14 +104,14 @@ export async function untilQuiet(ctx: Context, agent: Agent, signal: AbortSignal
 }
 
 /**
- * Kill the shell jobs the Session owns, but those in `except`, collecting each end so the worker is not woken to hear of it.
- * One failure stops none other.
+ * 终止 Session 所拥有的 shell 作业（`except` 中的除外），并收集每个作业的结束，以免 worker 被唤醒去听取消息。
+ * 一次失败不会阻止其余的终止。
  */
 export async function killJobs(ctx: Context, sessionId: string, reason: string, except?: ReadonlySet<string>): Promise<void> {
   const jobs = registry(ctx)
   const live = jobs ? owned(jobs, sessionId, except) : []
   const failures: unknown[] = []
-  // The waits start before the kills, so each end counts as collected.
+  // 等待先于终止开始，因此每个结束都算作已收集。
   const collected = live.map(job => jobs!.wait(job.id, KILL_WAIT_MS, sessionId).catch(() => undefined))
   for (const job of live) try { jobs!.kill(job.id, sessionId, reason) } catch (error) { failures.push(error) }
   await Promise.all(collected)
@@ -119,8 +119,8 @@ export async function killJobs(ctx: Context, sessionId: string, reason: string, 
 }
 
 /**
- * Collect the end of a shell job the Session owns, so it wakes no one, until `signal` aborts.
- * @returns the job's name and status once it ended; undefined when `signal` aborted first.
+ * 收集 Session 所拥有的某个 shell 作业的结束，使它不唤醒任何人，直到 `signal` 中止。
+ * @returns 作业结束后返回其名称与状态；`signal` 先中止时返回 undefined。
  */
 export async function collectJob(ctx: Context, sessionId: string, job: { id: string; name: string }, signal: AbortSignal):
   Promise<{ name: string; status: string } | undefined> {
@@ -134,14 +134,14 @@ export async function collectJob(ctx: Context, sessionId: string, job: { id: str
 }
 
 /**
- * Release the worker's live subagents, for a bounded time. DSH delivers each one's end to the worker before the release
- * returns, which wakes it, so the worker's turn is cancelled after, keeping its inbox when `keepInbox`, and the stop ends
- * with that turn. Its Session still admits subagents.
+ * 在有限的时长内释放 worker 存活的子代理。DSH 会在释放返回之前把每个子代理的结束送达 worker，
+ * 这会唤醒它，因此之后取消 worker 的回合（`keepInbox` 为真时保留其收件箱），停止操作
+ * 随那一轮结束。其 Session 仍可接纳子代理。
  */
 export async function stopSubagents(ctx: Context, agent: Agent, keepInbox = false): Promise<void> {
   const subagents = subagentsOf(ctx)
   if (!subagents) return
-  // The catalog lists every subagent the Session had; one that ended has no agent.
+  // 目录列出了该 Session 曾拥有的每个子代理；已结束的子代理没有对应的 agent。
   const live = (await subagents.listChildren(agent.id)).map(child => child.id).filter(id => ctx.agents.get(id as SessionId))
   if (!live.length) return
   try { await until(subagents.drainChildren(agent, live), undefined, DRAIN_LIMIT_MS) }
@@ -153,8 +153,8 @@ export async function stopSubagents(ctx: Context, agent: Agent, keepInbox = fals
 }
 
 /**
- * Stop what a worker runs in the background once its Assignment ends: kill its shell jobs and release its subagents (see
- * `stopSubagents`). A Session not loaded has no subagent at work. One failure stops nothing else.
+ * 在 worker 的派工结束后停止其在后台运行的内容：终止其 shell 作业并释放其子代理（见
+ * `stopSubagents`）。未加载的 Session 没有子代理在工作。一次失败不会阻止其余的停止。
  */
 export async function stopBackground(ctx: Context, sessionId: string, reason: string, keepInbox = false): Promise<void> {
   const failures: unknown[] = []

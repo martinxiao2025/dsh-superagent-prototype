@@ -1,4 +1,4 @@
-/** Validation bounds shared between host schemas and management panel forms. */
+/** 宿主 schema 与管理面板表单共享的校验边界。 */
 export const LIMITS = {
   ruleName: 100,
   ruleInstruction: 2000,

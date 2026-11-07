@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// The Execution status, a Ticket, and the Execution settings.
+// 执行页状态、工单详情与执行设置。
 import { act } from 'react'
 import { expect, it } from 'vitest'
 import { en, zh } from '../src/client/locales.ts'
@@ -7,7 +7,7 @@ import { usePanel, mount, remount, all, find, tab, click, type, text, field, at 
 import { MEMBER, server, ticketSummary, threadSummary } from './fixtures/panel-server.ts'
 
 usePanel()
-it('lists Tickets under Execution by who they wait on, with the Executor state and its pause as an action', async () => {
+it('执行页按工单等待的对象列出工单，含执行器状态，并把暂停作为操作', async () => {
   server.tickets.open = [ticketSummary(), ticketSummary({ id: 't2', title: '执行中的工单', threads: [{ key: 'github:7',
     source: 'github', title: '#7 x', facts: { number: { value: '#7' }, autoMerge: { label: { zh: '自动合并', en: 'Auto-merge' },
       value: { zh: '已开启', en: 'on' } } } }] })]
@@ -24,7 +24,7 @@ it('lists Tickets under Execution by who they wait on, with the Executor state a
   expect(text()).toContain('旧工单')
   expect(text()).toContain(zh['outcome.stopped'])
   expect(all('.dt-status-line .dt-lv').map(item => item.textContent)).toEqual(['执行中 2 / 3', '排队 0'])
-  // The pause is its own action: an Execution settings draft started before it still saves.
+  // 暂停是独立的操作：之前开始的执行设置草稿仍可保存。
   await click(find(zh['tab.settings'], '.dt-status-head button'))
   expect(tab(zh['tab.settings']).getAttribute('aria-selected')).toBe('true')
   expect(document.querySelector('.dt-settings-link[aria-current="page"]')?.textContent).toBe(zh['promptPart.runtime/work'])
@@ -40,7 +40,7 @@ it('lists Tickets under Execution by who they wait on, with the Executor state a
   expect(server.settings).toMatchObject({ paused: true, executor: { maxWorkers: 4 } })
 })
 
-it('stops an open Ticket from its page after confirmation', async () => {
+it('在工单页面确认后停止进行中的工单', async () => {
   await mount()
   await click('修复回归')
   await click(zh.stop)
@@ -50,15 +50,15 @@ it('stops an open Ticket from its page after confirmation', async () => {
   expect(server.requests.some(request => request.path === 'tickets/t1/stop' && request.method === 'POST')).toBe(true)
 })
 
-it('shows a Ticket with its stage, its Mandate details with the Trigger and Decision behind it, its Threads, and the rest behind disclosures', async () => {
+it('展示工单的阶段、授权详情及其背后的触发与决定、订阅的线程，其余内容折叠展示', async () => {
   await mount()
   await click(all('.dt-open').find(button => button.textContent === '修复回归')!)
   expect(document.querySelector('.dt-page-title h2')?.textContent).toBe('修复回归')
-  // Progress is in the Channels and the Session, so the page has no report section.
+  // 进展在渠道与 Session 中，因此页面没有报告区。
   expect(all('.dt-section-title').map(title => title.querySelector('.dt-section-name')?.textContent)).toEqual(['授权详情', '未送达的输入', '订阅的线程'])
   expect(document.querySelector('.dt-status-line .dt-stage')?.textContent).toBe(zh.executingLabel)
   expect(document.querySelector('.dt-status-line .dt-stage .dt-spinner')).not.toBeNull()
-  // A Thread this Ticket follows reads as subscribed on its page, though no other Ticket follows it.
+  // 该工单跟随的线程在其页面上显示为已订阅，即使没有其他工单跟随它。
   expect(all('.dt-list .dt-ticket .dt-stage').map(stage => stage.textContent)).toContain(zh.threadSubscribed)
   expect(all('.dt-list .dt-ticket .dt-stage').map(stage => stage.textContent)).not.toContain(zh.threadUnsubscribed)
   expect(all('.dt-status-line .dt-lv').map(item => item.textContent)).toEqual(['授权 明确', '发起 飞书 · Alice', expect.stringMatching(/^更新 /)])
@@ -75,13 +75,13 @@ it('shows a Ticket with its stage, its Mandate details with the Trigger and Deci
   expect(tab(zh['tab.trigger']).getAttribute('aria-selected')).toBe('true')
 })
 
-it('reports a missing Ticket instead of rendering an empty page', async () => {
+it('工单不存在时报错提示，而不是渲染空页面', async () => {
   at({ page: 'execution', id: 'missing' })
   await mount()
   expect(document.querySelector('.dt-hint')?.textContent).toBe(zh.ticketNotFound)
 })
 
-it('links a question to its Channel, folds consecutive automated messages among Inputs, and shows field explanations in a hover tooltip',
+it('把问题链接到其渠道，折叠输入中同一发送者的连续自动消息，并用悬停提示展示字段说明',
   async () => {
   const ci = (id: string, at: string, failed: number) => ({ id, kind: 'trigger' as const, triggerId: `c${id}`, at, delivered: true,
     trigger: { id: `c${id}`, actor: { source: 'github', id: '' }, human: false,
@@ -108,7 +108,7 @@ it('links a question to its Channel, folds consecutive automated messages among 
   expect(document.querySelector('[role="tooltip"]')).toBeNull()
 })
 
-it('offers a Ticket awaiting review its review place and Session in the page head', async () => {
+it('在页头为等待复核的工单提供复核位置与 Session 入口', async () => {
   const t1 = server.ticketDetails.t1!
   server.ticketDetails.t1 = { ...t1, stage: 'person', action: 'review', threads: [threadSummary(),
     { ...threadSummary({ key: 'github:42', source: 'github', title: '#42 Fix login' }), url: 'https://github.com/acme/widgets/pull/42' }] }
@@ -119,13 +119,13 @@ it('offers a Ticket awaiting review its review place and Session in the page hea
     'https://github.com/acme/widgets/pull/42']])
 })
 
-it('keeps what a person types in the Execution settings, converting it once on save', async () => {
+it('保留用户在执行设置中的原始输入，只在保存时转换一次', async () => {
   await mount()
   await click(zh['tab.execution'])
   await click(find(zh['tab.settings'], '.dt-status-head button'))
   const blocked = () => field<HTMLInputElement>(zh.blockedCommands), root = () => field<HTMLInputElement>(zh.executionDirectory),
     workers = () => field<HTMLInputElement>(zh.maxWorkers)
-  // A separator typed before the next command, a space inside a path and a cleared number stay as typed.
+  // 下一条命令前输入的分隔符、路径内的空格、清空的数字都按原样保留。
   await type(blocked(), 'gh-personal ')
   expect(blocked().value).toBe('gh-personal ')
   await type(blocked(), 'gh-personal, gh-other')
@@ -139,7 +139,7 @@ it('keeps what a person types in the Execution settings, converting it once on s
   expect(server.settings.executor).toMatchObject({ blockedCommands: ['gh-personal', 'gh-other'], directory: '/srv/my work', maxWorkers: 2 })
 })
 
-it('says why an Input was not delivered on its Ticket\'s page, in either language', async () => {
+it('在工单页面上以两种语言说明输入未送达的原因', async () => {
   const t1 = server.ticketDetails.t1!
   server.ticketDetails.t1 = { ...t1, stage: 'person', action: 'delivery', deliveryError: 'feishu: message recalled' }
   at({ page: 'execution', id: 't1' })
@@ -156,11 +156,11 @@ it('says why an Input was not delivered on its Ticket\'s page, in either languag
   expect(text()).toContain(en.inputRetryHint)
 })
 
-it('tells a Ticket or Thread that does not exist from a dsh-superagent that is not answering', async () => {
+it('区分不存在的工单或线程与无响应的 dsh-superagent-cn', async () => {
   at({ page: 'execution', id: 't9' })
   await mount()
   expect(text()).toContain(zh.ticketNotFound)
-  // While dsh-superagent restarts, DSH's web server answers every route with an empty 404.
+  // dsh-superagent-cn 重启期间，DSH 的 Web 服务器对所有路由都返回空 404。
   at({ page: 'execution', id: 't1' })
   server.down = true
   await remount()
@@ -172,7 +172,7 @@ it('tells a Ticket or Thread that does not exist from a dsh-superagent that is n
   expect(text()).toContain(zh.hostNotRunning)
 })
 
-it('gives a Ticket a bot\'s message started its basis, marks a Thread it follows for context, and an Input it handed back', async () => {
+it('把机器人消息作为工单的授权依据，把其跟随的线程标记为上下文，并标出已交回的输入', async () => {
   const t1 = server.ticketDetails.t1!
   server.ticketDetails.t1 = { ...t1, mandate: { ...t1.mandate, strength: 'inferred', basis: { via: 'bot', sender: '评审机器人',
     observation: { mode: 'auto' } } },
@@ -195,7 +195,7 @@ it('gives a Ticket a bot\'s message started its basis, marks a Thread it follows
   expect(text()).toContain('Handed back for an Eval: Asks for a new page')
 })
 
-it('words an ended Ticket by its outcome, on its row and its page, with a person\'s reason after it', async () => {
+it('按结果表述已结束的工单，在其行与页面上展示，并附用户给出的原因', async () => {
   const fields = { id: 't3', title: '已合并的工单', state: 'ended' as const, actions: { retry: false, stop: false },
     ended: { at: '2026-09-21T00:00:00Z', by: 'executor' as const, outcome: 'merged' as const } }
   server.tickets.ended = [ticketSummary(fields, { stage: 'ended' }), ...server.tickets.ended]
@@ -214,7 +214,7 @@ it('words an ended Ticket by its outcome, on its row and its page, with a person
   expect(all('.dt-hint').map(hint => hint.textContent).find(line => line?.includes(en['outcome.stopped']))).toMatch(/Stopped by a person: 不需要了$/)
 })
 
-it('sends one stop for a double click on Confirm', async () => {
+it('双击确认按钮只发送一次停止请求', async () => {
   at({ page: 'execution', id: 't1' })
   await mount()
   await click(zh.stop)

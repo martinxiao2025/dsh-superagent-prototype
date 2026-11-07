@@ -1,4 +1,4 @@
-/** The durable effect queue: coalescing, per-kind limits, retries with backoff, health and shutdown. */
+/** 持久化效果队列：合并、按种类的限额、带退避的重试、健康状态与停机。 */
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -26,7 +26,7 @@ beforeEach(() => {
 afterEach(() => { store.close(); rmSync(directory, { recursive: true, force: true }) })
 const relay = (text: string) => ({ text })
 
-it('runs an effect queued inside a transaction once it commits, and none from a transaction that rolled back', async () => {
+it('事务提交后立即运行其中排队的效果，回滚的事务则一个也不运行', async () => {
   const run = vi.fn(async () => {})
   effects.handle('relay', run)
   store.atomic(() => { effects.enqueue('relay', 'kept', relay('a')) })
@@ -36,7 +36,7 @@ it('runs an effect queued inside a transaction once it commits, and none from a 
   expect(effects.pending('relay')).toBe(false)
 })
 
-it('keeps one effect per key with the latest payload, and runs it again when a new payload arrives while it runs', async () => {
+it('每个键只保留一个效果及其最新载荷，运行中到达新载荷时会再次运行', async () => {
   const hold = deferred()
   const run = vi.fn(async (payload: { text: string }) => { if (payload.text === 'first') await hold.promise })
   effects.handle('relay', run)
@@ -48,7 +48,7 @@ it('keeps one effect per key with the latest payload, and runs it again when a n
   expect(run.mock.calls.map(([payload]) => payload.text)).toEqual(['first', 'third'])
 })
 
-it('runs a kind oldest first, as many at once as its limit allows, and holds it while the limit is 0', async () => {
+it('一种效果按最旧优先运行，并发数不超过其限额，限额为 0 时保持暂停', async () => {
   const holds = new Map<string, ReturnType<typeof deferred<void>>>()
   let limit = 2
   const run = vi.fn(async (_payload: unknown, key: string) => { const hold = deferred(); holds.set(key, hold); await hold.promise })
@@ -67,7 +67,7 @@ it('runs a kind oldest first, as many at once as its limit allows, and holds it 
   await effects.idle()
 })
 
-it('keeps an effect\'s place in its queue when it is queued again with a new payload', async () => {
+it('效果带新载荷再次排队时保持其在队列中的位置', async () => {
   const run = vi.fn(async (_payload: { ticketId: string; assignmentId: string }, _key: string) => {})
   let room = 0
   effects.handle('launch', run, { limit: () => room })
@@ -82,7 +82,7 @@ it('keeps an effect\'s place in its queue when it is queued again with a new pay
   expect(run.mock.calls.map(([, key]) => key)).toEqual(['first', 'second'])
 })
 
-it('retries a failed effect after a delay that doubles up to its maximum, and reports the kind in error after three failures', async () => {
+it('以最多翻倍到上限的延迟重试失败的效果，三次失败后将该种类报为 error', async () => {
   let fail = true
   const run = vi.fn(async () => { if (fail) throw new Error('session busy') })
   effects.handle('notice', run, { retry: [1000, 3000] })
@@ -102,7 +102,7 @@ it('retries a failed effect after a delay that doubles up to its maximum, and re
   expect(effects.pending('notice')).toBe(false)
 })
 
-it('starts nothing once drained, keeps what waits and what shutdown cut short, and runs it after the next start', async () => {
+it('drain 之后不再启动任何效果，保留等待中的与被停机打断的，并在下次启动后运行它们', async () => {
   const hold = deferred()
   effects.handle('relay', async () => { await hold.promise; throw new Error('aborted') })
   effects.enqueue('relay', 'cut', relay('a'))
@@ -119,7 +119,7 @@ it('starts nothing once drained, keeps what waits and what shutdown cut short, a
   expect(run.mock.calls.map(([, key]) => key)).toEqual(['cut', 'later'])
 })
 
-it('lets a handler defer an effect without a failure, until a later dispatch after its first delay', async () => {
+it('允许处理器在不视为失败的情况下推迟一个效果，在其首次延迟之后的后续派发再运行', async () => {
   let later = true
   const run = vi.fn(async () => { if (later) throw new Later('paused') })
   effects.handle('launch', run, { retry: [5000, 60_000] })
@@ -134,7 +134,7 @@ it('lets a handler defer an effect without a failure, until a later dispatch aft
   expect(effects.pending('launch')).toBe(false)
 })
 
-it('runs an ordered kind one at a time in the order queued, and holds the later effects while an earlier one fails', async () => {
+it('有序种类按排队顺序逐个运行，前一个失败时暂缓后面的效果', async () => {
   const failing = new Set(['first'])
   const run = vi.fn(async (_payload: { text: string }, key: string) => { if (failing.has(key)) throw new Error('offline') })
   effects.handle('relay', run, { ordered: true, limit: () => 4, retry: [1000, 1000] })
@@ -147,7 +147,7 @@ it('runs an ordered kind one at a time in the order queued, and holds the later 
   expect(run.mock.calls.map(([, key]) => key)).toEqual(['first', 'first', 'first', 'second'])
 })
 
-it('keeps a quiet kind\'s failures out of its health, and asks no limit while nothing is due', async () => {
+it('安静（quiet）种类的失败不计入其健康状态，没有到期内容时不询问限额', async () => {
   const limit = vi.fn(() => 4)
   effects.handle('delivery', async () => { throw new Error('Session gone') }, { quiet: true, limit, retry: [1000, 1000] })
   effects.kick(); await effects.idle()
@@ -157,7 +157,7 @@ it('keeps a quiet kind\'s failures out of its health, and asks no limit while no
   expect(health.delivery).toMatchObject({ state: 'ready', detail: '1 waiting since 2026-09-09T00:00:00.000Z' })
 })
 
-it('keeps an effect cancelled and queued again while its first run goes on, which the first run does not end', async () => {
+it('效果的首次运行仍在进行时，取消并重新排队的效果会被保留，且首次运行不会终止它', async () => {
   const hold = deferred<void>()
   const run = vi.fn(async (_payload: { text: string }, _key: string) => { if (run.mock.calls.length === 1) await hold.promise })
   effects.handle('relay', run)
@@ -171,7 +171,7 @@ it('keeps an effect cancelled and queued again while its first run goes on, whic
   expect(effects.pending('relay')).toBe(false)
 })
 
-it('queues an effect after a restart behind the ones that waited, for a kind that keeps its order', async () => {
+it('重启后把效果排在等待者之后，适用于保持顺序的种类', async () => {
   const hold = deferred<void>()
   effects.handle('relay', async () => { await hold.promise; throw new Error('aborted') }, { ordered: true })
   effects.enqueue('relay', 'first', relay('a'))
@@ -179,7 +179,7 @@ it('queues an effect after a restart behind the ones that waited, for a kind tha
   await vi.waitFor(() => expect(effects.pending('relay', 'first')).toBe(true))
   const drained = effects.drain()
   hold.resolve(); await drained
-  // Sequence numbers continue across restarts so newly queued effects run after existing pending ones.
+  // 序号在重启后延续，因此新排队的效果会排在既有待运行效果之后。
   const next = new Effects(store, new HealthBoard(), () => clock)
   next.enqueue('relay', 'third', relay('c'))
   next.start()
@@ -189,7 +189,7 @@ it('queues an effect after a restart behind the ones that waited, for a kind tha
   expect(run.mock.calls.map(([, key]) => key)).toEqual(['first', 'second', 'third'])
 })
 
-it('reports a failure of the queue itself under its kind, until a dispatch of that kind succeeds again', async () => {
+it('把队列自身的失败报告在该种类之下，直到该种类的派发再次成功', async () => {
   let broken = true
   effects.handle('relay', async () => {}, { limit: () => { if (broken) throw new Error('database is locked'); return 1 } })
   effects.enqueue('relay', 'k', relay('a'))
@@ -201,7 +201,7 @@ it('reports a failure of the queue itself under its kind, until a dispatch of th
   expect(health.relay).toMatchObject({ state: 'ready', detail: 'Nothing waiting' })
 })
 
-it('refuses a second handler for a kind', () => {
+it('拒绝为一种效果注册第二个处理器', () => {
   effects.handle('relay', async () => {})
   expect(() => effects.handle('relay', async () => {})).toThrow('The relay effects already have a handler')
 })

@@ -1,13 +1,13 @@
 import { expect, it } from 'vitest'
 import { inlines, linkify, markdownBlocks } from '../src/client/markdown.ts'
 
-it('reads headings, paragraphs and lists, a list ending at a blank line or at an item of the other kind', () => {
+it('读取标题、段落与列表，列表在空行或另一类别的条目处结束', () => {
   expect(markdownBlocks('# Plan\nFirst line\n- a\n- b\n\n- c\n1. d\n\n')).toEqual([{ kind: 'heading', text: 'Plan' },
     { kind: 'paragraph', text: 'First line' }, { kind: 'list', ordered: false, items: ['a', 'b'] }, { kind: 'list', ordered: false,
       items: ['c'] }, { kind: 'list', ordered: true, items: ['d'] }])
 })
 
-it('reads bold, inline code and links, and shows a bare address by its host and a short path', () => {
+it('读取粗体、行内代码与链接，裸地址按其主机与短路径展示', () => {
   const log = 'https://ci.example.com/runs/123456789012345678901234/log'
   expect(inlines(`**Done**: \`npm test\` in [the PR](https://github.com/acme/widgets/pull/42), log at ${log}`))
     .toEqual([{ kind: 'bold', text: 'Done' }, { kind: 'text', text: ': ' }, { kind: 'code', text: 'npm test' },
@@ -17,7 +17,7 @@ it('reads bold, inline code and links, and shows a bare address by its host and 
   expect(linkify('<b>**not bold**</b>')).toEqual([{ kind: 'text', text: '<b>**not bold**</b>' }])
 })
 
-it('keeps a link to anything but a web address as text, and leaves the punctuation after a bare address out of it', () => {
+it('指向非网址的链接保持为文本，裸地址后的标点不并入链接', () => {
   for (const text of ['[x](javascript:alert(1))', '[x](data:text/html,<b>hi</b>)']) {
     expect(inlines(text).every(part => part.kind === 'text')).toBe(true)
     expect(inlines(text).map(part => part.text).join('')).toBe(text)

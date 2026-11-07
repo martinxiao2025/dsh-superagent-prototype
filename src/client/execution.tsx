@@ -1,4 +1,4 @@
-/** Execution status view (active Tickets and pause control) and Execution settings group (Executor capacity and workspace environment). */
+/** 执行状态视图（进行中的工单与暂停控制）与执行设置组（执行器容量与工作区环境）。 */
 import { useRef, useState } from 'react'
 import { TICKET_FILTERS, type TicketFilter } from '../app/api.ts'
 import { LIMITS } from '../limits.ts'
@@ -18,7 +18,7 @@ export function ExecutionStatus({ filter: current, state, reload }: {
   const [limit, setLimit] = useState(20)
   const { data, error, reload: reloadTickets } = usePoll(() => call('GET tickets', { query: { state: current, limit } }), [current, limit])
   const { paused, load: { maxWorkers } } = state
-  // Pausing uses its own block revision so toggling pause does not invalidate an open Execution settings draft.
+  // 暂停使用自己独立的块版本，使切换暂停不会使已打开的执行设置草稿失效。
   const pause = async () => { await call('POST executor/pause', { body: { paused: !paused } }); await reload() }
   const status = state.setup.problem ? { tone: 'warning', label: t('executorWaitingSetup') } : paused ? { tone: 'warning',
     label: t('processingPaused') }
@@ -75,7 +75,7 @@ function EnvironmentVariables({ groups, sources,
 export function ExecutionSettings() {
   const { t } = usePanel()
   const { blocks, environment, sources } = useSettings().settings
-  // Keep raw user text (such as separators between blocked commands) in the draft and parse only on save.
+  // 草稿里保留用户原始文本（例如禁止命令之间的分隔符），只在保存时解析。
   const executor = blocks.executor.value
   const saved = { ...executor, maxWorkers: String(executor.maxWorkers), blockedCommands: executor.blockedCommands.join(' ') }
   const draft = useBlockDraft('executor', saved, blocks.executor.revision,

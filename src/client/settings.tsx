@@ -1,4 +1,4 @@
-/** Settings tab shell routing between stage settings (Sources, Eval, Execution), Prompts, and Deployment. */
+/** 设置标签页的外壳，在各阶段设置（来源、评估、执行）、提示词与部署之间路由。 */
 import type { StateView } from './api.ts'
 import { DeploymentPage, type DeploymentForm } from './deployment.tsx'
 import { EvalSettings } from './eval.tsx'

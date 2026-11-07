@@ -1,16 +1,16 @@
-/** Computes structured settings diffs across saved revisions for display in the management panel. */
+/** 在已保存的修订之间计算结构化的设置差异，供管理面板展示。 */
 import type { FieldSpec } from '../sources/kind.ts'
 import type { SourceRegistry } from '../sources/registry.ts'
 import { KV } from '../kv.ts'
 import type { Store, SettingsVersion } from './store.ts'
 
 type SourceSettings = SettingsVersion['settings']['sources'][string]
-/** Change codes localized by the web panel as `change.<code>`. */
+/** 由 Web 面板按 `change.<code>` 本地化的变更代码。 */
 export type SettingsChangeCode = 'ruleAdded' | 'ruleRenamed' | 'ruleInstruction' | 'ruleEnabled' | 'ruleDisabled' | 'ruleRemoved'
   | 'sourceEnabled' | 'sourceDisabled' | 'sourceField' | 'sourceRowsAdded' | 'sourceRowsRemoved' | 'sourceRowsChanged' | 'sourceAdmission'
   | 'mode' | 'timeout' | 'evalModel' | 'executorModel' | 'maxWorkers' | 'paused' | 'resumed' | 'executionDirectory' | 'prepareCommand'
   | 'blockedCommands'
-/** A single settings diff entry rendered by the panel using `change.<code>` and field labels from the Source listing. */
+/** 单条设置差异条目，面板用 `change.<code>` 与 Source 列表中的字段标签渲染它。 */
 export interface SettingsChange {
   code: SettingsChangeCode; items?: string[]; from?: string | number | boolean; to?: string | number | boolean; name?: string; source?: string
   field?: string; part?: true
@@ -25,7 +25,7 @@ function fieldChanges(id: string, fields: readonly FieldSpec[], a: Record<string
     if (field.type === 'rows') {
       const rowKey = field.columns[0]!.key
       const rows = (value: unknown) => new Map((Array.isArray(value) ? value as Record<string, unknown>[] : []).map(row => [String(row[rowKey]), row]))
-      // Prefer the second column (human-readable label) over the row key when naming changed rows.
+      // 命名变化的行时优先用第二列（人类可读的标签）而不是行键。
       const label = (row: Record<string, unknown> | undefined, item: string) => String((field.columns[1] && row?.[field.columns[1].key]) || item)
       const old = rows(from), next = rows(to)
       const added = [...next.keys()].filter(item => !old.has(item)).map(item => label(next.get(item), item)), removed = [...old.keys()].filter(item => !next.has(item)).map(item => label(old.get(item), item))
@@ -56,10 +56,10 @@ function settingsChanges(before: SettingsVersion['settings'], after: SettingsVer
   for (const rule of before.policy.rules) if (!after.policy.rules.some(item => item.id === rule.id)) changes.push({ code: 'ruleRemoved', name: rule.name })
   for (const id of new Set([...Object.keys(before.policy.sources), ...Object.keys(after.policy.sources)])) {
     const policy = sources.kind(id)?.policy
-    // Validate source-specific policy fields separately from the shared admission table.
+    // 与共享的准入表分开，单独校验 Source 特有的策略字段。
     const fill = (value: Record<string, unknown> | undefined) => { const { admission: _admission, ...rest } = value ?? {}; return policy ? policy.schema.parse(rest) : rest }
     changes.push(...fieldChanges(id, policy?.fields ?? [], fill(before.policy.sources[id]), fill(after.policy.sources[id]), true))
-    // Admission tables map receiving scopes rather than form fields, so summarize any table change as one entry per Source.
+    // 准入表映射的是接收范围而非表单字段，因此任何表变更都按每个 Source 汇总为一条。
     if (JSON.stringify(before.policy.sources[id]?.admission ?? {}) !== JSON.stringify(after.policy.sources[id]?.admission ?? {})) changes.push({ code: 'sourceAdmission', source: id, part: true })
   }
   if (before.eval.mode !== after.eval.mode) changes.push({ code: 'mode', from: before.eval.mode, to: after.eval.mode })
@@ -74,11 +74,11 @@ function settingsChanges(before: SettingsVersion['settings'], after: SettingsVer
   for (const id of new Set([...Object.keys(before.sources), ...Object.keys(after.sources)])) changes.push(...sourceChanges(id, before.sources[id], after.sources[id], sources))
   return changes
 }
-/** Compute changes between two revisions, returning null if a historical revision fails current source schema validation. */
+/** 计算两个修订之间的变更；若历史修订无法通过当前 Source schema 校验则返回 null。 */
 function changesOf(before: SettingsVersion['settings'], after: SettingsVersion['settings'], sources: SourceRegistry): SettingsChange[] | null {
   try { return settingsChanges(before, after, sources) } catch { return null }
 }
-/** Return recent settings revisions newest-first with their computed diffs and notified tickets. */
+/** 按新在前返回最近的设置修订，附带计算出的差异与已通知的工单。 */
 export function policyHistory(store: Store, sources: SourceRegistry, policyVersionValue: string) {
   const versions = store.settingsHistory(30)
   return { current: store.get(KV.settings.revision) ?? 0, policyVersion: policyVersionValue,

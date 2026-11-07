@@ -1,4 +1,4 @@
-/** Shared list rows for Tickets, Threads, and Decisions, plus Source fact chips and automated-message run folding. */
+/** 工单、线程与决定的共享列表行，外加 Source 事实标签与自动消息连发的折叠。 */
 import { useState } from 'react'
 import type { DecisionRow, ThreadFacts, ThreadRow, TicketRow } from './api.ts'
 import { Icon, Tag } from './controls.tsx'
@@ -27,7 +27,7 @@ export function TicketLine({ ticket, question, onChanged, context }: {
         {note ? <span className={note.error ? 'dt-ticket-note dt-ticket-note-error' : 'dt-ticket-note'} title={note.text}>{note.text}</span>
           : <When at={ticket.updatedAt} />}
       </div>
-      {/* Always render the actions container so every Ticket row keeps a uniform three-line height. */}
+      {/* 始终渲染操作容器，使每个工单行保持一致的三行高度。 */}
       <div className="dt-ticket-actions">{onChanged && <>
         {answer && <ActionLink href={answer.url} icon="message">{t('answerIn', { source: valueLabel(t, 'source',
           answer.source) })}</ActionLink>}
@@ -47,7 +47,7 @@ function ContextTag() {
   const { t } = usePanel()
   return <Tag tone="quiet" title={t('contextOnlyHint')}>{t('contextOnly')}</Tag>
 }
-/** Thread list row; on a Ticket page, `ticketId` omits that Ticket from fanout targets and `context` marks context-only threads. */
+/** 线程列表行；在工单页上，`ticketId` 会把该工单排除在扇出目标之外，`context` 标记仅作上下文的线程。 */
 export function ThreadLine({ thread, ticketId, context }: { thread: ThreadRow; ticketId?: string; context?: boolean }) {
   const { t, navigate } = usePanel()
   const live = thread.tickets.filter(ticket => ticket.state === 'open' && ticket.id !== ticketId)
@@ -116,7 +116,7 @@ function ThreadChip({ thread }: { thread: Pick<ThreadFacts, 'source' | 'facts' |
 }
 
 type Run<I> = { item: I; earlier: I[] }
-/** Group consecutive automated items from the same sender so only the newest is shown by default. */
+/** 把同一发送者的连续自动消息归为一组，默认只显示最新一条。 */
 export function automatedRuns<I>(items: I[], sender: (item: I) => string | undefined): Run<I>[] {
   const runs: Run<I>[] = []
   for (const item of items) {

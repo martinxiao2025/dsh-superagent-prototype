@@ -1,4 +1,4 @@
-/** Registry of installed Source kinds, their configured instances, and the Engine's SourceScope implementation. */
+/** 已安装 Source kind、其已配置 instance 的注册表，以及引擎的 SourceScope 实现。 */
 import type { ChannelRef, OutboundMessage, ScopeResult, SourceScope, Trigger } from '../core/index.ts'
 import type { Commands } from '../infra/commands.ts'
 import { HealthBoard, type HealthEntry } from '../infra/health.ts'
@@ -7,8 +7,9 @@ import type { ChannelLink, ChannelLinks, SourceInstance, SourceKind, TriggerCont
 
 
 /**
- * Manages registered SourceKind plugins, validates their instance and policy configurations, and implements SourceScope for the Engine.
- * Claims each registered kind's health entries on HealthBoard and mediates access to source channels, links, environment variables, and thread context readers for Runtime, Settings, Outbox, and MasterAssessor.
+ * 管理已注册的 SourceKind 插件，校验其 instance 与策略配置，并为引擎实现 SourceScope。
+ * 在 HealthBoard 上认领每个已注册 kind 的健康条目，并为 Runtime、Settings、发件箱（Outbox）与 MasterAssessor
+ * 居中提供对来源渠道、链接、环境变量和线程上下文读取器的访问。
  */
 export class SourceRegistry implements SourceScope {
   private readonly kinds = new Map<string, SourceKind>()
@@ -16,7 +17,7 @@ export class SourceRegistry implements SourceScope {
   constructor(private readonly settings: () => Settings, private readonly board: Pick<HealthBoard, 'claim'> = new HealthBoard(),
     private readonly registered: (kind: SourceKind) => () => void = () => () => {}) {}
 
-  /** Registers a SourceKind, claims its health entries on HealthBoard (rejecting `sync:` prefixes owned by Settings), and returns an unregister disposer. */
+  /** 注册一个 SourceKind，在 HealthBoard 上认领其健康条目（拒绝由 Settings 拥有的 `sync:` 前缀），并返回注销用的 disposer。 */
   register<C extends Record<string, unknown>>(kind: SourceKind<C>): () => void {
     if (this.kinds.has(kind.kind)) throw new Error(`Source kind already registered: ${kind.kind}`)
     const refused = (name: string) => new Error(`Source kind ${kind.kind} declares the health entry ${name}, which another part reports`)
@@ -34,14 +35,14 @@ export class SourceRegistry implements SourceScope {
     return () => { this.kinds.delete(kind.kind); release(); unregistered() }
   }
   /**
-   * Returns the active health entries for `names`. A Source context writes through the entries it received when built,
-   * so reports sent after that registration ended do nothing even if the kind registers again.
+   * 返回 `names` 对应的活跃健康条目。Source 上下文通过其构建时拿到的条目写入，
+   * 因此在该注册结束之后发出的报告不会生效，即使该 kind 重新注册也一样。
    */
   healthEntries(names: readonly string[]): Map<string, HealthEntry> {
     return new Map(names.flatMap(name => { const entry = this.health.get(name); return entry ? [[name, entry] as const] : [] }))
   }
   kind(id: string): SourceKind | undefined { return this.kinds.get(id) }
-  /** Every registered kind's instance ordered by ID, followed by stored instances whose kind is not installed (with their config kept as stored). */
+  /** 按 ID 排序的每个已注册 kind 的 instance，其后是 kind 未安装的已存储 instance（其 config 按存储原样保留）。 */
   instances(settings = this.settings()): (SourceInstance & { installed: boolean })[] {
     const installed = [...this.kinds.values()].sort((a, b) => a.kind.localeCompare(b.kind)).map(kind => ({ ...this.resolve(kind, settings.sources[kind.kind]), installed: true }))
     const orphaned = Object.entries(settings.sources).filter(([id]) => !this.kinds.has(id)).map(([id, stored]) => ({ id, kind: id, enabled: stored.enabled, config: stored.config, installed: false }))
@@ -56,11 +57,11 @@ export class SourceRegistry implements SourceScope {
     if (!kind) throw new Error(`Source kind not installed: ${id}`)
     return { enabled: value.enabled, config: kind.schema.parse(value.config) }
   }
-  /** Validates each Source's part of a submitted Policy against its kind; policy parts for uninstalled Source kinds are kept as stored. */
+  /** 将提交的策略中每个 Source 的部分按其 kind 进行校验；未安装 Source kind 的策略部分按存储原样保留。 */
   validatePolicy(parts: Record<string, Record<string, unknown>>): Record<string, Record<string, unknown> & { allowed: { id: string; name?: string }[] }> {
     return Object.fromEntries(Object.entries(parts).map(([id, part]) => {
       const policy = this.kinds.get(id)?.policy
-      // `admission` is validated by the Policy's own schema (shared across all kinds), while the kind validates the rest of its part.
+      // `admission` 由策略自身的 schema 校验（在所有 kind 间共享），而其余部分由该 kind 校验。
       const { admission, ...rest } = part
       return [id, policy ? { ...policy.schema.parse(rest), admission: AdmissionTableSchema.parse(admission ?? {}) } : part as Record<string, unknown> & { allowed: { id: string; name?: string }[] }]
     }))
@@ -78,7 +79,7 @@ export class SourceRegistry implements SourceScope {
     const instance = this.resolve(kind, settings.sources[channel.source])
     return instance.enabled && (kind.channel?.allowed?.(channel.address, instance.config) ?? true)
   }
-  /** Environment variable declarations for every installed kind, whether enabled or disabled. */
+  /** 每个已安装 kind 的环境变量声明，无论启用还是停用。 */
   declarations(): { kind: string; variables: readonly VariableSpec[] }[] {
     return [...this.kinds.values()].sort((a, b) => a.kind.localeCompare(b.kind)).flatMap(kind => kind.environment ? [{ kind: kind.kind, variables: kind.environment.variables }] : [])
   }
@@ -89,8 +90,8 @@ export class SourceRegistry implements SourceScope {
     })
   }
   /**
-   * Sends a message idempotently through its Channel's kind; returns `'waiting'` while the kind is not installed, or
-   * `'gone'` when the target (or a kind without channels) can never receive it.
+   * 通过消息所属渠道的 kind 幂等地发送消息；kind 未安装时返回 `'waiting'`，
+   * 而目标（或没有渠道的 kind）永远无法接收时返回 `'gone'`。
    */
   async send(message: OutboundMessage, commands: Commands): Promise<'sent' | 'gone' | 'waiting'> {
     const kind = this.kinds.get(message.channel.source)
@@ -124,13 +125,13 @@ export class SourceRegistry implements SourceScope {
   scope(input: { source: string; meta: Record<string, unknown> }, settings = this.settings()): ScopeResult {
     const kind = this.kinds.get(input.source)
     const stored = settings.sources[input.source]
-    // Without its kind plugin the stored scope cannot be evaluated, so a configured Source whose plugin is missing listens to nothing.
+    // 缺少 kind 插件时无法评估已存储的监听范围，因此插件缺失的已配置 Source 不监听任何内容。
     if (!kind) return stored ? { listened: false, reason: 'source_not_installed' } : { listened: true, observed: false }
     const instance = this.resolve(kind, stored)
     if (!instance.enabled) return { listened: false, reason: 'source_disabled' }
     return kind.scope ? kind.scope({ meta: input.meta }, instance.config) : { listened: true, observed: false }
   }
-  /** Falls back to schema defaults and disables the instance when stored configuration fails validation. */
+  /** 当已存储的配置未通过校验时，回退到 schema 默认值并停用该 instance。 */
   private resolve(kind: SourceKind, stored: { enabled: boolean; config: Record<string, unknown> } | undefined): SourceInstance {
     const parsed = kind.schema.safeParse(stored?.config ?? {})
     return { id: kind.kind, kind: kind.kind, enabled: parsed.success && (stored?.enabled ?? true), config: parsed.success ? parsed.data : kind.schema.parse({}) }

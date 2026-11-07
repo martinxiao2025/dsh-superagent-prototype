@@ -1,4 +1,4 @@
-/** DSH executor: manages one persistent worker session and workspace directory per ticket. */
+/** DSH 执行器：为每个工单管理一个持久的 worker Session 与工作区目录。 */
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -20,32 +20,32 @@ import type { HealthEntry } from '../infra/health.ts'
 import { cancelled, collectJob, killJobs, runningJobs, stopBackground, stopSubagents, until, untilQuiet } from './background.ts'
 
 const now = (): string => new Date().toISOString()
-/** Returns the worker session ID (`worker-<ticketId>`) for a ticket. */
+/** 返回工单对应的 worker Session ID（`worker-<ticketId>`）。 */
 export const workerSessionId = (ticketId: string): string => `worker-${ticketId}`
-/** Returns the ticket ID for a worker session ID (`worker-<ticketId>`), or undefined for non-worker sessions. */
+/** 返回 worker Session ID（`worker-<ticketId>`）对应的工单 ID，非 worker Session 返回 undefined。 */
 export const ticketOfSession = (sessionId: string): string | undefined => sessionId.startsWith('worker-') ? sessionId.slice('worker-'.length) : undefined
-/** Maximum runtime for a workspace prepare command. */
+/** 工作区 prepare 命令的最长运行时间。 */
 const PREPARE_TIMEOUT_MS = 10 * 60_000
-/** Maximum transient retry attempts for a launch or worker turn, and the initial backoff before resuming a turn. */
+/** 启动或 worker 回合的瞬时失败最大重试次数，以及恢复回合之前的初始退避时长。 */
 const TRANSIENT_TRIES = 3, TRANSIENT_BACKOFF_MS = 15_000
-/** How long a worker's background work may run on after its turn ended before it is stopped and the worker reported waiting. */
+/** worker 的回合结束之后，其后台工作在被停止、并把 worker 报告为 waiting 之前可以继续运行的时长。 */
 const BACKGROUND_LIMIT_MS = 30 * 60_000
-/** How long a host stop waits for the workers' background work to stop. */
+/** 宿主停止时等待各 worker 的后台工作停下的时长。 */
 const SHUTDOWN_STOP_MS = 10_000
-/** How long a worker that goes on after a passing failure waits for a worker slot, or for processing to resume, between looks. */
+/** 因瞬时失败而继续的 worker 在两次检查之间等待 worker 槽位或处理恢复的时长。 */
 const SLOT_WAIT_MS = 5000
-/** True when an input comes from a person (a non-context human trigger or a direct text input such as a status request). */
+/** 输入是否来自人（非上下文的人类触发，或状态请求等直接的文本输入）。 */
 const fromPerson = (input?: TicketInput): boolean => input?.kind === 'trigger' ? !!input.human && !input.context : input?.kind === 'text'
 /**
- * Internal error thrown when a ticket's workspace prepare command fails during launch.
- * DshExecutor catches it to mark the ticket failed immediately rather than retrying automatically, because an existing directory counts as prepared and an automatic retry would treat whatever a failed prepare command left behind in the directory as a prepared workspace.
+ * 工单的工作区 prepare 命令在启动期间失败时抛出的内部错误。
+ * DshExecutor 捕获它后立即把工单标记为 failed，而不是自动重试，因为已存在的目录即视为已准备好，自动重试会把失败的 prepare 命令遗留在目录中的任何内容当作已准备好的工作区。
  */
 class PrepareFailed extends Error {}
 const PASSING = new RegExp(['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN', 'ENOTFOUND', 'EPIPE', 'UND_ERR', 'socket hang up', 'fetch failed',
   'network error', 'overloaded', 'rate limit', '\\b(?:408|429|50[0-4])\\b'].join('|'), 'i')
 /**
- * True when an error represents a transient network or model-provider failure: an HTTP 408, 429, or 5xx status, or a
- * connection that was refused, reset, timed out, or could not resolve its host.
+ * 错误是否表示瞬时的网络或模型提供方失败：HTTP 408、429 或 5xx 状态，或
+ * 连接被拒绝、被重置、超时，或无法解析主机名。
  */
 export function transient(error: unknown): boolean {
   const status = (error as { status?: unknown } | undefined)?.status
@@ -53,47 +53,47 @@ export function transient(error: unknown): boolean {
   const text = error instanceof Error ? `${error.name} ${error.message} ${String((error as { code?: unknown }).code ?? '')}` : String(error)
   return PASSING.test(text)
 }
-/** Appends a stable 12-character ticket ID suffix to a validated English worktree name. */
+/** 给已校验的英文 worktree 名称追加稳定的 12 字符工单 ID 后缀。 */
 const ticketWorktreeName = (name: string, id: string): string => `${WorktreeNameSchema.parse(name)}-${id.slice(0, 12)}`
-/** Host dependencies used by `DshExecutor`. */
+/** `DshExecutor` 所使用的宿主依赖。 */
 export interface ExecutorHost {
-  /** DSH Cordis context: agents and their events, and the subprocess service used to run prepare commands. */
+  /** DSH Cordis 上下文：agent 及其事件，以及用于运行 prepare 命令的子进程服务。 */
   readonly context: Context
-  /** Where the Executor reports what happened to Assignments and Inputs. */
+  /** 执行器向其上报派工与输入所发生情况的地方。 */
   readonly engine: Pick<EngineForExecutor, 'assignmentStarted' | 'inputsDelivered' | 'inputsRead' | 'turnEnded' | 'deliveryFailed' | 'report'
     | 'assignmentInterrupted'>
   readonly store: Pick<Store, 'tickets' | 'triggers' | 'set' | 'settings' | 'atomic' | 'afterCommit'>
-  /** Durable effect queue through which launches and input deliveries run. */
+  /** 启动与输入投递所经过的持久效果队列。 */
   readonly effects: Pick<Effects, 'enqueue' | 'handle'>
-  /** The `worker` health entry, which reports whether background worker event handling failed. */
+  /** `worker` 健康条目，报告后台 worker 事件处理是否失败。 */
   readonly health: HealthEntry
   readonly machine: Pick<Machine, 'stateDir'>
   readonly lifetime: AbortSignal
-  /** Session manager for worker sessions and for relaying worker reports to the main Session. */
+  /** Session 管理器，用于 worker Session 以及把 worker 报告转发给主 Session。 */
   readonly sessions: Pick<Sessions, 'ensure' | 'prompt' | 'promptedId' | 'relay' | 'holds'>
   closing(): boolean
-  /** Whether processing is paused, which holds launches and input deliveries. */
+  /** 处理是否处于暂停，暂停会扣住启动与输入投递。 */
   paused(): boolean
-  /** Execution environment variables for `ticket`, passed to its workspace prepare command. */
+  /** 工单的执行环境变量，传给其工作区 prepare 命令。 */
   environment(ticket: Ticket): Variable[]
   sourceLink(trigger: Trigger, signal?: AbortSignal): Promise<{ source_url?: string; source_url_read?: string }>
-  /** Stored Trigger of the message `trigger` replies to, when it replies to one. */
+  /** `trigger` 所回复消息的已存储触发，当它确实回复了某条消息时。 */
   repliedTo(trigger: Trigger): Trigger | undefined
 }
-/** Looks up a ticket's origin trigger in Store. */
+/** 在 Store 中查找工单的源头触发。 */
 export const sourceTrigger = (host: { store: Pick<Store, 'triggers'> }, ticket: Ticket): Trigger | undefined =>
   host.store.triggers.get(ticket.origin.triggerId)
 
 /**
- * Returns additional system-prompt mandate instructions for a worker beyond the request: for work accepted proactively under
- * rules (`strength === 'inferred'`), restricts authorization to small internal changes within the rule scope; returns `''` for explicit requests.
+ * 在请求之外为 worker 返回额外的系统提示授权指令：对依据规则被主动接受的工作
+ * （`strength === 'inferred'`），把授权限制在规则范围内的小型内部改动；显式请求返回 `''`。
  */
 export function mandateInstructions(mandate: Pick<Mandate, 'strength'>): string {
   return mandate.strength === 'inferred' ? 'This ticket has limited proactive authorization. Independently verify that it is a small change '
     + 'internal to one module within the accepted rule scope. If it requires public-interface or behavior changes, new interaction, product '
     + 'decisions or clarification, stop and report dropped; do not expand scope.' : ''
 }
-/** Builds a newly accepted ticket's Execution metadata: its worktree name, workspace directory, and assignment text. */
+/** 构建新接受工单的执行元数据：其 worktree 名称、工作区目录与派工文本。 */
 export function ticketExecution(ticket: Ticket, outcome: Extract<AssessmentOutcome, { kind: 'accept' }>, settings: Settings,
   stateDir: string): Execution {
   const name = ticketWorktreeName(outcome.name ?? '', ticket.id)
@@ -103,30 +103,30 @@ export function ticketExecution(ticket: Ticket, outcome: Extract<AssessmentOutco
   const rules = settings.policy.rules.filter(rule => ruleIds?.includes(rule.id))
     .map(rule => `\n- ${rule.name} (${rule.id}): ${rule.instruction}`).join('')
   const precedence = rules ? `\nMatched rules; their procedure and communication instructions take precedence over the default acknowledgement and messaging policy for this ticket:${rules}` : ''
-  // The origin trigger is delivered alongside the assignment, so `assignment` omits the trigger text.
+  // 源头触发会随派工一起送达，因此 `assignment` 不含触发文本。
   const assignment = ticket.mandate.strength === 'inferred' && ruleIds
     ? `Proactively accepted under ${ruleIds.join(', ')}. Scope: ${outcome.scope}.${precedence}${note}`
     : note.trim()
   return { name, directory: join(executionRoot(settings, stateDir), name), assignment }
 }
-/** Character limits for inline assignment and trigger text in worker messages; longer text is read via its resource. */
+/** worker 消息中内联派工与触发文本的字符上限；更长的文本通过其资源读取。 */
 const ASSIGNMENT_CHARS = 1500, TRIGGER_CHARS = 600
-/** Returns `text` up to `limit` characters, or a truncated preview with total character count and the resource path to read the full text. */
+/** 返回截取到 `limit` 字符的 `text`，或带总字符数与完整文本资源路径的截断预览。 */
 const capped = (text: string, limit: number, read: string) =>
   text.length <= limit ? { text } : { text: `${text.slice(0, limit)}…`, chars: text.length, read }
 /**
- * Formats a Trigger for worker delivery: author, thread, timestamp, text up to `TRIGGER_CHARS`, source message link,
- * optional routing note, and a preview of the replied-to message when the worker has not yet seen it.
+ * 为投递给 worker 而格式化一个触发：作者、线程、时间戳、截取到 `TRIGGER_CHARS` 的文本、源消息链接、
+ * 可选的路由说明，以及 worker 尚未看过时所回复消息的预览。
  */
 export function triggerMessage(trigger: Trigger, link: { source_url?: string; source_url_read?: string }, note?: string, repliesTo?: Trigger) {
   return { trigger_id: trigger.id, from: trigger.actor.id, thread: threadKey(trigger.threads[0]!), at: trigger.at,
     ...capped(trigger.text, TRIGGER_CHARS, `trigger/${trigger.id}`), ...link, ...(note ? { routing_note: note } : {}),
     ...(repliesTo ? { replies_to: { trigger_id: repliesTo.id, preview: repliesTo.text.replace(/\s+/g, ' ').slice(0, 160) } } : {}) }
 }
-/** Formats a peer trigger from the ticket's acceptance batch with author, timestamp, 160-character preview, and read resource path. */
+/** 格式化工单接受批次中的同批触发，含作者、时间戳、160 字符预览与读取资源路径。 */
 export const batchLine = (trigger: Trigger) => ({ trigger_id: trigger.id, from: trigger.actor.id, at: trigger.at,
   preview: trigger.text.replace(/\s+/g, ' ').slice(0, 160), read: `trigger/${trigger.id}` })
-/** Returns the other triggers in a ticket's origin batch (excluding the primary `origin.triggerId`), oldest first. */
+/** 返回工单源头批次中的其他触发（不含主 `origin.triggerId`），按从旧到新排序。 */
 export const batchOf = (host: { store: Pick<Store, 'triggers'> }, ticket: Ticket): Trigger[] => ticket.origin.triggerIds
   .filter(id => id !== ticket.origin.triggerId).flatMap(id => host.store.triggers.get(id) ?? [])
 const RESUMED = 'This ticket ended earlier and the message that follows, on its thread, resumed it under the same mandate. If it asks for '
@@ -134,7 +134,7 @@ const RESUMED = 'This ticket ended earlier and the message that follows, on its 
   + 'for another ticket, hand it back with orchestrator_trigger_handback and report dropped; if it needs nothing, such as thanks, '
   + 'report dropped without a message. Report ready when the follow-up is done. Do not repeat completed work.'
 const RETRIED = 'A person retried this ticket. Continue the assignment from the current worktree, git history and PR state.'
-/** Formats a policy-change input for the worker; inputs recorded before `effect` existed fall back to a general notice. */
+/** 为 worker 格式化策略变更输入；在 `effect` 出现之前记录的输入回退为一般性通知。 */
 function policyMessage(effect?: PolicyEffect): string {
   if (!effect) return 'Policy change: the access or admission rules changed. Check that the remaining work stays within the assignment.'
   return ['Policy change:',
@@ -146,15 +146,15 @@ function policyMessage(effect?: PolicyEffect): string {
     ...effect.requesterAllowed === false ? [`The sender this ticket is for, ${effect.requester ? `${effect.requester.id} on ${effect.requester.source}` : 'who '
       + 'asked for it'}, may no longer start work here: finish the assignment within its scope, and take no new requests from them on it.`] : []].join('\n')
 }
-/** Resource path under which a worker session reads the full text of a ticket input. */
+/** worker Session 读取工单输入完整文本的资源路径。 */
 export const inputResource = (ticketId: string, inputId: string): string => `ticket/${ticketId}/input/${key(inputId)}`
 /**
- * Formats a ticket input for worker delivery: a `trigger` rendered via `trigger` (or by its ID and read path when absent),
- * a `policy-changed` notice, a `resumed` notice, an orchestrator `note`, or a `text` input as written.
- * Returns `undefined` for legacy `reopen` inputs, which are historical only because the schema 11 migration converted pending reopen inputs into text inputs.
+ * 为投递给 worker 而格式化一条工单输入：`trigger` 经由 `trigger` 渲染（缺失时用其 ID 与读取路径）、
+ * `policy-changed` 通知、`resumed` 通知、orchestrator 的 `note`，或原样的 `text` 输入。
+ * 对旧式 `reopen` 输入返回 `undefined`，它们只是历史记录，因为 schema 11 迁移已把待处理的 reopen 输入转换为文本输入。
  */
 export function inputMessage(input: TicketInput, trigger?: object): string | undefined {
-  // Mark triggers arriving on context-only subscriptions so the worker knows they are not addressed to the ticket.
+  // 标记经由仅上下文订阅到达的触发，让 worker 知道它们不是点名给该工单的。
   if (input.kind === 'trigger') return JSON.stringify({ ...trigger ?? { trigger_id: input.triggerId, read: `trigger/${input.triggerId}` },
     ...input.context ? { context: true } : {} })
   if (input.kind === 'policy-changed') return policyMessage(input.effect)
@@ -163,110 +163,110 @@ export function inputMessage(input: TicketInput, trigger?: object): string | und
   return input.kind === 'text' ? input.text : undefined
 }
 /**
- * Tracks active and starting worker sessions against the configured concurrency limit: a ticket holds a slot while its
- * worker's turn runs, while its shell jobs or subagents run after that turn ended, and while a launch or wake starts that worker.
- * DshExecutor reserves slots synchronously before awaiting launch or wake work so two starts cannot take the last slot,
- * and allows one extra slot beyond the limit for human follow-ups (`by === 'person'`) so they never wait behind new launches.
+ * 按所配置的并发上限跟踪活动与正在启动的 worker Session：worker 的回合运行期间、该回合结束后
+ * 其 shell 作业或子代理运行期间，以及启动或唤醒正在开始该 worker 时，工单都持有一个槽位。
+ * DshExecutor 在等待启动或唤醒工作之前同步预留槽位，使两次启动不可能同时抢走最后一个槽位，
+ * 并为人的跟进（`by === 'person'`）允许超出上限一个额外槽位，使它们永远不必排在新启动之后。
  */
 export class WorkerSlots {
-  /** Tickets currently holding a startup slot, mapped to whether the start is a launch, a wake, or a wake for a person's message. */
+  /** 当前持有启动槽位的工单，映射到该启动是 launch、wake，还是为人的消息而做的 wake。 */
   private readonly starting = new Map<string, 'launch' | 'wake' | 'person'>()
   /**
-   * @param running - Returns the ticket IDs whose worker holds a slot (see `DshExecutor.running`).
-   * @param max - Returns the configured maximum number of concurrent worker slots.
+   * @param running - 返回其 worker 持有槽位的工单 ID（见 `DshExecutor.running`）。
+   * @param max - 返回所配置的并发 worker 槽位最大数量。
    */
   constructor(private readonly running: () => string[], private readonly max: () => number) {}
-  /** Number of slots currently in use across running workers and starting reservations. */
+  /** 当前被运行中的 worker 与启动中预留所占用的槽位数量。 */
   used(): number { return new Set([...this.running(), ...this.starting.keys()]).size }
-  /** How many launches may run concurrently: the slots not held by a running worker or a wake reservation. */
+  /** 可以并发运行多少次启动：未被运行中的 worker 或唤醒预留占用的槽位。 */
   launches(): number {
     const wakes = [...this.starting].flatMap(([ticketId, by]) => by !== 'launch' ? [ticketId] : [])
     return this.max() - new Set([...this.running(), ...wakes]).size
   }
   /**
-   * Reserves a startup slot for `ticketId`; idempotent if `ticketId` already holds a starting slot.
-   * A wake for a person's message (`by === 'person'`) may use one extra slot beyond `max()`.
-   * Call `free(ticketId)` once the worker turn is running or the launch/wake attempt ends.
-   * @throws Later when no slot is free.
+   * 为 `ticketId` 预留一个启动槽位；若 `ticketId` 已持有启动中的槽位则幂等。
+   * 为人的消息所做的唤醒（`by === 'person'`）可以使用 `max()` 之外的一个额外槽位。
+   * 在 worker 回合开始运行、或启动/唤醒尝试结束之后调用 `free(ticketId)`。
+   * @throws 没有空闲槽位时抛出 Later。
    */
   reserve(ticketId: string, by: 'launch' | 'wake' | 'person'): void {
     if (this.starting.has(ticketId)) return
     if (this.used() >= this.max() + (by === 'person' ? 1 : 0)) throw new Later('No worker slot is free')
     this.starting.set(ticketId, by)
   }
-  /** Releases `ticketId`'s starting slot once its worker session is running or the launch/wake attempt has ended. */
+  /** 在 worker Session 开始运行、或启动/唤醒尝试结束之后释放 `ticketId` 的启动槽位。 */
   free(ticketId: string): void { this.starting.delete(ticketId) }
 }
 
 /**
- * Executes ticket assignments in persistent per-ticket DSH worker sessions and isolated workspace directories.
- * Queues launches and input deliveries through Effects, manages concurrency with WorkerSlots, listens for `agent/status`,
- * `agent/inbox/claimed`, `session/event` and `agent/error` events on the Cordis context, and reports status transitions back to Engine.
- * Runtime, Engine, worker tools, and management routes use this class to prepare, launch, deliver to, stop, and resume ticket assignments.
+ * 在每个工单持久的 DSH worker Session 与隔离的工作区目录中执行工单派工。
+ * 通过 Effects 把启动与输入投递排队，用 WorkerSlots 管理并发，在 Cordis 上下文上监听 `agent/status`、
+ * `agent/inbox/claimed`、`session/event` 与 `agent/error` 事件，并把状态变化上报回引擎。
+ * Runtime、引擎、worker 工具与管理路由使用本类来准备、启动、投递、停止与恢复工单派工。
  */
 export class DshExecutor implements Executor {
   private readonly disposers: (() => void)[] = []
   private readonly slots: WorkerSlots
-  /** Transient failure counts tried so far: keyed by `assignment.id` for worker turns and `launch:<assignment.id>` for launches. */
+  /** 到目前为止的瞬时失败重试计数：worker 回合以 `assignment.id` 为键，启动以 `launch:<assignment.id>` 为键。 */
   private readonly transient = new Map<string, number>()
-  /** Assignment IDs currently waiting on a transient-failure backoff timer before resuming their worker turn. */
+  /** 当前正等待瞬时失败退避计时器、以便恢复其 worker 回合的派工 ID。 */
   private readonly resuming = new Set<string>()
   /**
-   * The looks at background work of workers that went idle, by ticket, which hold their slots; a look ends when its worker
-   * runs again or its Assignment ends.
+   * 对已空闲 worker 后台工作的检查，按工单索引，检查期间工单持有其槽位；worker
+   * 再次运行或其派工结束时检查结束。
    */
   private readonly settling = new Map<string, AbortController>()
-  /** The stops of tickets' background work that run, by ticket, which a launch or a delivery of the ticket waits for. */
+  /** 正在进行的工单后台工作停止操作，按工单索引；该工单的启动或投递要等待它完成。 */
   private readonly stopping = new Map<string, Promise<void>>()
-  /** The jobs workers left to a person when they handed off, by ticket, and the collecting of their ends. */
+  /** worker 交接时留给人的作业，按工单索引，及其结束的收集。 */
   private readonly left = new Map<string, { jobs: Set<string>; collect: AbortController }>()
-  /** When a person's message typed into a worker's Session last started a turn, by ticket. */
+/** 人的消息最近一次在 worker 的 Session 中开启回合的时间，按工单索引。 */
   private readonly personal = new Map<string, string>()
-  /** The timers of workers that go on after a passing failure, which dispose clears. */
+  /** 因瞬时失败而继续的 worker 的计时器，dispose 会清除它们。 */
   private readonly timers = new Set<ReturnType<typeof setTimeout>>()
-  /** Registers the `launch` and `delivery` effect handlers; both are held (concurrency limit 0) while processing is paused. */
+/** 注册 `launch` 与 `delivery` 效果处理器；处理暂停期间两者都被扣住（并发上限为 0）。 */
   constructor(private readonly host: ExecutorHost) {
     this.slots = new WorkerSlots(() => host.store.tickets.open().filter(ticket => this.running(ticket)).map(ticket => ticket.id),
       () => host.store.settings().executor.maxWorkers)
-    // Each launch reserves a worker slot so launches run concurrently while slots are free.
+    // 每次启动都会预留一个 worker 槽位，使启动在有槽位空闲时并发运行。
     host.effects.handle('launch', payload => this.launchQueued(payload), { limit: () => host.paused() ? 0 : this.slots.launches(),
       retry: [5000, 300_000] })
-    // Failed input deliveries are recorded on the ticket itself rather than reported through the `delivery` effect health entry (`quiet: true`).
+    // 失败的输入投递记录在工单本身上，而不是通过 `delivery` 效果的健康条目上报（`quiet: true`）。
     host.effects.handle('delivery', payload => this.deliverQueued(payload.ticketId), { limit: () => host.paused() ? 0 : 4, quiet: true })
   }
-  /** Populates a newly accepted ticket's `execution` attributes (worktree name, workspace directory, and assignment text). */
+  /** 填充新接受工单的 `execution` 属性（worktree 名称、工作区目录与派工文本）。 */
   prepare(ticket: Ticket, outcome: Extract<AssessmentOutcome, { kind: 'accept' }>): Ticket {
     return { ...ticket, execution: ticketExecution(ticket, outcome, this.host.store.settings(), this.host.machine.stateDir) }
   }
   /**
-   * Runs the configured `executor.prepare` command for a new ticket workspace in its parent directory with the ticket's
-   * execution environment variables, then verifies the directory as the worker sees it.
-   * A failed prepare command throws `PrepareFailed`, which is not retried automatically; an empty directory it left is removed, a non-empty one kept.
-   * @throws PrepareFailed with the command's output when the prepare command fails.
+   * 在新工单工作区的父目录中、带着工单的执行环境变量运行所配置的 `executor.prepare` 命令，
+   * 然后按 worker 所见的视角校验该目录。
+   * 失败的 prepare 命令抛出 `PrepareFailed`，不会自动重试；它留下的空目录会被移除，非空目录保留。
+   * @throws prepare 命令失败时带命令输出抛出 PrepareFailed。
    */
   private async prepareDirectory(ticket: Ticket): Promise<void> {
     const directory = ticket.execution?.directory ?? ''
     await mkdir(dirname(directory), { recursive: true })
     const command = this.host.store.settings().executor.prepare.trim()
     const env = Object.fromEntries(this.host.environment(ticket).map(variable => [variable.key, variable.value]))
-    // Enforce a timeout so a hung prepare command (such as on a credential prompt) fails the ticket instead of holding a worker slot indefinitely.
+    // 强制超时，使挂起的 prepare 命令（例如卡在凭据提示上）让工单失败，而不是无限期占用一个 worker 槽位。
     const signal = AbortSignal.any([this.host.lifetime, AbortSignal.timeout(PREPARE_TIMEOUT_MS)])
     if (command) await runAsWorker(this.host.context.subprocess, ['sh', '-c', command], dirname(directory), signal, env)
       .catch(async (error: unknown) => {
-        // Remove an empty directory left by a failed prepare command so a later retry does not treat it as already prepared.
-        await rmdir(directory).catch(() => { /* Absent, or holding what the command wrote, which the output explains. */ })
+        // 移除失败的 prepare 命令留下的空目录，使之后的重试不会把它当作已准备好。
+        await rmdir(directory).catch(() => { /* 不存在，或装有命令写入的内容，输出中有说明。 */ })
         throw new PrepareFailed(`The prepare command failed: ${error instanceof Error ? error.message : String(error)}`)
       })
     await mkdir(directory, { recursive: true })
     await verifyDirectory(directory, this.host.context.subprocess, this.host.lifetime)
   }
-  /** Enqueues a `launch` effect for an accepted or resumed assignment; launches start in queue order as worker slots free up. */
+  /** 为被接受或恢复的派工把 `launch` 效果排队；随着 worker 槽位空出，启动按队列顺序开始。 */
   start(ticket: Ticket, assignment: Assignment): void {
     this.host.effects.enqueue('launch', assignment.id, { ticketId: ticket.id, assignmentId: assignment.id })
   }
-  /** Enqueues a `delivery` effect to steer pending inputs into `ticket`'s running worker session. */
+  /** 把 `delivery` 效果排队，把待投递的输入引导进 `ticket` 正在运行的 worker Session。 */
   deliver(ticket: Ticket, _assignment: Assignment): void { this.host.effects.enqueue('delivery', ticket.id, { ticketId: ticket.id }) }
-  /** Launches a queued assignment unless its ticket ended or a newer assignment replaced it meanwhile. */
+  /** 启动已排队的派工，除非其工单已结束、或期间有更新的派工取代了它。 */
   private async launchQueued({ ticketId, assignmentId }: { ticketId: string; assignmentId: string }): Promise<void> {
     const ticket = this.host.store.tickets.get(ticketId)
     const assignment = ticket && latestAssignment(ticket)
@@ -274,21 +274,21 @@ export class DshExecutor implements Executor {
     this.slots.reserve(ticketId, 'launch')
     try { await this.launch(ticket, assignment); this.transient.delete(`launch:${assignmentId}`) }
     catch (error) {
-      // Shutdown or pause re-queues the launch for resume, and transient network/provider errors retry with backoff.
-      // A failed prepare command is not retried automatically because an existing directory counts as prepared, so retrying
-      // would treat whatever a failed prepare command left behind in the directory as a prepared workspace; instead the
-      // ticket is marked failed and waits until new human input or an explicit retry arrives.
+      // 关闭或暂停会把启动重新排队等待恢复，瞬时的网络/提供方错误则带退避重试。
+      // 失败的 prepare 命令不会自动重试，因为已存在的目录即视为已准备好，重试
+      // 会把失败的 prepare 命令遗留在目录中的任何内容当作已准备好的工作区；因此
+      // 工单被标记为 failed，等待新的人类输入或显式重试的到来。
       if (this.host.closing() || error instanceof Later) throw error
       if (!(error instanceof PrepareFailed) && this.retries(`launch:${assignmentId}`, error)) throw error
       this.launchFailed(ticketId, assignmentId, error)
     } finally { this.slots.free(ticketId) }
   }
   /**
-   * Delivers queued inputs to a running assignment one by one, re-reading ticket state before each delivery so delivery
-   * stops immediately if the ticket ended or another assignment took over.
+   * 把排队的输入逐条投递给运行中的派工，每次投递之前都重新读取工单状态，使工单已结束
+   * 或被其他派工接管时投递立即停止。
    */
   private async deliverQueued(ticketId: string): Promise<void> {
-    // A stop of the worker's background work ends with a cancel, which would drop what is delivered meanwhile.
+    // worker 后台工作的停止以取消收尾，取消会丢弃投递期间送到的内容。
     await this.stopped(ticketId)
     const first = this.host.store.tickets.get(ticketId)
     const target = first && liveTicket(first) ? runningAssignment(first) : undefined
@@ -300,17 +300,17 @@ export class DshExecutor implements Executor {
         const assignment = ticket && liveTicket(ticket) ? runningAssignment(ticket) : undefined
         const inputId = ticket?.undelivered[0]
         if (!ticket || !assignment || inputId === undefined) return
-        // Waking an idle worker reserves a slot (including the extra slot reserved for human follow-ups).
+        // 唤醒空闲的 worker 会预留一个槽位（包括为人的跟进保留的额外槽位）。
         const sessionId = workerSessionId(ticketId)
         if (!woken && !this.running(ticket)) {
-          // A person's message wakes its worker ahead of new launches, in the slot kept for it.
+          // 人的消息会先于新启动唤醒其 worker，使用为它保留的槽位。
           const person = ticket.undelivered.some(id => fromPerson(ticket.inputs.find(item => item.id === id)))
           this.slots.reserve(ticketId, person ? 'person' : 'wake')
           woken = true
         }
         const input = ticket.inputs.find(item => item.id === inputId)
         try {
-          // Recreate the worker session if it was externally deleted.
+          // 若 worker Session 被外部删除则重建它。
           if (!this.host.context.agents.get(sessionId as SessionId)) {
             await this.host.sessions.ensure(sessionId, ticket.execution?.directory ?? '', ticket.title, 'worker')
           }
@@ -327,11 +327,11 @@ export class DshExecutor implements Executor {
     } finally { if (woken) this.slots.free(ticketId) }
   }
   private async deliverInput(ticket: Ticket, assignment: Assignment, input: TicketInput): Promise<void> {
-    // Re-check right before session delivery because the ticket may have ended while awaiting `sourceLink`.
+    // 在向 Session 投递之前再次检查，因为等待 `sourceLink` 期间工单可能已经结束。
     const live = () => {
       const current = this.host.store.tickets.get(ticket.id)
       if (!current || !liveTicket(current) || runningAssignment(current)?.id !== assignment.id) throw new Error('The ticket ended or another Assignment took it over')
-      // A stop of the worker's background work that started meanwhile ends with a cancel, which would drop the Input.
+      // 期间开始的 worker 后台工作停止会以取消收尾，取消会丢弃该输入。
       if (this.stopping.has(ticket.id)) throw new Later('The worker\'s background work is stopping')
     }
     live()
@@ -341,7 +341,7 @@ export class DshExecutor implements Executor {
     const text = message.length > ASSIGNMENT_CHARS ? JSON.stringify(capped(message, ASSIGNMENT_CHARS, inputResource(ticket.id, input.id))) : message
     await this.host.sessions.prompt(workerSessionId(ticket.id), input.id, text, 'steer', live)
   }
-  /** Formats a trigger on `ticket` for the worker, including a preview of the replied-to message when the worker has not yet seen it. */
+  /** 为 worker 格式化 `ticket` 上的一个触发，包括 worker 尚未看过时所回复消息的预览。 */
   private async triggerCard(ticket: Ticket, triggerId: string, note?: string): Promise<object | undefined> {
     const trigger = this.host.store.triggers.get(triggerId)
     if (!trigger) return undefined
@@ -350,9 +350,9 @@ export class DshExecutor implements Executor {
     return triggerMessage(trigger, await this.host.sourceLink(trigger), note, seen ? undefined : parent)
   }
   /**
-   * After the ending transaction commits (so a rollback leaves the worker working, and a launch the same transaction queued
-   * starts after it): ends the look at its background work, cancels its turn unless its last word was a `ready` or `dropped`
-   * report with no Input delivered since, and stops its shell jobs and subagents, including jobs it left to a person.
+   * 在结束事务提交之后执行（回滚会让 worker 继续工作，同一事务排队的启动也会在其后才开始）：
+   * 结束对其后台工作的检查，除非其最后的话是一份 `ready` 或 `dropped` 报告、且此后没有输入送达，
+   * 否则取消其回合，并停止其 shell 作业与子代理，包括它留给人的作业。
    */
   stop(ticket: Ticket, assignment: Assignment, reason: string): void {
     this.transient.delete(assignment.id); this.transient.delete(`launch:${assignment.id}`)
@@ -363,36 +363,36 @@ export class DshExecutor implements Executor {
     this.host.store.afterCommit(() => {
       this.settling.get(ticket.id)?.abort()
       if (!ownTurn) this.host.context.agents.get(sessionId as SessionId)?.cancel({ kind: 'user' }, { keepInbox: false })
-      // Its shell jobs and subagents stop with it, also those of a worker that ends its own turn.
+      // 其 shell 作业与子代理随之停止，自己结束回合的 worker 的作业与子代理也一样。
       this.stopWork(ticket.id, reason)
       this.left.get(ticket.id)?.collect.abort(); this.left.delete(ticket.id); this.personal.delete(ticket.id)
     })
   }
-  /** Stop what a ticket's worker runs in the background (see `stopBackground`). */
+  /** 停止工单的 worker 在后台运行的内容（见 `stopBackground`）。 */
   private stopWork(ticketId: string, reason: string, keepInbox = false): void {
     this.track(ticketId, stopBackground(this.host.context, workerSessionId(ticketId), reason, keepInbox))
   }
-  /** A stop of a ticket's background work, which a launch or a delivery of the ticket waits for while it runs. */
+  /** 工单后台工作的一次停止，运行期间该工单的启动或投递要等待它。 */
   private track(ticketId: string, stop: Promise<void>): void {
     const entry: Promise<void> = Promise.all([this.stopping.get(ticketId), stop.catch(() => {})]).then(() => {})
       .finally(() => { if (this.stopping.get(ticketId) === entry) this.stopping.delete(ticketId) })
     this.stopping.set(ticketId, entry)
     void this.background(stop)
   }
-  /** Wait for a stop of the ticket's background work that runs, unless the host stops first. */
+  /** 等待正在进行的工单后台工作停止，除非宿主先停止。 */
   private async stopped(ticketId: string): Promise<void> {
     const stopping = this.stopping.get(ticketId)
     if (stopping) await until(stopping, this.host.lifetime)
   }
   /**
-   * On a host stop, for a bounded time: stop each loaded worker's background work, keeping its inbox; then end the collecting
-   * of the jobs left to a person, which were killed, and cancel a worker turn that started meanwhile, keeping its inbox.
+   * 在宿主停止时，于有限的时长内：停止每个已加载 worker 的后台工作，保留其收件箱；然后结束
+   * 对留给人的作业的收集（它们已被终止），并取消期间开始的 worker 回合，保留其收件箱。
    */
   async shutdown(): Promise<void> {
     const agents = this.host.store.tickets.list().map(ticket => this.host.context.agents.get(workerSessionId(ticket.id) as SessionId))
       .filter((agent): agent is Agent => agent !== undefined)
     const stop = async () => {
-      await Promise.allSettled(agents.map(agent => stopBackground(this.host.context, agent.id, 'dsh-superagent stopped', true)))
+      await Promise.allSettled(agents.map(agent => stopBackground(this.host.context, agent.id, 'dsh-superagent-cn stopped', true)))
       for (const { collect } of this.left.values()) collect.abort()
       const running = agents.filter(agent => agent.status !== 'idle')
       for (const agent of running) agent.cancel({ kind: 'user' }, { keepInbox: true })
@@ -400,20 +400,20 @@ export class DshExecutor implements Executor {
     }
     await until(stop(), undefined, SHUTDOWN_STOP_MS)
   }
-  /** Number of open tickets whose worker holds a worker slot: its turn runs, or its shell jobs or subagents still run after its turn ended. */
+  /** 其 worker 持有 worker 槽位的未结工单数量：回合在运行，或回合结束后其 shell 作业或子代理仍在运行。 */
   activeCount(): number { return this.host.store.tickets.open().filter(ticket => this.running(ticket)).length }
-  /** Whether a ticket's worker holds a worker slot: its turn runs, or its shell jobs or subagents do after its turn ended. */
+  /** 工单的 worker 是否持有 worker 槽位：回合在运行，或回合结束后其 shell 作业或子代理仍在运行。 */
   private running(ticket: Ticket): boolean {
     if (!runningAssignment(ticket)) return false
     return this.host.context.agents.get(workerSessionId(ticket.id) as SessionId)?.status === 'running' || this.settling.has(ticket.id)
   }
-  /** Marks a ticket failed after its launch fails; the ticket waits until new human input or an explicit retry arrives. */
+  /** 启动失败之后把工单标记为 failed；工单等待新的人类输入或显式重试的到来。 */
   private launchFailed(ticketId: string, assignmentId: string, error: unknown): void {
     const ticket = this.host.store.tickets.get(ticketId)
     if (!ticket || !liveTicket(ticket) || latestAssignment(ticket)?.id !== assignmentId) return
     this.failed(ticketId, String(error))
   }
-  /** Records a `failed` report on the ticket and relays the failure to the main Session in one transaction. */
+  /** 在一个事务中把 `failed` 报告记录到工单上，并把失败转发给主 Session。 */
   private failed(ticketId: string, summary: string): void {
     this.host.store.atomic(() => {
       const updated = this.host.engine.report(ticketId, { state: 'failed', summary })
@@ -423,7 +423,7 @@ export class DshExecutor implements Executor {
   private relay({ id, text }: { id: string; text: string }): void { this.host.sessions.relay(id, text) }
   private async launch(ticket: Ticket, assignment: Assignment): Promise<void> {
     const current = () => {
-      if (this.host.closing()) throw new Error('dsh-superagent is stopping')
+      if (this.host.closing()) throw new Error('dsh-superagent-cn is stopping')
       if (this.host.paused()) throw new Later('Processing is paused')
       const stored = this.host.store.tickets.get(ticket.id)
       return !!stored && liveTicket(stored) && latestAssignment(stored)?.id === assignment.id
@@ -431,7 +431,7 @@ export class DshExecutor implements Executor {
     const source = sourceTrigger(this.host, ticket)
     const workspace = ticket.execution?.directory ?? ''
     if (!current()) return
-    // Prepare the workspace directory once; an existing directory counts as already prepared, including worktrees created before `prepare` commands existed.
+    // 只准备一次工作区目录；已存在的目录视为已准备好，包括在 `prepare` 命令机制出现之前创建的 worktree。
     if (!await stat(workspace).then(() => true, () => false)) {
       await this.prepareDirectory(ticket)
       if (!current()) return
@@ -440,14 +440,14 @@ export class DshExecutor implements Executor {
     const sessionId = workerSessionId(ticket.id)
     const agent = await this.host.sessions.ensure(sessionId, workspace, ticket.title, 'worker')
     if (!current()) return
-    // The background work of the Assignment this one replaces stops first, so its end does not clear this one's message.
+    // 被本次派工取代的那次派工的后台工作先停止，使其结束不会清掉本次派工的消息。
     await this.stopped(ticket.id)
     if (!current()) return
-    // A message put back for this Assignment may still wait in the Session, kept by a restart's cancel or persisted across a
-    // crash, where this launch's message would take it into a step beside the copy delivered next: that copy is the only one.
+    // 为本次派工放回的消息可能仍在 Session 中等待——由重启的取消保留，或在崩溃后持久留存——
+    // 此时本次启动的消息会与随后投递的副本一起被带入某一步骤：随后投递的副本才是唯一算数的。
     for (const id of this.host.store.tickets.get(ticket.id)?.undelivered ?? []) agent.inbox.remove(this.host.sessions.promptedId(id))
-    // The first message holds the assignment and the source Trigger; a later Assignment's says only what is new, unless the
-    // Session lost the first, such as when someone deleted it.
+    // 第一条消息承载派工与源头触发；之后派工的消息只说新出现的内容，除非
+    // Session 丢失了第一条，例如有人删除了它。
     const first = `assignment:${ticket.id}`
     const later = ticket.assignments.length > 1
     const told = later && await this.host.sessions.holds(sessionId, first)
@@ -468,33 +468,33 @@ export class DshExecutor implements Executor {
       () => { this.host.engine.assignmentStarted(ticket.id, assignment.id) })
     this.host.engine.assignmentStarted(ticket.id, assignment.id)
   }
-  /** Returns the stored ticket for `agent` when it is a worker session, or undefined otherwise. */
+  /** 当 `agent` 是 worker Session 时返回其已存储的工单，否则返回 undefined。 */
   private ticketOf(agent: Agent): Ticket | undefined {
     const ticketId = ticketOfSession(agent.id)
     return ticketId === undefined ? undefined : this.host.store.tickets.get(ticketId)
   }
-  /** Subscribes to host `agent/status`, `agent/inbox/claimed`, `session/event` and `agent/error` events for worker sessions. Call once at startup. */
+  /** 为 worker Session 订阅宿主的 `agent/status`、`agent/inbox/claimed`、`session/event` 与 `agent/error` 事件。启动时调用一次。 */
   install(): void {
     const ctx = this.host.context
     this.disposers.push(ctx.on('agent/status', ({ agent, status }) => {
-      // A turn that starts ends the look at its worker's background work; the turn's own idle looks afresh.
+      // 回合开始即结束对其 worker 后台工作的检查；回合自身的空闲会重新检查一次。
       if (status === 'running') { this.settling.get(ticketOfSession(agent.id) ?? '')?.abort(); return }
-      // The turn a stop of the worker's subagents woke and cancelled is no turn of the worker's.
+      // 被子代理停止操作唤醒并取消的回合不是 worker 自己的回合。
       if (status !== 'idle' || cancelled.delete(agent) || this.host.closing()) return
       const ticket = this.ticketOf(agent)
       const assignment = ticket && runningAssignment(ticket)
       if (ticket && assignment && liveTicket(ticket)) void this.background(this.workerIdle(ticket, assignment, agent))
     }))
-    // A person's message typed into a worker's Session, which the ticket does not record.
+    // 有人在 worker 的 Session 中输入的消息，工单不会记录它。
     this.disposers.push(ctx.on('agent/inbox/claimed', ({ agent, message }) => {
       const ticketId = ticketOfSession(agent.id)
       if (ticketId !== undefined && message.source.kind === 'user') this.personal.set(ticketId, now())
     }))
-    // The Inputs a message of dsh-superagent's carries, which its worker reads once the Session took the message into its
-    // history: a step that claimed it may be cancelled or fail before, which drops it.
+    // dsh-superagent-cn 的消息所携带的输入，其 worker 在 Session 把消息带入自身
+    // 历史后即可读到：认领它的步骤此前可能被取消或失败，那会丢弃它。
     this.disposers.push(ctx.on('session/event', (session, event) => {
       const ticketId = ticketOfSession(session.id)
-      if (event.type !== 'user/message' || ticketId === undefined || event.data.source.kind !== 'dsh-superagent' || this.host.closing()) return
+      if (event.type !== 'user/message' || ticketId === undefined || event.data.source.kind !== 'dsh-superagent-cn' || this.host.closing()) return
       const message = event.data
       void this.background(Promise.resolve().then(() => {
         const read = this.host.store.tickets.get(ticketId)?.inputs.filter(input => input.kind === 'trigger' && !input.readAt
@@ -510,40 +510,40 @@ export class DshExecutor implements Executor {
       void this.background(Promise.resolve().then(() => { this.failed(ticket.id, String(error)) }))
     }))
   }
-  /** Unsubscribes from host agent events and clears any pending transient-retry timers. */
+  /** 退订宿主的 agent 事件，并清除所有待处理的瞬时重试计时器。 */
   dispose(): void {
     for (const dispose of this.disposers.splice(0)) dispose()
     for (const timer of this.timers) clearTimeout(timer)
     this.timers.clear()
   }
   /**
-   * Reconciles running and pending assignments across open tickets after a host restart: notifies Engine of interrupted
-   * running assignments and re-queues pending launches (which earlier versions may have kept outside the effect queue),
-   * while failed launches (`waitsForPerson`) wait for a person's message or a retry.
+   * 在宿主重启之后对账各未结工单上运行中与 pending 的派工：把被打断的运行中派工
+   * 通知引擎，并把 pending 的启动重新排队（更早版本可能把它们留在了效果队列之外），
+   * 而失败的启动（`waitsForPerson`）则等待人的消息或一次重试。
    */
   resume(): void {
-    // Launch pending tickets oldest first (in acceptance order).
+    // 按从旧到新（即接受顺序）启动 pending 的工单。
     for (const ticket of this.host.store.tickets.open().sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
       const running = runningAssignment(ticket), latest = latestAssignment(ticket)
       if (running) {
-        // A restart within this process left DSH's Sessions, jobs and subagents running: they stop first. The inbox keeps an
-        // Input that was handed over but not yet taken.
+        // 本进程内的重启使 DSH 的 Session、作业与子代理仍在运行：先让它们停下。收件箱会保留
+        // 已交接但尚未被接下的输入。
         this.host.context.agents.get(workerSessionId(ticket.id) as SessionId)?.cancel({ kind: 'user' }, { keepInbox: true })
-        this.stopWork(ticket.id, 'dsh-superagent restarted', true)
+        this.stopWork(ticket.id, 'dsh-superagent-cn restarted', true)
         this.host.engine.assignmentInterrupted(ticket.id, running.id)
       }
       else if (latest?.state === 'pending' && !waitsForPerson(ticket)) this.start(ticket, latest)
     }
   }
-  /** Runs background worker event handling and updates the `worker` health entry on failure or recovery. */
+  /** 运行后台 worker 事件处理，并在失败或恢复时更新 `worker` 健康条目。 */
   private background(work: Promise<void>): Promise<void> {
     const { health } = this.host
     return work.then(() => { if (health.get()?.state === 'error') health.set({ state: 'ready', detail: 'Worker events are handled', at: now() }) },
       (error: unknown) => { health.set({ state: 'error', detail: String(error), at: now() }) })
   }
   /**
-   * Checks whether `error` is a transient failure with retry attempts remaining under `key`, mutating `this.transient`:
-   * increments the attempt counter and returns `true` when retrying, or deletes `key` from `this.transient` and returns `false` when non-transient or out of tries.
+   * 检查 `error` 在 `key` 下是否为仍有剩余重试次数的瞬时失败，会修改 `this.transient`：
+   * 要重试时递增尝试计数并返回 `true`；非瞬时失败或次数用尽时从 `this.transient` 删除 `key` 并返回 `false`。
    */
   private retries(key: string, error: unknown): boolean {
     const tries = this.transient.get(key) ?? 0
@@ -551,7 +551,7 @@ export class DshExecutor implements Executor {
     this.transient.set(key, tries + 1)
     return true
   }
-  /** Schedules a worker turn retry with exponential backoff after a transient provider or network error. */
+  /** 在瞬时的提供方或网络错误之后，以指数退避调度一次 worker 回合重试。 */
   private resumeAfter(ticketId: string, assignmentId: string, error: unknown): void {
     const tries = this.transient.get(assignmentId)!
     const text = `Your last turn failed for a passing reason (${String(error).slice(0, 200)}). Continue the assignment where it stopped.`
@@ -560,7 +560,7 @@ export class DshExecutor implements Executor {
       if (this.host.closing()) return
       const ticket = this.host.store.tickets.get(ticketId)
       if (!ticket || !liveTicket(ticket) || runningAssignment(ticket)?.id !== assignmentId) { this.resuming.delete(assignmentId); return }
-      // Wait while processing is paused or no wake slot is free.
+      // 处理暂停期间或没有空闲唤醒槽位时等待。
       if (this.host.paused()) { this.after(SLOT_WAIT_MS, go); return }
       const sessionId = workerSessionId(ticketId)
       const waking = !this.running(ticket)
@@ -574,16 +574,16 @@ export class DshExecutor implements Executor {
     }
     this.after(TRANSIENT_BACKOFF_MS * 2 ** (tries - 1), go)
   }
-  /** Schedules `then` to run after `ms` milliseconds unless `dispose()` is called first. */
+  /** 调度 `then` 在 `ms` 毫秒之后运行，除非在此之前调用了 `dispose()`。 */
   private after(ms: number, then: () => void): void {
     const timer = setTimeout(() => { this.timers.delete(timer); then() }, ms)
     timer.unref?.()
     this.timers.add(timer)
   }
   /**
-   * A worker that handed off to a person frees its slot: its subagents stop, and its shell jobs, such as a server for the
-   * person, are left to the person until the Assignment ends. They hold no slot and run past any limit; their ends are
-   * collected, so none wakes the worker outside a slot, and the worker reads of each at its next turn.
+   * 交接给人的 worker 会释放其槽位：其子代理停止，而其 shell 作业——例如为
+   * 人运行的服务——留给人，直到派工结束。它们不占用槽位，可以越过任何限制运行；其结束
+   * 会被收集，因此不会有任何作业在槽位之外唤醒 worker，worker 会在下一回合逐一得知。
    */
   private handOff(ticketId: string, agent: Agent): void {
     this.track(ticketId, stopSubagents(this.host.context, agent, true))
@@ -600,17 +600,17 @@ export class DshExecutor implements Executor {
   }
   private async workerIdle(ticket: Ticket, idle: Assignment, agent: Agent): Promise<void> {
     await agent.whenIdle()
-    // A turn that failed for a passing reason goes on after its backoff, which is no end of the turn.
+    // 因瞬时原因失败的回合会在退避之后继续，这不算回合结束。
     if (this.resuming.has(idle.id) || agent.status !== 'idle') return
-    // A turn that ended as turns do starts the count of passing failures again.
+    // 以正常方式结束的回合会把瞬时失败计数重新清零。
     this.transient.delete(idle.id)
-    // The ticket while the Assignment that went idle runs it.
+    // 空闲派工运行期间的工单。
     const live = () => {
       const stored = this.host.store.tickets.get(ticket.id)
       return stored && liveTicket(stored) && runningAssignment(stored)?.id === idle.id ? stored : undefined
     }
-    // A worker whose last word was its result, a question for a person, or a blocked or failed report handed off to a person;
-    // an Input delivered after its result or question is new work.
+    // 最后的话是其结果、向人提出的问题、或 blocked/failed 报告的 worker 已交接给人；
+    // 其结果或问题之后送达的输入是新工作。
     const handedOff = (stored: Ticket) => {
       const assignment = runningAssignment(stored), report = assignment?.report
       const since = !!assignment?.deliveredAt && !!report && assignment.deliveredAt >= report.at
@@ -618,16 +618,16 @@ export class DshExecutor implements Executor {
     }
     const before = live()
     if (!before || this.host.closing()) return
-    // A turn a person started in the Session is the person's work, which goes on in the background as any turn's does.
+    // 人在 Session 中开启的回合是那个人的工作，会像任何回合的工作一样在后台继续。
     const report = runningAssignment(before)?.report, person = this.personal.get(ticket.id)
-    // The worker read what reached it before a turn that ended: one it handed off with, or one whose background work ended.
+    // worker 已读过在其结束的回合之前到达的内容：交接所随的回合，或后台工作已结束的回合。
     if (handedOff(before) && !(report && person && person > report.at)) {
       this.host.engine.turnEnded(ticket.id, idle.id)
       this.handOff(ticket.id, agent)
       return
     }
-    // Its turn ends once nothing runs for it in the background, which holds its slot meanwhile: at most for the limit from
-    // this idle, and until the worker runs again or the Assignment ends.
+    // 一旦后台不再有为它运行的东西，其回合即结束，期间它持有自己的槽位：至多从这次空闲起
+    // 持有到上限为止，并持续到 worker 再次运行或派工结束。
     this.settling.get(ticket.id)?.abort()
     const look = new AbortController(), limit = new AbortController()
     this.settling.set(ticket.id, look)
@@ -642,8 +642,8 @@ export class DshExecutor implements Executor {
     if (quiet) this.host.engine.turnEnded(ticket.id, idle.id)
     let stopped = ''
     if (!quiet) {
-      // Its shell jobs that ran past the limit are killed, which it is told at its next turn; its subagents, whose stop would
-      // wake it, go on.
+      // 越过上限仍在运行的 shell 作业会被终止，下一回合会告知 worker；其子代理若停止会
+      // 唤醒它，因此继续运行。
       const sessionId = workerSessionId(ticket.id), minutes = BACKGROUND_LIMIT_MS / 60_000
       const jobs = runningJobs(this.host.context, sessionId, left).map(job => job.name)
       if (jobs.length) {
@@ -654,7 +654,7 @@ export class DshExecutor implements Executor {
       stopped = jobs.length ? `Background jobs ran ${minutes} minutes after the worker's turn ended and were killed: ${jobs.join(', ')}.`
         : `Subagents still ran ${minutes} minutes after the worker's turn ended.`
     }
-    // The worker may have reported while its turn ended; a blocked or failed report a person's message has lifted is stale.
+    // worker 可能在其回合结束的同时作了报告；已被人的消息解除的 blocked 或 failed 报告已过时。
     if (handedOff(current)) return
     const last = agent.session.snapshotEvents().filter(event => event.type === 'assistant/message').at(-1)
     const text = last?.type === 'assistant/message'
@@ -663,7 +663,7 @@ export class DshExecutor implements Executor {
     this.host.store.atomic(() => {
       const before = latestReport(current)?.summary ?? ''
       const updated = this.host.engine.report(ticket.id, { state: 'waiting', summary: said || before })
-      // A quiet final after orchestrator_report is not a new status or an empty handoff.
+      // orchestrator_report 之后的安静收尾不是新状态，也不是空交接。
       if (said) this.relay(resultRelay(updated, 'waiting', said))
       else if (!before.trim()) {
         this.relay(resultRelay(updated, 'waiting', 'Worker ended without a status report. Use orchestrator_ticket_request_status to request one.'))

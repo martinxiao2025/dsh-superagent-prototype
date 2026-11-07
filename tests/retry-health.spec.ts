@@ -14,7 +14,7 @@ const success = (seq: number, turn = 1, step = 2, provider = 'provider-a'): Sess
   data: { turn, step, stream: [], message: createAssistantMessage({ content: [], source: { provider, model: 'test-model' } }) },
 })
 
-it('projects native retry schedules without exposing failure text or policy data', () => {
+it('投影原生的重试调度，且不暴露失败文本或策略数据', () => {
   const health = new RetryHealth()
   health.observe('worker-a', retry(1))
   health.observe('worker-a', event('llm/retry-started', 2, { retryId: 'chain-a', turn: 1, step: 2, retry: 1 }))
@@ -29,7 +29,7 @@ it.each([
   { code: 'budget_exceeded', message: 'provider omitted body' },
   { code: 'INVALID_REQUEST', message: '{"error":{"type":"budget_exceeded"}}' },
   { code: 'INVALID_REQUEST', message: 'Budget has been exceeded! Current cost: redacted' },
-])('recognizes budget failure metadata or a known provider message: %j', failure => {
+])('识别预算失败元数据或已知的提供方消息：%j', failure => {
   const health = new RetryHealth(); health.observe('master', retry(1, { failure }))
   expect(health.get('master')?.attempts).toBe(1)
 })
@@ -43,12 +43,12 @@ it.each([
   { code: 'INVALID_REQUEST', message: 'maximum context length exceeded' },
   { code: 'INVALID_REQUEST', message: 'a budget was mentioned in this error but was not exceeded' },
   null,
-])('does not classify another failure as a budget wait: %j', failure => {
+])('不把其他失败归类为预算等待：%j', failure => {
   const health = new RetryHealth(); health.observe('worker', retry(1, { failure }))
   expect(health.list()).toEqual([])
 })
 
-it('ignores quoted assistant/user text and failed attempts without a scheduled retry', () => {
+it('忽略引用的 assistant/user 文本以及没有安排重试的失败尝试', () => {
   const health = new RetryHealth()
   health.observe('worker', event('user/message', 1, { content: [{ type: 'text', text: 'Budget has been exceeded!' }] }))
   health.observe('worker', event('assistant/message', 2, { turn: 1, step: 2, message: { content: [{ type: 'text', text: '{"type":"budget_exceeded"}' }] } }))
@@ -56,12 +56,12 @@ it('ignores quoted assistant/user text and failed attempts without a scheduled r
   expect(health.list()).toEqual([])
 })
 
-it('keeps independent sessions and starts a fresh status for a new provider or chain', () => {
+it('各 Session 相互独立，新的提供方或重试链会开启全新状态', () => {
   const health = new RetryHealth()
   health.observe('a', retry(1, { retry: 12 })); health.observe('b', retry(1, { provider: 'provider-b' }))
   health.observe('a', retry(2, { provider: 'fallback', retry: 1 }))
   expect(health.get('a')).toMatchObject({ provider: 'fallback', attempts: 1, since: '2026-09-21T08:00:02.000Z' })
-  health.observe('a', success(3)) // An old provider output must not clear the current chain.
+  health.observe('a', success(3)) // 旧提供方的输出不得清除当前的重试链。
   expect(health.get('a')?.provider).toBe('fallback')
   health.observe('a', retry(4, { provider: 'fallback', retryId: 'chain-b', retry: 1 }))
   expect(health.get('a')?.since).toBe('2026-09-21T08:00:04.000Z')
@@ -70,7 +70,7 @@ it('keeps independent sessions and starts a fresh status for a new provider or c
   expect(health.get('b')?.provider).toBe('provider-b')
 })
 
-it('does not let duplicate, out-of-order or previous-step events replace or clear the active wait', () => {
+it('重复、乱序或先前步骤的事件不能替换或清除当前等待', () => {
   const health = new RetryHealth()
   health.observe('worker', retry(5, { step: 3, retry: 2 }))
   health.observe('worker', retry(5, { step: 3, retry: 99 }))
@@ -86,7 +86,7 @@ it('does not let duplicate, out-of-order or previous-step events replace or clea
   expect(health.get('worker')).toBeUndefined()
 })
 
-it('does not treat interrupted assistant output as success', () => {
+it('不把被中断的 assistant 输出当作成功', () => {
   const health = new RetryHealth(); health.observe('worker', retry(1))
   const interrupted = success(2)
   health.observe('worker', { ...interrupted, data: { ...interrupted.data, interrupted: true } })
@@ -95,7 +95,7 @@ it('does not treat interrupted assistant output as success', () => {
   expect(health.get('worker')).toBeUndefined()
 })
 
-it('clears when the active request now retries a different failure, not when the retry starts', () => {
+it('当前请求改为重试另一种失败时清除等待，重试开始时不清除', () => {
   const health = new RetryHealth(); health.observe('worker', retry(1))
   health.observe('worker', event('llm/retry-started', 2, { retryId: 'chain-a', turn: 1, step: 2, retry: 1 }))
   expect(health.get('worker')).toBeDefined()
@@ -105,7 +105,7 @@ it('clears when the active request now retries a different failure, not when the
   expect(health.get('worker')?.since).toBe('2026-09-21T08:00:04.000Z')
 })
 
-it.each(['turn/end', 'turn/start', 'step/start', 'idle', 'disposed'])('clears active status at %s without reviving on late events', boundary => {
+it.each(['turn/end', 'turn/start', 'step/start', 'idle', 'disposed'])('在 %s 清除当前状态，迟到的事件不会使其复活', boundary => {
   const health = new RetryHealth(); health.observe('worker', retry(1))
   if (boundary === 'idle' || boundary === 'disposed') health.clear('worker')
   else health.observe('worker', event(boundary, 2, boundary === 'turn/start' ? { turn: 2 } : boundary === 'step/start' ? { turn: 1, step: 3 } : { turn: 1 }))
@@ -116,7 +116,7 @@ it.each(['turn/end', 'turn/start', 'step/start', 'idle', 'disposed'])('clears ac
   expect(health.get('worker')?.attempts).toBe(1)
 })
 
-it('reconstructs only the active wait from a restored snapshot and permits idle cleanup', () => {
+it('从恢复的快照中只重建当前等待，并允许空闲清理', () => {
   const health = new RetryHealth()
   const history = [retry(1), success(2), event('step/start', 3, { turn: 1, step: 3 }), retry(4, { step: 3, retryId: 'chain-b' }), event('llm/retry-started', 5, { turn: 1, step: 3, retryId: 'chain-b', retry: 1 })]
   health.restore('worker', history)
@@ -129,7 +129,7 @@ it('reconstructs only the active wait from a restored snapshot and permits idle 
   expect(health.list()).toEqual([])
 })
 
-it('bounds counters and provider labels and exposes detached status values only', () => {
+it('限制计数与提供方标签的取值，只暴露脱离引用的状态值', () => {
   const health = new RetryHealth()
   health.observe('worker', retry(1, { retry: Number.MAX_VALUE, provider: 'provider-a\nAuthorization: Bearer secret' }))
   expect(health.get('worker')).toMatchObject({ attempts: Number.MAX_SAFE_INTEGER, provider: 'unknown' })
@@ -139,7 +139,7 @@ it('bounds counters and provider labels and exposes detached status values only'
   expect(health.get('worker')).toMatchObject({ attempts: Number.MAX_SAFE_INTEGER, provider: 'unknown' })
 })
 
-it.each([NaN, Infinity, -1, 1.5])('ignores malformed retry count %s', attempts => {
+it.each([NaN, Infinity, -1, 1.5])('忽略格式非法的重试次数 %s', attempts => {
   const health = new RetryHealth(); health.observe('worker', retry(1, { retry: attempts }))
   expect(health.list()).toEqual([])
 })

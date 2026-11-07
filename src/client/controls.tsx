@@ -1,6 +1,6 @@
 /**
- * Context-free UI primitives styled with `--dsw-alias-*` tokens.
- * Mirrors DSH ui-primitives markup and keyboard behavior without coupling to its internal package API.
+ * 与上下文无关的 UI 基础组件，使用 `--dsw-alias-*` 设计令牌着色。
+ * 复刻 DSH ui-primitives 的标记结构与键盘行为，但不与其内部包 API 耦合。
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type KeyboardEvent,
   type ReactNode } from 'react'
@@ -81,7 +81,7 @@ function walk<V extends string>(event: KeyboardEvent, values: readonly V[], valu
   requestAnimationFrame(() => list.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus())
 }
 interface TabItem<V extends string> { value: V; label: string; id: string; panelId: string }
-/** Page-level tab bar that re-emits `onChange` when clicking the active tab so callers can reset to the tab root. */
+/** 页面级标签栏；点击当前标签时会再次触发 `onChange`，便于调用方回到标签页根视图。 */
 export function SegmentedTabs<V extends string>({ items, value, onChange, label, className }: {
   items: readonly TabItem<V>[]; value: V; onChange: (next: V) => void; label: string; className?: string
 }) {
@@ -93,7 +93,7 @@ export function SegmentedTabs<V extends string>({ items, value, onChange, label,
     const start = element.scrollLeft > 1, end = element.scrollLeft + element.clientWidth < element.scrollWidth - 1
     setMore(start && end ? 'both' : start ? 'start' : end ? 'end' : undefined)
   }, [])
-  // Observe both the tablist container (pane resize) and individual tabs (locale label changes).
+  // 同时观察 tablist 容器（面板尺寸变化）与各个标签（语言标签文本变化）。
   useEffect(() => {
     measure()
     if (!list.current || typeof ResizeObserver === 'undefined') return
@@ -170,7 +170,7 @@ export function DisclosureRow({ icon, title, open, onToggle, collapsedContent, c
 
 const FOCUSABLE = 'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
 function trapTab(event: globalThis.KeyboardEvent, dialog: HTMLElement) {
-  // Query `*` and filter so elements stay in document order across all DOM implementations.
+  // 查询 `*` 再过滤，使元素在所有 DOM 实现中都保持文档顺序。
   const items = [...dialog.querySelectorAll<HTMLElement>('*')].filter(element => element.matches(FOCUSABLE))
   const first = items[0], last = items.at(-1), active = document.activeElement
   const target = event.shiftKey ? last : first
@@ -179,13 +179,13 @@ function trapTab(event: globalThis.KeyboardEvent, dialog: HTMLElement) {
     target?.focus()
   }
 }
-/** Accessible modal dialog with focus trapping, Escape/backdrop dismissal, and focus restoration. */
+/** 无障碍模态对话框：带焦点圈定、Escape/遮罩关闭以及焦点还原。 */
 export function Modal({ open, onClose, title, closeLabel, description, footer, className, children }: {
   open: boolean; onClose: () => void; title: string; closeLabel: string; description?: string; footer?: ReactNode; className?: string
   children?: ReactNode
 }) {
   const dialog = useRef<HTMLDivElement>(null)
-  // Keep `onClose` in a ref so parent re-renders (e.g., background polls) do not re-run the effect and reset focus.
+  // 将 `onClose` 保存在 ref 里，避免父组件重渲染（例如后台轮询）重新执行 effect 并重置焦点。
   const close = useRef(onClose)
   close.current = onClose
   useEffect(() => {
@@ -214,7 +214,7 @@ export function Modal({ open, onClose, title, closeLabel, description, footer, c
   </div>, document.body)
 }
 
-/** Portaled tooltip trigger supporting hover, keyboard focus, and touch toggle. */
+/** 通过 portal 渲染的提示气泡触发器，支持悬停、键盘聚焦与触摸切换。 */
 export function InfoTip({ text, icon = 'question', warn }: { text: string; icon?: IconName; warn?: boolean }) {
   const anchor = useRef<HTMLButtonElement>(null)
   const bubble = useRef<HTMLSpanElement>(null)

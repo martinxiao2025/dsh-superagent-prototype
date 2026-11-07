@@ -15,13 +15,13 @@ const send = (commands: Commands, message: OutboundMessage) => sources.send(mess
 const deployment = testDeployment({ github: { ...testDeployment().github, cli: '/path/agent-gh' } })
 const REPOSITORY = deployment.repository
 const reply = { id: 'stable-operation', channel: githubChannel(8), text: 'Done', kind: 'reply' as const }
-describe('account-isolated operations', () => {
-  it('uses the agent account\'s GitHub CLI and preserves literal shell metacharacters in argv', async () => {
+describe('按账号隔离的操作', () => {
+  it('使用 agent 账号的 GitHub CLI，并在 argv 中原样保留 shell 元字符', async () => {
     const commands = new Commands(() => deployment, {}, new AbortController().signal); const run = vi.spyOn(commands,'run').mockResolvedValue('{}')
     await commands.gh(['api','some-path','-f','body=`whoami` $(touch x)'])
     expect(run).toHaveBeenCalledWith('/path/agent-gh', ['api','some-path','-f','body=`whoami` $(touch x)'])
   })
-  it('runs every command with its environment over the process environment, where undefined removes a variable', async () => {
+  it('每条命令都用其环境覆盖进程环境，undefined 表示移除一个变量', async () => {
     process.env.GH_TOKEN = 'personal'
     try {
       const output = await new Commands(() => deployment, { GH_TOKEN: undefined, DSH_SUPERAGENT_PROBE: 'agent' }, new AbortController().signal).run('env', [])
@@ -29,47 +29,47 @@ describe('account-isolated operations', () => {
       expect(output).not.toContain('GH_TOKEN=')
     } finally { delete process.env.GH_TOKEN }
   })
-  it('refuses Feishu commands when the deployment has no Feishu bot', async () => {
+  it('部署没有飞书 bot 时拒绝飞书命令', async () => {
     await expect(new Commands(() => testDeployment({ feishu: undefined }), {}, new AbortController().signal).lark(['im', '+chat-list'])).rejects.toThrow('The Feishu Source has no working bot CLI')
   })
-  it('reconciles an uncertain GitHub send with its stable marker', async () => {
+  it('用稳定标记核对结果不确定的 GitHub 发送', async () => {
     const commands = new Commands(() => deployment, {}, new AbortController().signal)
-    vi.spyOn(commands,'pages').mockResolvedValue([{ body:'<!-- dsh-superagent:stable-operation -->',user:{login:'agent-bot'} }])
+    vi.spyOn(commands,'pages').mockResolvedValue([{ body:'<!-- dsh-superagent-cn:stable-operation -->',user:{login:'agent-bot'} }])
     const gh = vi.spyOn(commands,'gh')
     await send(commands, reply); expect(gh).not.toHaveBeenCalled()
   })
-  it('posts the reply as the model wrote it, only to the fixed repository', async () => {
+  it('按模型所写原样发布回复，且只发布到固定仓库', async () => {
     const commands = new Commands(() => deployment, {}, new AbortController().signal); vi.spyOn(commands,'pages').mockResolvedValue([])
     const gh = vi.spyOn(commands,'gh').mockResolvedValue({})
     await send(commands, reply)
-    // The disclosure line is prompt text: the model writes it, and the host adds nothing.
-    expect(gh).toHaveBeenCalledWith(['api',`repos/${REPOSITORY}/issues/8/comments`,'--method','POST','-f',expect.stringMatching(/^body=Done\n\n<!-- dsh-superagent:stable-operation -->$/)])
+    // 披露行属于 prompt 文本：由模型书写，host 不添加任何内容。
+    expect(gh).toHaveBeenCalledWith(['api',`repos/${REPOSITORY}/issues/8/comments`,'--method','POST','-f',expect.stringMatching(/^body=Done\n\n<!-- dsh-superagent-cn:stable-operation -->$/)])
     await expect(new Commands(() => deployment, {}, new AbortController().signal).pages(z.unknown(),
       '../../someone/else/issues')).rejects.toThrow()
   })
-  it('routes review-comment replies to the root review comment', async () => {
+  it('把评审评论的回复路由到根评审评论', async () => {
     const commands = new Commands(() => deployment, {}, new AbortController().signal); vi.spyOn(commands,'pages').mockResolvedValue([])
     const gh = vi.spyOn(commands,'gh').mockResolvedValueOnce({ id: 7, in_reply_to_id: 3 }).mockResolvedValueOnce({})
     await send(commands, { ...reply, channel: githubChannel(8, `https://github.com/${REPOSITORY}/pull/8#discussion_r7`) })
     expect(gh.mock.calls[1]![0]).toEqual(['api', `repos/${REPOSITORY}/pulls/8/comments/3/replies`, '--method', 'POST', '-f', expect.stringContaining('Done')])
   })
-  it('uses Feishu bot identity and one idempotency key on retries', async () => {
+  it('重试时使用飞书 bot 身份和同一个幂等键', async () => {
     const commands = new Commands(() => deployment, {}, new AbortController().signal); const run = vi.spyOn(commands,'run').mockResolvedValue('{"ok":true,"data":{}}')
     await send(commands, { ...reply, channel: feishuChannel('oc_1', 'om_1') })
     expect(run.mock.calls[0]![1]).toEqual(expect.arrayContaining(['--as','bot','--idempotency-key','stable-operation','--message-id','om_1']))
   })
 })
 
-it('reports Feishu failures with their code and without command arguments', () => {
+it('报告飞书失败时带其代码且不带命令参数', () => {
   const membership = commandError({stderr:'[page 1] fetching...\n'+JSON.stringify({error:{code:232011,message:'operator is not in the chat'}})})
   expect(membership).toMatchObject({ message: 'operator is not in the chat (232011)', code: 232011 })
   expect(commandError({stderr:JSON.stringify({error:{code:999,message:'scope missing'}})}).message).toBe('scope missing (999)')
 })
-describe('Channels', () => {
+describe('渠道', () => {
   const commands = () => new Commands(() => deployment, {}, new AbortController().signal)
   const feishu = { ...reply, channel: feishuChannel('oc_1', 'om_1') }
   const lark = (code: number, message: string) => commandError({ stderr: JSON.stringify({ error: { code, message } }), code: 1 })
-  it('drop a Feishu reply to a recalled message or one Feishu no longer finds, and say how to add the bot to a chat', async () => {
+  it('丢弃对已撤回消息或飞书找不到的消息的回复，并说明如何把 bot 加进会话', async () => {
     const value = commands()
     const run = vi.spyOn(value, 'run')
     for (const [code, message] of [[230011, 'The message is recalled'], [230001, 'message not found'], [231003,
@@ -83,13 +83,13 @@ describe('Channels', () => {
     run.mockRejectedValueOnce(lark(99991400, 'rate limited'))
     await expect(send(value, feishu)).rejects.toThrow('rate limited (99991400)')
   })
-  it('keep a Feishu reply whose command timed out for a retry, whatever its text says', async () => {
+  it('命令超时的飞书回复保留以待重试，无论其文本内容如何', async () => {
     const value = commands()
     const timedOut = { killed: true, signal: 'SIGTERM', code: null, stderr: '', message: 'Command failed: lark-bot --markdown withdrawn' }
     vi.spyOn(value, 'run').mockRejectedValueOnce(commandError(timedOut, 'lark-bot'))
     await expect(send(value, { ...feishu, text: 'The change was withdrawn' })).rejects.toThrow('lark-bot timed out after 90 s')
   })
-  it('drop a GitHub reply to an Issue that is deleted or locked, and keep others for a retry', async () => {
+  it('丢弃对已删除或已锁定 Issue 的 GitHub 回复，其余保留以待重试', async () => {
     const value = commands()
     vi.spyOn(value, 'pages').mockResolvedValue([])
     const gh = vi.spyOn(value, 'gh')
@@ -97,13 +97,13 @@ describe('Channels', () => {
       gh.mockRejectedValueOnce(commandError({ stderr, code: 1 }))
       expect(await send(value, reply)).toBe('gone')
     }
-    // GitHub also answers 404 for a private repository the agent lost access to, so 404 is retried rather than dropped.
+    // 对 agent 失去访问权限的私有仓库，GitHub 也会返回 404，因此 404 会被重试而不是丢弃。
     for (const stderr of ['gh: Not Found (HTTP 404)', 'gh: Server Error (HTTP 500)']) {
       gh.mockRejectedValueOnce(commandError({ stderr, code: 1 }))
       await expect(send(value, reply)).rejects.toThrow(stderr)
     }
   })
-  it('reply on the PR\'s conversation when the review comment a reply points at is gone', async () => {
+  it('回复所指向的评审评论消失时，在 PR 的会话上回复', async () => {
     const value = commands()
     const pages = vi.spyOn(value, 'pages').mockResolvedValue([])
     const gh = vi.spyOn(value, 'gh')
@@ -113,7 +113,7 @@ describe('Channels', () => {
     const post = ['api', `repos/${REPOSITORY}/issues/8/comments`, '--method', 'POST', '-f', expect.stringContaining('Done')]
     expect(gh.mock.calls[1]![0]).toEqual(post)
   })
-  it('link each address to its page with its label', () => {
+  it('把每个地址连同其标签链接到其页面', () => {
     const links = { repository: REPOSITORY, feishu: deployment.feishu! }
     expect(githubKind.channel!.link(githubChannel(8).address, links)).toEqual({ url: `https://github.com/${REPOSITORY}/issues/8`,
       label: { zh: 'GitHub #8', en: 'GitHub #8' } })
@@ -127,9 +127,9 @@ describe('Channels', () => {
   })
 })
 
-describe('GitHub calls', () => {
+describe('GitHub 调用', () => {
   const commands = () => new Commands(() => deployment, {}, new AbortController().signal)
-  it('go only to paths inside the configured repository, and validate what GitHub answers', async () => {
+  it('只访问所配置仓库内的路径，并校验 GitHub 的应答', async () => {
     const value = commands()
     const run = vi.spyOn(value, 'run').mockResolvedValue('{"number":12,"title":"Login fails","extra":true}')
     expect(await value.api(z.looseObject({ number: z.number() }), 'issues/12')).toEqual({ number: 12, title: 'Login fails', extra: true })
@@ -139,14 +139,14 @@ describe('GitHub calls', () => {
       await expect(value.api(z.unknown(), path)).rejects.toThrow('restricted to the configured repository')
     }
     expect(run).toHaveBeenCalledTimes(2)
-    // An empty path targets the repository root.
+    // 空路径指向仓库根目录。
     await value.api(z.unknown(), '')
     expect(run).toHaveBeenLastCalledWith('/path/agent-gh', ['api', `repos/${REPOSITORY}`])
-    // Without a schema, api() returns the raw CLI stdout.
+    // 不带 schema 时，api() 返回 CLI 的原始 stdout。
     run.mockResolvedValue('raw file')
     expect(await value.api('contents/README.md', '-H', 'Accept: application/vnd.github.raw')).toBe('raw file')
   })
-  it('read every page of a list, and skip and count an item that does not validate', async () => {
+  it('读取列表的每一页，跳过并计数未通过校验的条目', async () => {
     const value = commands()
     const run = vi.spyOn(value, 'run').mockResolvedValue('[[{"id":1}],[{"id":2}]]')
     expect(await value.pages(z.looseObject({ id: z.number() }), 'issues/12/comments?per_page=100')).toEqual([{ id: 1 }, { id: 2 }])
@@ -160,7 +160,7 @@ describe('GitHub calls', () => {
     await expect(value.pages(z.looseObject({ id: z.number() }), 'issues/12/comments')).rejects.toThrow()
   })
 })
-it('says how to add the bot to a chat when Feishu answers that it is not a member, and keeps the code', async () => {
+it('飞书答复 bot 不是成员时给出如何把 bot 加进会话的说明，并保留代码', async () => {
   const commands = new Commands(() => deployment, {}, new AbortController().signal)
   const membership = JSON.stringify({ error: { code: 232011, message: 'operator is not in the chat' } })
   const run = vi.spyOn(commands, 'run').mockRejectedValueOnce(commandError({ stderr: membership, code: 1 }))
@@ -169,25 +169,26 @@ it('says how to add the bot to a chat when Feishu answers that it is not a membe
   run.mockResolvedValueOnce(JSON.stringify({ ok: false, error: { code: 232011, message: 'operator is not in the chat' } }))
   await expect(commands.lark(['im', '+chat-members-list'])).rejects.toMatchObject({ message: hint, code: 232011 })
 })
-it('names only the program and how it ended when a command prints no diagnostics, never its arguments', async () => {
+it('命令没有输出诊断信息时只说明程序名与结束方式，绝不提及参数', async () => {
   const commands = new Commands(() => deployment, {}, new AbortController().signal)
   const secret = 'secret reply text'
   await expect(commands.run('sh', ['-c', 'exit 3', secret])).rejects.toMatchObject({ message: 'sh exited with code 3', exitCode: 3 })
-  await expect(commands.run('sh', ['-c', 'kill -9 $$', secret])).rejects.toMatchObject({ message: 'sh was stopped by SIGKILL' })
+  // 只有在 POSIX 上信号结束才会以信号形式到达 Node；MSYS sh 把 SIGKILL 报告为退出码 2304（9 << 8）。
+  if (process.platform !== 'win32') await expect(commands.run('sh', ['-c', 'kill -9 $$', secret])).rejects.toMatchObject({ message: 'sh was stopped by SIGKILL' })
   await expect(commands.run('/no/such/program', ['secret reply text'])).rejects.toMatchObject({ message: 'program could not run: ENOENT' })
-  // Timeouts kill the child with SIGTERM; Node's default error message would echo every argument.
+  // 超时以 SIGTERM 杀死子进程；Node 默认的错误消息会回显每一个参数。
   const timedOut = { killed: true, signal: 'SIGTERM', code: null, stderr: '',
     message: 'Command failed: /path/lark-bot im +messages-reply --markdown withdrawn' }
   expect(commandError(timedOut, '/path/lark-bot')).toMatchObject({ message: 'lark-bot timed out after 90 s' })
   expect(String(commandError(timedOut, '/path/lark-bot'))).not.toContain('withdrawn')
 })
-it('reports failures as CliError with the code the CLI names and the exit status', async () => {
+it('以 CliError 报告失败，带 CLI 给出的代码与退出状态', async () => {
   const notFound = commandError({ stderr: 'gh: Not Found (HTTP 404)\n', code: 1 })
   expect(notFound).toBeInstanceOf(CliError)
   expect(notFound).toMatchObject({ message: 'gh: Not Found (HTTP 404)', code: 404, exitCode: 1 })
   expect(commandError({ stderr: JSON.stringify({ error: { code: 230011, message: 'The message is recalled' } }),
     code: 1 })).toMatchObject({ message: 'The message is recalled (230011)', code: 230011 })
-  // A cancelled command stays an AbortError so callers can distinguish cancellation from failure.
+  // 被取消的命令保持为 AbortError，调用方由此区分取消与失败。
   const aborted = Object.assign(new Error('The operation was aborted'), { name: 'AbortError', stderr: '' })
   expect(commandError(aborted)).toBe(aborted)
   const controller = new AbortController()
@@ -199,14 +200,14 @@ it('reports failures as CliError with the code the CLI names and the exit status
   await expect(commands.lark(['im', '+messages-reply'])).rejects.toMatchObject({ message: 'message not found (231003)', code: 231003 })
 })
 
-it('stops a running command when the signal of its work aborts, or the lifetime, and leaves the other work running', async () => {
+it('工作的 signal 中止或生命周期结束时停止运行中的命令，其他工作继续运行', async () => {
   const lifetime = new AbortController(), work = new AbortController()
   const commands = new Commands(() => deployment, {}, lifetime.signal)
   const started = Date.now()
   const running = commands.withSignal(work.signal).run('sleep', ['5'])
   work.abort()
   await expect(running).rejects.toThrow()
-  // Only commands bound to the aborted work signal stop.
+  // 只有绑定到被中止工作 signal 的命令才会停止。
   expect(await commands.run('echo', ['still'])).toBe('still\n')
   const other = commands.withSignal(new AbortController().signal).run('sleep', ['5'])
   lifetime.abort()

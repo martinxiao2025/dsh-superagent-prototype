@@ -1,4 +1,4 @@
-/** DOM rendering and interaction helpers for panel tests. */
+/** 面板测试用的 DOM 渲染与交互辅助工具。 */
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { expect, vi } from 'vitest'
@@ -27,7 +27,7 @@ function unmount() {
 }
 export const usePanel = () => usePanelServer(unmount)
 
-/** Flush pending fake-server responses and React state updates. */
+/** 冲刷假服务器尚未消费的响应与 React 状态更新。 */
 export async function settle() {
   await vi.waitFor(async () => {
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
@@ -66,7 +66,7 @@ export async function type(element: HTMLInputElement | HTMLTextAreaElement | HTM
   })
   await settle()
 }
-/** The page's text without its stylesheet. */
+/** 去掉样式表之后的页面文本。 */
 export const text = () => [...document.body.querySelectorAll('style')].reduce((all, style) => all.replace(style.textContent ?? '', ''),
   document.body.textContent ?? '')
 export function field<E extends HTMLElement>(label: string): E {
@@ -76,4 +76,4 @@ export function field<E extends HTMLElement>(label: string): E {
   if (!match) throw new Error(`No field ${label}`)
   return match as unknown as E
 }
-export const at = (route: object) => sessionStorage.setItem('dsh-superagent/route', JSON.stringify({ route, stack: [] }))
+export const at = (route: object) => sessionStorage.setItem('dsh-superagent-cn/route', JSON.stringify({ route, stack: [] }))

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// The Eval status and settings.
+// 评估页状态与设置。
 import { act } from 'react'
 import { expect, it } from 'vitest'
 import { en, zh } from '../src/client/locales.ts'
@@ -7,7 +7,7 @@ import { usePanel, mount, remount, settle, all, find, tab, click, type, text, fi
 import { server } from './fixtures/panel-server.ts'
 
 usePanel()
-it('opens the Decisions under Policy from the flow line with their reasons, Decisions that start work first, filterable by kind',
+it('从流量行打开策略下的决定及其原因，先列发起工作的决定，并可按类型过滤',
   async () => {
   await mount()
   await click(all('.dt-stat button')[1]!)
@@ -24,7 +24,7 @@ it('opens the Decisions under Policy from the flow line with their reasons, Deci
   expect(server.requests.some(request => request.path === 'decisions?limit=30&kind=ignore')).toBe(true)
 })
 
-it('keeps a Policy draft across remounts, and merges another save into it sender by sender and rule by rule', async () => {
+it('策略草稿跨重新挂载保留，并按发送者、按规则合并另一次保存', async () => {
   const addUser = async () => {
     await click(all('.dt-part button').find(button => button.textContent === '添加')!)
     const row = all('.dt-part .dt-rows-item').at(-1)!
@@ -40,7 +40,7 @@ it('keeps a Policy draft across remounts, and merges another save into it sender
   await remount()
   expect(text()).toContain(zh.draftRestored)
   expect(all('.dt-part .dt-rows-item')).toHaveLength(2)
-  // Someone else renames a rule and allows another sender meanwhile: the draft keeps its own sender and takes both of theirs.
+  // 与此同时别人重命名了一条规则并放行了另一个发送者：草稿保留自己的发送者，并接纳对方的两处改动。
   const { policy } = server.settings
   server.settings = { ...server.settings, policy: { ...policy, rules: [{ ...policy.rules[0]!, name: '文案' }],
     sources: { ...policy.sources, feishu: { ...policy.sources.feishu!, allowed: [...policy.sources.feishu!.allowed, { id: 'ou_bob',
@@ -54,25 +54,25 @@ it('keeps a Policy draft across remounts, and merges another save into it sender
   expect(server.settings.policy.sources.feishu!.allowed).toEqual([{ id: 'ou_alice', name: 'Alice' }, { id: 'ou_newperson', name: '新同事' },
     { id: 'ou_bob', name: 'Bob' }])
   expect(server.settings.policy.rules.map(rule => rule.name)).toEqual(['文案'])
-  expect(sessionStorage.getItem('dsh-superagent/draft/master/policy')).toBeNull()
+  expect(sessionStorage.getItem('dsh-superagent-cn/draft/master/policy')).toBeNull()
 })
 
-it('keeps the Policy to its rules and each Source\'s part, in that Source\'s own identities', async () => {
+it('策略只含其规则与各来源的部分，且使用该来源自己的身份体系', async () => {
   await mount()
   await click(tab(zh['tab.settings']))
   await click(find(zh['term.eval'], '.dt-settings-link'))
-  // Auto-merge and its threshold are prompt text, and no Source's settings sit in the Policy core.
+  // 自动合并及其阈值属于 prompt 文本，策略核心里不放任何来源的设置。
   for (const gone of ['自动合并', '行数阈值', '成员', '计入策略版本']) expect(text()).not.toContain(gone)
   expect(all('.dt-lv').map(item => item.textContent)[0]).toBe('策略版本 abcdef12')
   expect(text()).toContain('名单内的人 @ 机器人或私聊机器人，总是明确的请求')
   await click(find(zh['source.github'], '.dt-subtab'))
   expect(text()).toContain('能发起工作的 GitHub 账号')
   expect(text()).toContain('名单里的账号在 Issue 或评论里 @ 智能体的账号。')
-  // A saved account shows as its id; only a row being added is a field.
+  // 已保存的账号按其 id 显示；只有新增中的行才是输入字段。
   expect(all('.dt-part .dt-rows-item .dt-row-label').map(label => label.textContent)).toEqual(['alice'])
 })
 
-it('opens the rule list for an invalid field inside it only', async () => {
+it('只展开包含无效字段的规则列表', async () => {
   await mount()
   await click(zh['tab.eval'])
   await click(find(zh['tab.settings'], '.dt-status-head button'))
@@ -84,7 +84,7 @@ it('opens the rule list for an invalid field inside it only', async () => {
   expect(openRows()).toBe(all('.dt-rule').length)
 })
 
-it('syncs a Source\'s list from where the Source keeps it, but not while a Policy draft is unsaved', async () => {
+it('从来源保存名单的位置同步名单，但策略草稿未保存时不执行', async () => {
   await mount()
   await click(zh['tab.eval'])
   await click(find(zh['tab.settings'], '.dt-status-head button'))
@@ -98,7 +98,7 @@ it('syncs a Source\'s list from where the Source keeps it, but not while a Polic
   expect(server.requests.slice(before).some(request => request.path.startsWith('policy-sync'))).toBe(false)
 })
 
-it('adds, copies, renames, disables and deletes rules in Policy without touching Eval', async () => {
+it('在策略中添加、复制、重命名、停用和删除规则，不触碰评估', async () => {
   await mount()
   await click(zh['tab.eval'])
   await click(find(zh['tab.settings'], '.dt-status-head button'))
@@ -115,7 +115,7 @@ it('adds, copies, renames, disables and deletes rules in Policy without touching
   expect(server.requests.filter(request => request.method === 'PUT').map(request => request.path)).toEqual(['settings/policy'])
 })
 
-it('shows the current Policy version once, explains what makes it up, and opens a Mandate\'s version in the Policy history', async () => {
+it('只显示一次当前策略版本，说明其构成，并在策略历史中打开某个授权对应的版本', async () => {
   await mount()
   await click(zh['tab.eval'])
   await click(find(zh['tab.settings'], '.dt-status-head button'))
@@ -129,12 +129,12 @@ it('shows the current Policy version once, explains what makes it up, and opens 
   expect(tab(zh['tab.settings']).getAttribute('aria-selected')).toBe('true')
   expect(document.querySelector('.dt-settings-link[aria-current="page"]')?.textContent).toBe(zh['term.eval'])
   await settle()
-  // The history opens at the save that made the version, and lists versions that Source saves made too.
+  // 历史定位到产生该版本的保存，也会列出来源保存产生的版本。
   expect(document.querySelector('.dt-highlight')?.textContent).toContain('生成策略版本 abcdef12')
   expect(text()).toContain('生成策略版本 98765432')
 })
 
-it('sets the Feishu admission table per receiving scope, offering only the cells a scope can receive, and warns when anyone may originate work', async () => {
+it('按接收范围设置飞书接单表，只提供该范围可接收的单元格，并在任何人都能发起工作时给出警告', async () => {
   server.settings = { ...server.settings, sources: { ...server.settings.sources, feishu: { enabled: true, config: { cli: 'lark-bot',
     chats: [{ chatId: 'oc_team', listen: 'all' }, { chatId: 'oc_other', listen: 'mentions' }], directMessages: true,
       otherChats: 'none' } } } }
@@ -143,24 +143,24 @@ it('sets the Feishu admission table per receiving scope, offering only the cells
   await click(find(zh['term.eval'], '.dt-settings-link'))
   const rows = all('.dt-admission tbody tr').map(row => [row.querySelector('.dt-admission-scope')!.firstChild?.textContent,
     row.querySelectorAll('select').length])
-  // Chats receiving every message have all three cells; @-only chats only the mention cell; other chats nothing while not received.
+  // 接收全部消息的群有三个单元格；仅 @ 的群只有点名单元格；未接收时其他群没有单元格。
   expect(rows).toEqual([['团队群', 3], ['另一个群', 1], ['其他群', 0], ['私聊', 1]])
   const cell = field<HTMLSelectElement>('团队群 · 名单外 · 点名智能体')
   expect(cell.value).toBe('ignore')
   await type(cell, 'explicit')
-  // The warning is an icon in a slot every cell reserves, with the text on hover, so the table does not move.
+  // 警告是每个单元格预留槽位中的图标，文字悬停显示，这样表格不会跳动。
   expect(document.querySelector('.dt-admission .dt-info-warn')?.getAttribute('aria-label')).toBe(zh.admissionAnyoneWarning)
   expect(all('.dt-admission-slot')).toHaveLength(5)
-  // A message not addressed to the bot cannot be an explicit request.
+  // 未点名智能体的消息不能构成明确的请求。
   expect([...field<HTMLSelectElement>('团队群 · 名单外 · 未 @').options].map(option => option.value)).toEqual(['inferred', 'ignore'])
   await click(zh.save)
   expect(server.settings.policy.sources.feishu!.admission).toEqual({ oc_team: { unlistedAddressed: 'explicit' } })
 })
 
-it('lists each Source\'s bots next to its people and saves them, and sets the GitHub admission table by its receiving scopes', async () => {
+it('把各来源的机器人列在其人员名单旁并保存，并按接收范围设置 GitHub 接单表', async () => {
   await mount()
   await click(tab(zh['tab.settings']))
-  // The GitHub Source receives only what is addressed to the agent until a switch opens a scope of the repository.
+  // 在开关打开仓库的某个接收范围之前，GitHub 来源只接收点名智能体的消息。
   const github = all('.dt-card').find(card => card.querySelector('.dt-card-title')?.textContent === 'GitHub')!
   expect([...github.querySelectorAll('.dt-switch-row')].map(row => row.textContent)).toEqual(['接收仓库里的新 Issue', '接收仓库里的新 PR',
     '接收仓库里的评论', '接收默认分支的 CI'])
@@ -180,7 +180,7 @@ it('lists each Source\'s bots next to its people and saves them, and sets the Gi
   await click(find(zh['source.github'], '.dt-subtab'))
   expect(lists()).toEqual(['能发起工作的 GitHub 账号', '评论可以成为候选的机器人'])
   await type((await add('评论可以成为候选的机器人')).querySelector<HTMLInputElement>('input[aria-label="账号"]')!, 'dependabot[bot]')
-  // Until the GitHub Source receives the repository's Issues, pull requests, comments or CI, only messages that mention the agent arrive.
+  // 在 GitHub 来源接收仓库的 Issue、PR、评论或 CI 之前，只有点名智能体的消息会到达。
   const rows = () => all('.dt-admission tbody tr').map(row => [row.querySelector('.dt-admission-scope')!.firstChild?.textContent,
     row.querySelector('.dt-admission-scope small')?.textContent, row.querySelectorAll('select').length])
   expect(rows()).toEqual([['新 Issue', '仅 @', 1], ['新 PR', '仅 @', 1], ['评论', '仅 @', 1], ['默认分支的 CI', '不接收', 0]])
@@ -190,7 +190,7 @@ it('lists each Source\'s bots next to its people and saves them, and sets the Gi
   expect(server.settings.policy.sources.github!.bots).toEqual([{ id: 'dependabot[bot]' }])
 })
 
-it('shows the GitHub Source\'s switches for what it receives across the repository, and the admission rows they open, in English', async () => {
+it('以英文显示 GitHub 来源对仓库接收内容的开关，以及它们打开的接单行', async () => {
   server.settings.sources.github = { ...server.settings.sources.github!, config: { ...server.settings.sources.github!.config,
     observeIssues: true, observeCi: true } }
   await mount(en)
@@ -208,7 +208,7 @@ it('shows the GitHub Source\'s switches for what it receives across the reposito
   const rows = all('.dt-admission tbody tr').map(row => [row.querySelector('.dt-admission-scope')!.firstChild?.textContent,
     row.querySelectorAll('select').length])
   expect(rows).toEqual([['New Issues', 3], ['New pull requests', 1], ['Comments', 3], ['Default branch CI', 1]])
-  // CI has no sender: its one cell is that of a message off the list that does not mention the agent.
+  // CI 没有发送者：它唯一的单元格对应名单外且未点名智能体的消息。
   expect(field('Default branch CI · Not on the list · no mention')).toBeTruthy()
   expect(all('.dt-admission thead th').map(cell => cell.textContent)).toContain(en.admissionAddressed)
 })

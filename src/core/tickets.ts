@@ -1,4 +1,4 @@
-/** Tickets: their lifecycle from an accept to their end, their Subscriptions and their Inputs. */
+/** Tickets：从 accept 到结束的生命周期，以及它们的订阅与输入。 */
 import { key } from './ids.ts'
 import { UserError } from './errors.ts'
 import { latestAssignment, latestReport, liveTicket, readUntil, runningAssignment, settled, threadKey, waitsForPerson } from './model.ts'
@@ -10,34 +10,34 @@ import type { Replies } from './replies.ts'
 import { canRetry } from './stage.ts'
 
 const sameChannel = (a: ChannelRef, b: ChannelRef): boolean => JSON.stringify(a) === JSON.stringify(b)
-/** Whether an Input is a message no person wrote, such as CI's, a bot's, or the main Session's note. */
+/** 某输入是否为并非人写的消息，例如 CI 的、bot 的，或主 Session 的 note。 */
 export const automatic = (input: TicketInput | undefined): boolean => input?.kind === 'note' || (input?.kind === 'trigger' && !input.human)
 /**
- * Whether a ticket's worker read a Trigger Input before `until`, its latest report or turn end: its Session took the message
- * into a step before then. One delivered before reads were recorded counts as read once it reached the worker by then.
+ * 工单的 worker 是否在 `until`——其最新报告或回合结束——之前读过某触发输入：其 Session 在那之前
+ * 把消息带入过某一步骤。在记录读取机制引入之前送达的输入，只要在那时之前到达了 worker，即视为已读。
  */
 const readBefore = (input: Extract<TicketInput, { kind: 'trigger' }>, until: string): boolean => input.readAt === undefined
   ? (input.deliveredAt && input.deliveredAt > input.at ? input.deliveredAt : input.at) <= until : !!input.readAt && input.readAt < until
 const STATUS_REQUEST = 'Report the current ticket status with orchestrator_report. This is a status-only request: do not resume implementation or perform external actions.'
 
 /**
- * Manages each ticket's lifecycle: creates the ticket for an accept decision with its Mandate, Subscriptions, and first
- * Assignment, binds and attaches Threads, adds Inputs, resumes, retries, restarts, and ends tickets, and drops Subscriptions.
- * Coordinates with Replies for the acknowledgement an accept carries and with Executor to start, deliver to, and stop assignments.
- * Intake, Evals, Assignments, and Engine delegate ticket and subscription mutations here.
+ * 管理每个工单的生命周期：为 accept 决定创建工单及其授权、订阅与第一次
+ * 派工，绑定和附加线程，添加输入，恢复、重试、重启和结束工单，并取消订阅。
+ * 与 Replies 协调 accept 所附带的确认，与执行器协调派工的启动、投递与停止。
+ * Intake、Evals、Assignments 与 Engine 把工单和订阅的修改委托到这里。
  */
 export class Tickets extends EnginePart {
   constructor(options: EngineOptions, private readonly replies: Replies) { super(options) }
 
   /**
-   * Create the ticket an accept decided, under `mandate`, with the Channels and Threads of the Eval's Triggers, its first
-   * Assignment, and the acknowledgement the accept carries, and queue its launch. Its origin is the admissible Trigger that
-   * gave the Eval its strength, or the Eval's last Trigger for an Eval recorded before `primary` existed.
+   * 在 `mandate` 下创建 accept 所决定的工单，带上评估各触发所属的渠道与线程、第一次
+   * 派工以及 accept 附带的确认，并把它的启动排队。其源头是给出评估强度的可接纳触发，
+   * 对在 `primary` 出现之前记录的评估则取评估的最后一个触发。
    */
   create(id: string, decisionId: string, mandate: Mandate, evaluation: Pick<Evaluation, 'triggerIds' | 'primary'>,
     outcome: Extract<AssessmentOutcome, { kind: 'accept' }>, at: string): void {
     const { triggerIds } = evaluation
-    // Fall back to the last trigger for Evals recorded before `primary` existed.
+    // 对在 `primary` 出现之前记录的评估，回退到最后一个触发。
     const primary = this.repo.triggers.get(evaluation.primary ?? triggerIds.at(-1)!)
     const origin = { triggerId: primary?.id ?? triggerIds[0]!, triggerIds }
     let ticket: Ticket = { id, title: outcome.title, decisionId, mandate, channels: [], assignments: [], inputs: [], undelivered: [],
@@ -55,8 +55,8 @@ export class Tickets extends EnginePart {
     this.emit('ticket.created', { ticketId: id, decisionId, strength: mandate.strength })
   }
   /**
-   * Subscribes an open ticket to `thread` and records it in `ticket.follows` (`own` when opened by the ticket).
-   * @throws UserError when the ticket is unknown or has ended.
+   * 让未结工单订阅 `thread`，并把它记录到 `ticket.follows` 中（工单自己开启时为 `own`）。
+   * @throws UserError，当工单未知或已结束时抛出。
    */
   bind(ticketId: string, thread: ThreadRef, own: boolean): Ticket {
     if (!liveTicket(this.require(ticketId))) throw new UserError('ticketEnded')
@@ -64,15 +64,15 @@ export class Tickets extends EnginePart {
     const ticket = this.require(ticketId)
     const followed = threadKey(thread)
     const follow = ticket.follows?.find(item => item.thread === followed)
-    // Re-binding a thread reopens it if previously closed; `own` remains true once set.
+    // 重新绑定先前已关闭的线程会重新打开它；`own` 一旦设置就保持为 true。
     if (follow) { follow.own ||= own; delete follow.closed } else ticket.follows = [...ticket.follows ?? [], { thread: followed, own }]
     ticket.updatedAt = this.now()
     this.repo.tickets.save(ticket)
     return ticket
   }
   /**
-   * Record that a Thread open tickets follow closed, and end each one done with its Threads (see `followsDone`), unless its
-   * work has not finished (see `unfinished`); such work ends the ticket once it reports ready.
+   * 记录未结工单所跟进的某个线程已关闭，并结束每个已处理完其线程的工单（见 `followsDone`），
+   * 除非其工作尚未完成（见 `unfinished`）；这类工作会在报告 ready 后结束工单。
    */
   threadClosed(thread: ThreadRef, outcome: 'merged' | 'closed', at: string): void {
     const closed = threadKey(thread)
@@ -83,14 +83,14 @@ export class Tickets extends EnginePart {
       this.repo.tickets.save(ticket)
       const done = this.followsDone(ticket)
       if (!done || this.unfinished(ticket, at)) continue
-      // Work resumed after the close and finished ends now.
+      // 关闭之后恢复且现已完成的工作现在结束。
       const resumed = Date.parse(latestAssignment(ticket)?.createdAt ?? '') > Date.parse(at)
       this.end(ticket.id, 'executor', done.outcome, resumed ? this.now() : done.at)
     }
   }
   /**
-   * How a ticket that follows Threads is done with them: once no Thread it opened (`own`) is still open, or, when it opened none,
-   * once every one it follows closed. It ends as the latest close among those Threads did; undefined while it is not done.
+   * 跟进线程的工单如何才算处理完它们：只要它自己开启的（`own`）线程没有仍在打开的，或它没有开启任何线程时，
+   * 其跟进的线程全部关闭。工单以这些线程中最晚的一次关闭的结果结束；尚未处理完时为 undefined。
    */
   followsDone(ticket: Ticket): Follow['closed'] {
     const follows = ticket.follows ?? []
@@ -100,13 +100,13 @@ export class Tickets extends EnginePart {
     return counted.map(item => item.closed!).sort((a, b) => a.at.localeCompare(b.at)).at(-1)
   }
   /**
-   * The Trigger to attach to a ticket, once the ticket may take it.
-   * @throws UserError when the trigger or ticket is unknown, a ticket's worker still decides the trigger, a person stopped the ticket, or an ended ticket's Mandate no longer revalidates.
+   * 要附加给工单的触发，前提是该工单可以接下它。
+   * @throws UserError，当触发或工单未知、某工单的 worker 仍在决定该触发、工单被人停止，或已结束工单的授权不再能通过重新校验时抛出。
    */
   attachable(ticketId: string, triggerId: string): Trigger {
     const trigger = this.repo.triggers.get(triggerId)
     if (!trigger) throw new UserError('unknownTrigger')
-    // A follow-up that reached a ticket goes elsewhere only once the workers that decide it hand it back.
+    // 已到达某工单的跟进消息，只有在决定它的各 worker 交回之后才会去别处。
     this.leftToWorkers(trigger)
     const current = this.require(ticketId)
     if (current.ended?.by === 'human') throw new UserError('ticketStopped')
@@ -114,13 +114,13 @@ export class Tickets extends EnginePart {
     return trigger
   }
   /**
-   * Subscribe a ticket to an attached Trigger's Threads and add the Trigger as an Input, with its note. The ticket's worker
-   * then decides it, as it decides a message that reached the ticket on its own Thread; a worker that does not hold the
-   * message as its ticket's takes it as a new Input, which wakes an ended ticket as any attached message does.
+   * 让工单订阅被附加触发的各线程，并把该触发连同其说明作为输入添加。此后由工单的
+     * worker 决定它，正如它决定到达工单自己线程上的消息一样；不把该消息视为其工单
+   * 所属的 worker 会把它作为新的输入接下，这会像任何被附加的消息一样唤醒已结束的工单。
    */
   attach(ticketId: string, trigger: Trigger, note?: string): void {
     for (const ref of trigger.threads) this.subscribe(ticketId, ref)
-    // A person's sending it to Eval, which routed it here, is over, and so is the ticket's reading it for context only.
+    // 人把它送去评估、进而路由到这里的事已结束，工单仅把它作为上下文读取的状态也同样结束。
     const current: TriggerDisposition = this.repo.triggers.disposition(trigger.id) ?? { fanout: [], at: this.now() }
     const { context, requeued, ...disposition } = current
     const followed = context?.filter(id => id !== ticketId)
@@ -134,18 +134,18 @@ export class Tickets extends EnginePart {
       ...trigger.human ? { human: true } : {} })
     if (existing?.kind !== 'trigger') this.addInput(ticket, input(id))
     else if (note && ticket.undelivered.includes(id)) { existing.note = note; ticket.updatedAt = at; this.repo.tickets.save(ticket) }
-    // A person sent it to Eval, or the ticket let it go before its worker took it up, read it for context only, or ended after
-    // its worker had it, so the worker gets it again.
+    // 有人把它送去评估，或工单在其 worker 接手之前放过了它、仅把它作为上下文读取、或在其
+    // worker 拿到它之后结束了，因此 worker 会再次收到它。
     else if (requeued || !current.fanout.includes(ticketId) || context?.includes(ticketId) || !liveTicket(ticket)) {
       this.addInput(ticket, input(key('input', ticketId, 'trigger', trigger.id, 'attached', at)))
     }
-    // The worker has the message already, so the note comes with it again.
+    // worker 已经有这条消息，因此说明会随它再次送达。
     else if (note) this.addInput(ticket, input(key('input', ticketId, 'trigger', trigger.id, 'note', note)))
   }
   /**
-   * Ask a running worker whose latest report is `waiting` for a status report; leaves any other ticket alone.
-   * @returns whether the status request input was queued.
-   * @throws UserError when the ticket is unknown.
+   * 向最新报告为 `waiting` 的运行中 worker 请求一份状态报告；不惊动任何其他工单。
+   * @returns 状态请求输入是否已排队。
+   * @throws UserError，当工单未知时抛出。
    */
   requestStatus(ticketId: string): boolean {
     const ticket = this.require(ticketId)
@@ -154,16 +154,16 @@ export class Tickets extends EnginePart {
     return true
   }
   /**
-   * Stops a ticket on behalf of a human, ending any active assignments.
-   * @throws UserError when the ticket is unknown.
+   * 代表一个人停止工单，并结束所有仍活动的派工。
+   * @throws UserError，当工单未知时抛出。
    */
   stop(ticketId: string, reason?: string): Ticket {
     this.end(ticketId, 'human', 'stopped', this.now(), reason)
     return this.require(ticketId)
   }
   /**
-   * Ends the stalled assignment of a retryable open ticket (`failed`, `blocked`, or failed input delivery) and starts a new one.
-   * @throws UserError when the ticket is unknown or not retryable.
+   * 结束可重试未结工单（`failed`、`blocked` 或输入投递失败）的停滞派工，并开启新的派工。
+   * @throws UserError，当工单未知或不可重试时抛出。
    */
   retry(ticketId: string): Ticket {
     const ticket = this.require(ticketId)
@@ -179,8 +179,8 @@ export class Tickets extends EnginePart {
     return ticket
   }
   /**
-   * Drops a ticket's Subscription to a Thread its worker found unrelated, and hands back, with `reason`, the person's messages there that the ticket decides.
-   * @throws UserError when the ticket is unknown, or `thread` is an origin thread, a bound `follows` thread, or not subscribed.
+   * 取消工单对其 worker 发现无关的线程的订阅，并附 `reason` 把该处工单所决定的人的消息交回。
+   * @throws UserError，当工单未知，或 `thread` 是源头线程、已绑定的 `follows` 线程，或并未订阅时抛出。
    */
   markUnrelated(ticketId: string, thread: string, reason: string): void {
     const ticket = this.require(ticketId)
@@ -188,28 +188,28 @@ export class Tickets extends EnginePart {
     if (ticket.follows?.some(item => item.thread === thread)) throw new UserError('followedThread')
     if (!this.repo.threads.get(thread)?.subscriptions.includes(ticketId)) throw new UserError('notFollowing')
     this.dropSubscriptions(thread, 'executor', ticketId, reason)
-    // Its worker found the Thread is not its ticket's: it hands back, with its reason, the person's messages there it decides.
+    // 其 worker 发现该线程不属于其工单：它附上原因，把该处它所决定的人的消息交回。
     for (const trigger of this.triggersOf(ticket)) {
       if (trigger.threads.some(ref => threadKey(ref) === thread) && this.owners(trigger).includes(ticketId)) this.handBack(ticketId, trigger, reason)
     }
   }
   /**
-   * Tell each open ticket a Policy change bears on how it does, oldest first, so their deliveries queue in the order they
-   * were accepted; the others are left alone.
+   * 告知每个与策略变更相关的未结工单，按从旧到新的顺序，使它们的投递按被接受的顺序排队；
+   * 其余工单不受影响。
    */
   policyChanged(from: string, to: string, effects: ReadonlyMap<string, PolicyEffect>): void {
     const at = this.now()
-    // Iterate tickets oldest first so deliveries queue in acceptance order.
+    // 按从旧到新的顺序遍历工单，使投递按接受顺序排队。
     for (const ticket of this.repo.tickets.open().sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
       const effect = effects.get(ticket.id)
-      // Include `at` in the input key so repeated transitions between the same policy versions still record a new input.
+      // 把 `at` 放进输入键中，使相同策略版本之间的重复转换仍会记录一条新的输入。
       if (effect) this.addInput(ticket, { id: key('input', ticket.id, 'policy', from, to, at), kind: 'policy-changed', from, to, at, effect })
     }
   }
   /**
-   * Drop a Thread's Subscriptions, every ticket's or only `ticketId`'s, and say so; false when none dropped. A ticket that
-   * followed the Thread follows it no more, so its close no longer ends the ticket. Each ticket keeps deciding the messages
-   * it received from the Thread.
+   * 取消某线程的订阅——所有工单的或仅 `ticketId` 的——并宣告这一变化；没有任何订阅被取消时为 false。
+   * 曾跟进该线程的工单不再跟进它，因此线程的关闭不再结束该工单。每个工单仍继续决定
+   * 它从该线程收到的消息。
    */
   dropSubscriptions(thread: string, by: 'person' | 'executor', ticketId?: string, reason?: string): boolean {
     const current = this.repo.threads.get(thread)
@@ -228,13 +228,13 @@ export class Tickets extends EnginePart {
     return true
   }
   /**
-   * Add an Input once (idempotently) and ask the Executor to deliver it, or to launch again a pending Assignment whose launch
-   * failed once no person is waited for: a Policy change alone does not launch it again.
+   * 添加一次输入（幂等），并请执行器投递它，或在不再等待任何人时重新启动一次启动
+   * 失败的 pending 派工：仅凭策略变更不会重新启动它。
    */
   addInput(ticket: Ticket, input: TicketInput): void {
     if (ticket.inputs.some(existing => existing.id === input.id)) return
     ticket.inputs.push(input); ticket.updatedAt = this.now()
-    // Hold back automated inputs while the worker is waiting on a person.
+    // worker 在等待人时扣住自动输入。
     const held = liveTicket(ticket) && automatic(input) && waitsForPerson(ticket)
     if (!held) ticket.undelivered.push(input.id)
     this.repo.tickets.save(ticket)
@@ -244,10 +244,10 @@ export class Tickets extends EnginePart {
     else if (latest?.state === 'pending' && !waitsForPerson(ticket)) this.options.executor.start(ticket, latest)
   }
   /**
-   * Resume an ended ticket under its unchanged Mandate when a person's message on one of its Threads waits for it: no Eval
-   * and no Decision, since nothing new is authorized. One whose Mandate the current Policy no longer holds stays ended and
-   * takes nothing (see `refuse`). While processing is paused the message waits, and the first pass after the pause resumes
-   * the ticket under the Policy then. Reads the ticket afresh, so it is idempotent and leaves an already-resumed ticket alone.
+   * 当工单某条线程上的人的消息在等待它时，在其授权不变的前提下恢复已结束的工单：没有评估
+   * 也没有决定，因为没有授权任何新东西。授权已不被当前策略维持的工单保持结束状态，
+   * 什么也不接（见 `refuse`）。处理暂停期间消息会等待，暂停后的第一轮处理会以当时的策略
+   * 恢复工单。每次都重新读取工单，因此它是幂等的，且不会惊动已恢复的工单。
    */
   wake(ticketId: string): void {
     const ticket = this.repo.tickets.get(ticketId)
@@ -255,41 +255,41 @@ export class Tickets extends EnginePart {
     const policy = this.policy()
     if (policy.paused) return
     if (!policy.revalidate(ticket.mandate)) { this.refuse(ticket); return }
-    // Only a human's message resumes an ended ticket; bot/CI triggers wait alongside inputs from before the ticket ended.
+    // 只有人的消息才能恢复已结束的工单；bot/CI 触发与工单结束之前到达的输入一起等待。
     const first = ticket.undelivered.map(id => ticket.inputs.find(input => input.id === id)).find(input => input?.kind === 'trigger' && input.human)
     if (first?.kind !== 'trigger') return
     const at = this.now()
     delete ticket.ended; ticket.updatedAt = at
     const assignment = this.newAssignment(ticket)
-    // Prepend the resumed marker so it is delivered ahead of the waiting messages.
+    // 把 resumed 标记插到最前面，使它先于等待中的消息送达。
     const resumed: TicketInput = { id: key('input', ticket.id, 'resumed', first.triggerId), kind: 'resumed', triggerId: first.triggerId, at }
     ticket.inputs.push(resumed); ticket.undelivered.unshift(resumed.id)
     this.repo.tickets.save(ticket)
     this.options.executor.start(ticket, assignment)
     this.emit('ticket.resumed', { ticketId, triggerId: first.triggerId })
   }
-  /** The Triggers of a ticket's trigger Inputs, or of those of them whose Input ids are `ids`. */
+  /** 工单触发输入所对应的触发，或在给定 `ids`（输入 id）时取其中这些输入对应的触发。 */
   private triggersOf(ticket: Ticket, ids?: readonly string[]): Trigger[] {
     return ticket.inputs.flatMap(input => input.kind === 'trigger' && (!ids || ids.includes(input.id))
       ? this.repo.triggers.get(input.triggerId) ?? [] : [])
   }
   /**
-   * Whether a ticket's worker took a person's message up, by acknowledging or answering it. A message acknowledged before
-   * acknowledgements were recorded on it has only the acknowledgement's message in the outbox.
+   * 工单的 worker 是否通过确认或答复接手了某人的消息。在确认被记录到消息上之前
+   * 得到确认的消息，只有发件箱里的那条确认消息可供判断。
    */
   private takenUp(ticket: Ticket, trigger: Trigger): boolean {
     const acked = this.repo.triggers.disposition(trigger.id)?.acked
     return acked ? acked.includes(ticket.id) : this.options.outbox.status(key('ack', trigger.id)) !== undefined
   }
-  /** The person's messages among a ticket's Inputs `ids` that it decides and its worker did not take up. */
+  /** 工单输入 `ids` 中、由它决定且其 worker 尚未接手的人的消息。 */
   private untaken(ticket: Ticket, ids: readonly string[]): Trigger[] {
     return this.triggersOf(ticket, ids).filter(trigger => this.owners(trigger).includes(ticket.id) && !this.takenUp(ticket, trigger))
   }
   /**
-   * A ticket that ended, or cannot resume, lets go of the messages its worker never received, `waiting`, and of the person's
-   * messages it decided but may not have taken up, `left`: it no longer counts as having reached them, and each of `left`
-   * that no other ticket decides goes to Eval, as a person's message that reached no ticket does, unless a ticket took it
-   * up, a Decision settled it, or it is the message a stop ended this ticket on.
+   * 已结束或无法恢复的工单会放开其 worker 从未收到的消息（`waiting`），以及它决定过但可能尚未
+   * 接手的人的消息（`left`）：它不再算作已到达这些消息，而 `left` 中没有其他工单决定的每一条
+   * 都会像没有到达任何工单的人的消息一样进入评估，除非有工单接手了它、某个决定已对它作出处置，
+   * 或它正是 stop 借以结束本工单的那条消息。
    */
   private letGo(ticketId: string, waiting: readonly Trigger[], left: readonly Trigger[]): void {
     for (const trigger of [...waiting, ...left]) {
@@ -301,20 +301,20 @@ export class Tickets extends EnginePart {
     for (const trigger of left) {
       const disposition = this.repo.triggers.disposition(trigger.id)
       const decision = disposition?.decisionId ? this.repo.decisions.get(disposition.decisionId) : undefined
-      // The main Session that stopped this ticket on the message decides the rest of it itself, unless a ticket handed it back.
+      // 就该消息停止本工单的主 Session 会自行处理它的其余部分，除非有工单交回过它。
       const stopped = decision?.kind === 'stop' && decision.ticketId === ticketId && !disposition?.handbacks?.length
       const decided = !!decision && (settled(decision) || stopped)
       if (!this.owners(trigger).length && !disposition?.acked?.length && !decided) this.queueForEval(trigger)
     }
   }
-  /** An ended ticket that cannot resume takes none of the messages that waited for it (see `letGo`). */
+  /** 无法恢复的已结束工单不接下任何等待它的消息（见 `letGo`）。 */
   private refuse(ticket: Ticket): void {
     const waiting = this.triggersOf(ticket, ticket.undelivered), left = this.untaken(ticket, ticket.undelivered)
     ticket.undelivered = []
     this.repo.tickets.save(ticket)
     this.letGo(ticket.id, waiting, left)
   }
-  /** Replace a ticket's running Assignment with a new one that receives `note` first, and queue it for launch. */
+  /** 用一个新的派工替换工单正在运行的派工，新派工最先收到 `note`，并把它的启动排队。 */
   restart(ticket: Ticket, running: Assignment, reason: string, note: string): void {
     this.endAssignment(ticket, running, reason)
     this.requeueUntaken(ticket, running)
@@ -326,9 +326,9 @@ export class Tickets extends EnginePart {
     this.options.executor.start(ticket, assignment)
   }
   /**
-   * Put back, ahead of what waits, the Trigger Inputs delivered to `replaced` that no step of its worker took: a cancel may
-   * have dropped them, or a step that claimed them was cut off, and the new Assignment's launch takes a copy still waiting
-   * in the Session out, so its delivery is the only one. An earlier end let go of what earlier Assignments left.
+   * 把投递给了 `replaced`、但其 worker 的任何步骤都未接下的触发输入放回等待队列的最前面：取消可能
+   * 丢弃了它们，或认领它们的步骤被中断，而新派工的启动会把仍在 Session 中等待的副本
+   * 取出来，因此这次投递是唯一的一次。更早的结束已放开过更早派工留下的内容。
    */
   private requeueUntaken(ticket: Ticket, replaced: Assignment): void {
     const untaken = ticket.inputs.filter(input => input.kind === 'trigger' && input.readAt === null && input.deliveredTo === replaced.id
@@ -336,11 +336,11 @@ export class Tickets extends EnginePart {
     ticket.undelivered.unshift(...untaken.map(input => input.id))
   }
   /**
-   * End a ticket with its outcome. `at` records when the ending fact happened, such as a PR merge, and `reason` says
-   * why in words, by default the outcome. The ticket lets go (see `letGo`) of the messages its worker never received, and of
-   * the person's messages it decides that its worker did not read before its latest report or turn end, the report that
-   * ends the ticket included (see `readBefore`), and neither acknowledged, answered nor handed back: one may have come while
-   * the worker wrote the report that ends the ticket, or after its turn ended, and either way it can no longer hand it back.
+   * 以其结果结束工单。`at` 记录结束这一事实发生的时刻，例如 PR 合并，`reason` 用文字说明
+   * 原因，默认为结果本身。工单会放开（见 `letGo`）其 worker 从未收到的消息，以及它决定的、
+   * 其 worker 在最新报告或回合结束之前（包括结束工单的那份报告）未曾读过（见 `readBefore`）、
+   * 也未确认、未答复、未交回的人的消息：其中某条可能在 worker 撰写结束工单的报告时到达，
+   * 或在其回合结束之后到达，无论哪种情况它都已无法再交回。
    */
   end(ticketId: string, by: TicketEndBy, outcome: TicketOutcome, at = this.now(), reason?: string): void {
     const ticket = this.require(ticketId)
@@ -351,10 +351,10 @@ export class Tickets extends EnginePart {
     const waiting = this.triggersOf(ticket, ticket.undelivered)
     const left = this.untaken(ticket, ticket.inputs.flatMap(input => input.kind === 'trigger'
       && (!readBefore(input, until) || ticket.undelivered.includes(input.id)) ? [input.id] : []))
-    // An end dated earlier, such as a PR's merge, does not move the ticket's last change back.
+    // 日期更早的结束（例如 PR 的合并）不会把工单的最近变更时间往回调。
     ticket.ended = { at, by, outcome, ...why }; ticket.undelivered = []; ticket.updatedAt = this.now()
     delete ticket.attention; delete ticket.delivery
-    // The Assignments the end stops end with it; the ticket's end says why.
+    // 结束所叫停的派工随之结束；工单的结束记录说明了原因。
     for (const assignment of stopping) { assignment.state = 'ended'; assignment.endedAt = at }
     this.repo.tickets.save(ticket)
     this.letGo(ticketId, waiting, left)
@@ -362,10 +362,10 @@ export class Tickets extends EnginePart {
     for (const assignment of stopping) this.options.executor.stop(ticket, assignment, reason ?? outcome)
   }
   /**
-   * Whether a ticket's work has not finished at a close at `at`: its worker took up a person's message the ticket decides and
-   * has not reported other than progress, or ended a turn, since its Session took that message into a step, or work resumed
-   * after the close, whose Assignment started after it, has no ready report or Input arrived after that report; a Policy
-   * change asks for no work.
+   * 在 `at` 时刻的关闭发生时，工单的工作是否尚未完成：自其 Session 把某人的消息带入某一步骤以来，
+   * 其 worker 接手了该工单决定的人的消息、且除进度外没有再报告或结束过回合；或工作在关闭之后
+   * 恢复，其派工在关闭之后才启动、没有 ready 报告或该报告之后到达的输入；策略
+   * 变更不构成未完成的工作。
    */
   private unfinished(ticket: Ticket, at: string): boolean {
     const until = readUntil(ticket, false)
@@ -377,7 +377,7 @@ export class Tickets extends EnginePart {
     const later = ticket.inputs.some(input => input.kind !== 'policy-changed' && Date.parse(input.at) > Date.parse(report?.at ?? ''))
     return report?.state !== 'ready' || ticket.undelivered.length > 0 || later
   }
-  /** Add a pending Assignment; a failed delivery to the one before it no longer concerns the ticket. */
+  /** 添加一次 pending 派工；对前一次派工失败的投递不再与工单相关。 */
   private newAssignment(ticket: Ticket): Assignment {
     const assignment: Assignment = { id: key('assignment', ticket.id, String(ticket.assignments.length)), state: 'pending', createdAt: this.now() }
     ticket.assignments.push(assignment)
@@ -389,8 +389,8 @@ export class Tickets extends EnginePart {
     this.emit('assignment.ended', { ticketId: ticket.id, assignmentId: assignment.id, reason })
   }
   /**
-   * Give an open ticket's Executor a fact as a note Input, such as what another ticket found; it grants nothing (see `TicketInput`).
-   * @throws UserError when the ticket is unknown or has ended.
+   * 把一条事实作为 note 输入交给未结工单的执行器，例如另一个工单发现的内容；它不授予任何权限（见 `TicketInput`）。
+   * @throws UserError，当工单未知或已结束时抛出。
    */
   note(ticketId: string, text: string): Ticket {
     const ticket = this.require(ticketId)
@@ -400,9 +400,9 @@ export class Tickets extends EnginePart {
     return this.require(ticketId)
   }
   /**
-   * Subscribe an open ticket to a Thread its Executor found related, for context: see `Thread.context`.
-   * @returns false when the ticket follows the Thread already.
-   * @throws UserError when the ticket is unknown or has ended.
+   * 让未结工单订阅其执行器发现相关的线程，用作上下文：见 `Thread.context`。
+   * @returns 工单已跟进该线程时返回 false。
+   * @throws UserError，当工单未知或已结束时抛出。
    */
   followForContext(ticketId: string, ref: ThreadRef): boolean {
     if (!liveTicket(this.require(ticketId))) throw new UserError('ticketEnded')
@@ -413,7 +413,7 @@ export class Tickets extends EnginePart {
     this.repo.threads.save(thread)
     return true
   }
-  /** Subscribe a ticket to a Thread; later Triggers on it reach the ticket as Inputs, as the ticket's own once it was for context. */
+  /** 让工单订阅一个线程；其上后来的触发作为输入到达工单，此前仅为上下文时则成为工单自己的。 */
   private subscribe(ticketId: string, ref: ThreadRef): void {
     const thread = this.thread(ref)
     if (!thread.subscriptions.includes(ticketId)) { thread.subscriptions.push(ticketId); this.emit('thread.subscribed', { threadKey: thread.key, ticketId }) }

@@ -1,4 +1,4 @@
-/** Type-only management API contract between the web panel and host routes, imported by the panel without bundling host code. */
+/** Web 管理面板与宿主路由之间的纯类型管理 API 契约；面板导入它时不会打包宿主代码。 */
 import type { ModelCatalog } from '@deepseek-ai/dsh-api-session-controller/types'
 import type { PromptConfig, Prompts } from './prompts.ts'
 import type { PromptsView, StateView, TicketPageView } from './http.ts'
@@ -14,7 +14,7 @@ export const THREAD_FILTERS = ['subscribed', 'evaluating', 'recent', 'all'] as c
 export type TicketFilter = typeof TICKET_FILTERS[number]
 export type ThreadFilter = typeof THREAD_FILTERS[number]
 interface Paged { offset?: number; limit?: number }
-/** Whether a context update was already injected into the main Session or is still pending delivery. */
+/** 上下文更新是已注入主 Session，还是仍在等待投递。 */
 type Delivery = 'injected' | 'pending'
 
 export interface Api {

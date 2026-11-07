@@ -1,4 +1,4 @@
-/** Session tool registration, role-scoped resource reads, and routing/settings tool contracts. */
+/** Session 工具注册、按角色限定的资源读取，以及路由/设置工具的契约。 */
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { TICKET_STATES } from '../src/app/cards.ts'
 import { builtInBase, builtInParts, defaultPrompts } from '../src/app/prompts.ts'
@@ -16,7 +16,7 @@ const words = (count: number) => Array.from({ length: count }, () => 'word').joi
 const read = (resource: string, page: { offset?: number; limit?: number } = {}) =>
   h.runTool(h.runtime.masterId, 'orchestrator_read', { resource, ...page })
 
-it('reads the lists, a ticket, a decision, the settings, the prompts and the models as resources', async () => {
+it('以资源形式读取列表、工单、决定、设置、提示词与模型', async () => {
   const { ticket, trigger } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
   await h.acceptedTicket(feishu('2', '@bot 再修一个'))
   const tickets = await read('tickets', { limit: 1 })
@@ -31,7 +31,7 @@ it('reads the lists, a ticket, a decision, the settings, the prompts and the mod
   expect(await read(decisions.items.at(-1)!.read)).toMatchObject({ kind: 'accept', ticket_id: ticket.id, mandate: { strength: 'explicit' } })
   expect(await read(`ticket/${ticket.id}`)).toMatchObject({ ticket_id: ticket.id, state: 'working', directory: ticket.execution!.directory,
     trigger_id: trigger.id, assignments: { items: [expect.objectContaining({ state: 'running' })] }, assignment: `ticket/${ticket.id}/assignment` })
-  // The settings name each block's revision and hold the small blocks; a block reads whole by the name a save takes.
+  // 设置标出每个块的修订号并包含小块；块按保存时使用的名称整体读取。
   const settings = await read('settings')
   expect(settings).toMatchObject({ eval: { value: { mode: 'auto' } }, policy: { revision: expect.any(Number), allowed: { feishu: 1, github: 1 }, read: 'settings/policy' },
     pause: { value: { paused: false } }, sources: expect.arrayContaining([expect.objectContaining({ id: 'github', read: 'settings/source:github' })]) })
@@ -42,7 +42,7 @@ it('reads the lists, a ticket, a decision, the settings, the prompts and the mod
   }
   expect(JSON.parse((await read('settings/policy') as { text: string }).text).value.sources.feishu.allowed).toEqual([{ id: 'ou_alice', name: 'Alice' }])
   await expect(read('settings/source:retired')).rejects.toThrow('Unknown settings block')
-  const skills = { built_in: ['dsh-superagent-feishu', 'dsh-superagent-github'], team: [] }
+  const skills = { built_in: ['dsh-superagent-cn-feishu', 'dsh-superagent-cn-github'], team: [] }
   expect(await read('prompts')).toMatchObject({ revision: 0, read: 'prompts/0', skills, items: [expect.objectContaining({ revision: 0 })], next_offset: null })
   const models = [{ id: 'm1', name: 'One' }, { id: 'm2', name: 'Two' }]
   const catalog = { default: { provider: 'p', model: 'm1' }, groups: [{ id: 'p', name: 'Provider', models }], failures: [] }
@@ -50,19 +50,19 @@ it('reads the lists, a ticket, a decision, the settings, the prompts and the mod
   expect(await read('models')).toMatchObject({ providers: [{ id: 'p', count: 2, read: 'models/p' }], roles: expect.any(Object) })
   expect(await read('models/p', { limit: 1 })).toEqual({ items: [models[0]], next_offset: 1 })
   await expect(read('ticket')).rejects.toThrow('Unknown context resource')
-  // A list page holds at most 50 items, the prompt history too.
+  // 列表页最多容纳 50 条，提示词历史也是如此。
   const config = h.runtime.prompts.current().config
   for (let revision = 0; revision < 51; revision++) h.runtime.prompts.save({ ...config, scope: `Scope ${revision}.` }, revision, 'panel')
   expect(await read('prompts', { limit: 8000 })).toMatchObject({ items: expect.objectContaining({ length: 50 }), next_offset: 50 })
 })
 
-it('lists in prompts the built-in parts whose text changed since the team overrode them, and the built-in parts in prompts/defaults', async () => {
+it('在 prompts 中列出团队覆盖后内置文本又发生变化的部件，并在 prompts/defaults 中提供内置部件', async () => {
   const read = (resource: string, offset = 0) => h.runTool(h.runtime.masterId, 'orchestrator_read', { resource, offset, limit: 8000 })
   expect(await read('prompts')).not.toHaveProperty('default_changed')
-  // An override edited from the built-in text of an earlier version.
+  // 从早期版本内置文本编辑而来的覆盖。
   h.runtime.prompts.save({ ...defaultPrompts(), overrides: { 'runtime/dispatch': { text: '## dispatch\nOurs.', base: 'earlier' } } }, 0, 'panel')
   expect(await read('prompts')).toMatchObject({ default_changed: ['runtime/dispatch'] })
-  // A text page at a time, which the whole text joins.
+  // 逐页读取文本，再拼接为全文。
   let text = '', offset: number | null = 0
   while (offset !== null) {
     const page = await read('prompts/defaults', offset) as { text: string; next_offset: number | null }
@@ -72,26 +72,26 @@ it('lists in prompts the built-in parts whose text changed since the team overro
   expect(defaults.parts).toEqual(Object.fromEntries(Object.entries(builtInParts()).map(([key, part]) => [key, part.text])))
 })
 
-it('saves with the prompt save tool an override without its base, refuses a part no version has, and drops a removed one read back', async () => {
+it('用提示词保存工具保存不带 base 的覆盖，拒绝任何版本都没有的部件，并丢弃回读时已移除的部件', async () => {
   const save = (overrides: Record<string, unknown>) => h.runTool(h.runtime.masterId, 'orchestrator_prompts_save',
     { config: { ...defaultPrompts(), overrides }, baseRevision: h.runtime.prompts.current().revision })
   await expect(save({ constructor: { text: 'x' } })).rejects.toThrow(new UserError('unknownPromptPart', { part: 'constructor' }))
   await save({ 'runtime/dispatch': { text: '## dispatch\nOurs.' } })
   const dispatch = { text: '## dispatch\nOurs.', base: builtInBase(builtInParts()['runtime/dispatch'].text) }
   expect(h.runtime.prompts.current().config.overrides).toEqual({ 'runtime/dispatch': dispatch })
-  // The saved version overrides a part this version no longer has: saving back the configuration as read drops it.
+  // 已保存版本覆盖了本版本已不存在的部件：按读取原样保存回去会丢弃它。
   const { revision } = h.runtime.prompts.current(), read = { ...defaultPrompts(), overrides: { 'runtime/dispatch': dispatch,
     'runtime/retired': { text: 'Old.', base: 'b' } } }
   h.runtime.store.set(KV.prompts.version(revision + 1), { revision: revision + 1, previousRevision: revision, savedAt: '', source: 'panel', config: read })
   h.runtime.store.set(KV.prompts.revision, revision + 1)
   await h.runTool(h.runtime.masterId, 'orchestrator_prompts_save', { config: read, baseRevision: revision + 1 })
   expect(h.runtime.prompts.current().config.overrides).toEqual({ 'runtime/dispatch': dispatch })
-  // The tool describes the overrides once, in its schema.
+  // 工具在其 schema 中只描述一次 overrides。
   const tool = h.tools.get(h.runtime.masterId)!.get('orchestrator_prompts_save') as unknown as { description: string }
   expect(tool.description).not.toContain('overrides')
 })
 
-it('keeps the main Session\'s resources from an Executor Session, which lists only its own', async () => {
+it('不让执行器 Session 读取主 Session 的资源，它只列出自己的资源', async () => {
   const { ticket, sessionId } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
   for (const resource of ['tickets', 'triggers', 'threads', 'decisions', 'settings', 'prompts', 'models']) {
     await expect(h.runTool(sessionId, 'orchestrator_read', { resource })).rejects.toThrow('belongs to the main Session')
@@ -104,7 +104,7 @@ it('keeps the main Session\'s resources from an Executor Session, which lists on
   expect(offered).not.toMatch(/preview/i)
 })
 
-it('answers every routing tool in one shape: the decision it recorded, why, and the ticket card', async () => {
+it('以统一形态应答每个路由工具：其记录的决定、原因与工单卡片', async () => {
   const { ticket, sessionId } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
   const card = expect.objectContaining({ ticket_id: ticket.id })
   const run = (name: string, args: unknown) => h.runTool(h.runtime.masterId, name, args)
@@ -121,7 +121,7 @@ it('answers every routing tool in one shape: the decision it recorded, why, and 
   h.runtime.receive(chatter); await h.runtime.idle()
   expect(await route({ kind: 'ignore', trigger_id: chatter.id, reason: 'thanks' })).toEqual({ trigger_id: chatter.id, kind: 'ignore', decision: 'ignore',
     reason: 'thanks' })
-  // A stop needs the person's stop message, which the gate judges; the ticket keeps the reason given.
+  // 停止需要用户的停止消息，由准入研判；工单保留给出的原因。
   await expect(run('orchestrator_route', { decisions: [{ kind: 'stop', ticket_id: ticket.id, reason: 'Not needed after all' }] })).rejects.toThrow()
   expect(h.runtime.store.tickets.get(ticket.id)!.ended).toBeUndefined()
   const request = feishu('5', '@bot 不用修了')
@@ -133,12 +133,12 @@ it('answers every routing tool in one shape: the decision it recorded, why, and 
   expect(TICKET_STATES).toContain(stopped.ticket.state)
 })
 
-it('routes several triggers in one call, in order, and answers a refused or failed item without undoing the others', async () => {
+it('一次调用按顺序路由多条触发，对被拒绝或失败的单项给出应答且不撤销其他项', async () => {
   const { ticket } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
   const thanks = feishu('2', '@bot 谢谢'), request = feishu('3', '@bot 另一个问题'), other = feishu('4', '@bot 顺便看看这个'), more = feishu('6', '@bot 还有这个')
   for (const trigger of [thanks, request, other, more]) h.runtime.receive(trigger)
   await h.runtime.idle()
-  // One attach fails unexpectedly, as a busy database would.
+  // 一次 attach 意外失败，如同数据库被占用时那样。
   const attach = h.runtime.engine.attach.bind(h.runtime.engine)
   vi.spyOn(h.runtime.engine, 'attach').mockImplementation((ticketId, triggerId, note) => {
     if (triggerId === more.id) throw new Error('database is locked')
@@ -146,7 +146,7 @@ it('routes several triggers in one call, in order, and answers a refused or fail
   })
   const { results } = await h.runTool(h.runtime.masterId, 'orchestrator_route', { decisions: [
     { kind: 'ignore', trigger_id: thanks.id, reason: 'Thanks only.' },
-    // A stop without its ticket is refused, alone.
+    // 缺少工单的停止被单独拒绝。
     { kind: 'stop', trigger_id: request.id },
     { kind: 'accept', trigger_id: request.id, title: 'Other', worktree_name: 'fix-other', acknowledgement: '收到。' },
     { kind: 'attach', trigger_id: other.id, ticket_id: 'no-such-ticket' },
@@ -157,13 +157,13 @@ it('routes several triggers in one call, in order, and answers a refused or fail
     { trigger_id: request.id, kind: 'stop', refused: 'stop needs ticket_id' },
     expect.objectContaining({ trigger_id: request.id, kind: 'accept', decision: 'accept', ticket: expect.objectContaining({ title: 'Other' }) }),
     { trigger_id: other.id, kind: 'attach', refused: 'Unknown ticket' },
-    // An unexpected failure recorded nothing, which the item may be sent again for.
+    // 意外失败没有记录任何内容，该项可以重新发送。
     { trigger_id: more.id, kind: 'attach', refused: 'Not recorded: database is locked; retry this item' },
   ])
   expect(h.runtime.store.tickets.list()).toHaveLength(2)
 })
 
-it('refuses alone an item that lacks a field its kind needs or breaks a field\'s limit, naming the field, and ignores unused fields', async () => {
+it('单独拒绝缺少其类型所需字段或超出字段上限的项并指名字段，未使用的字段则忽略', async () => {
   const triggers = ['2', '3', '4', '5', '6'].map(id => feishu(id, `@bot 请求 ${id}`))
   for (const trigger of triggers) h.runtime.receive(trigger)
   await h.runtime.idle()
@@ -174,7 +174,7 @@ it('refuses alone an item that lacks a field its kind needs or breaks a field\'s
     { ...accept, trigger_id: b, worktree_name: 'one-two-three-four-five' },
     { ...accept, trigger_id: c, worktree_name: 'fix-c', note: words(NOTE_WORDS + 1) },
     { ...accept, trigger_id: d, worktree_name: 'fix-d', title: '' },
-    // Fields of another kind, null or not, are left unread.
+    // 其他类型的字段无论是否为 null 都不会被读取。
     { kind: 'ignore', trigger_id: e, reason: 'chat', ticket_id: null, title: null, note: null },
   ] }) as { results: Record<string, unknown>[] }
   expect(results).toEqual([
@@ -187,7 +187,7 @@ it('refuses alone an item that lacks a field its kind needs or breaks a field\'s
   expect(h.runtime.store.tickets.list()).toEqual([])
 })
 
-it('decides a candidate\'s batch with its card\'s trigger: a second accept keeps the first, and no other decision contradicts it', async () => {
+it('按其卡片触发的批次决定候选：第二次接受保留第一次的结果，其他决定不得与其矛盾', async () => {
   await h.runtime.settings.pause(true, 'panel')
   const first = feishu('1', '@bot 首页的标题'), second = feishu('2', '@bot 改成“浏览网页”', { root_id: 'om_1' })
   h.runtime.receive(first); h.runtime.receive(second)
@@ -208,7 +208,7 @@ it('decides a candidate\'s batch with its card\'s trigger: a second accept keeps
   expect(h.runtime.store.tickets.get(ticketId)!.title).toBe('Retitle')
 })
 
-it('states each routing field\'s limit in its description, which the schema leaves to the item\'s check', () => {
+it('在每个路由字段的描述中说明其上限，schema 把校验留给单项检查', () => {
   type Schema = { parameters: { properties: { decisions: { items: { properties: Record<string, { description?: string }> } } } } }
   const fields = (h.tools.get(h.runtime.masterId)!.get('orchestrator_route') as unknown as Schema).parameters.properties.decisions.items.properties
   const limits: Record<string, string[]> = { title: ['200 characters'], worktree_name: ['kebab-case', '32 characters'],
@@ -216,10 +216,10 @@ it('states each routing field\'s limit in its description, which the schema leav
   for (const [field, phrases] of Object.entries(limits)) for (const phrase of phrases) expect(fields[field]!.description, field).toContain(phrase)
 })
 
-it('stops one follow-up for each ticket it reached, in one call', async () => {
+it('一次调用中，为停止消息到达的每个工单各停止一次', async () => {
   const one = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
   const two = await h.acceptedTicket(feishu('3', '@bot 另一件事'))
-  // The second ticket follows the first's thread too, so a person's stop there reaches both.
+  // 第二个工单也跟随第一个的线程，因此用户在那里的停止会到达两者。
   h.runtime.engine.bindThread(two.ticket.id, { source: 'feishu', id: `${CHAT}:om_1` }, false)
   const stop = feishu('7', '都先停一下', { mentions: [], root_id: 'om_1' })
   h.runtime.receive(stop); await h.runtime.idle()
@@ -230,7 +230,7 @@ it('stops one follow-up for each ticket it reached, in one call', async () => {
   expect([one, two].map(item => h.runtime.store.tickets.get(item.ticket.id)!.ended?.outcome)).toEqual(['stopped', 'stopped'])
 })
 
-it('ignores a proactive candidate from its card beside other decisions, marked so, and leaves accepting one to an assessment', async () => {
+it('在卡片上把主动型候选标记后与其他决定一起忽略，接受与否交给研判', async () => {
   const chat = feishu('2', '中午吃什么', { mentions: [] }), thanks = feishu('3', '@bot 谢谢'), proposal = feishu('4', '把标题改短一点', { mentions: [] })
   for (const trigger of [chat, thanks, proposal]) h.runtime.receive(trigger)
   await h.runtime.pump(); await h.runtime.idle()
@@ -246,7 +246,7 @@ it('ignores a proactive candidate from its card beside other decisions, marked s
   ])
 })
 
-it('returns where a reply stands: sent, or dropped when its conversation can no longer receive it', async () => {
+it('报告回复的状态：已发送，或会话无法再接收时被丢弃', async () => {
   const { ticket, sessionId } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
   await h.runTool(sessionId, 'orchestrator_report', { state: 'ready', summary: 'Done.' })
   const reply = (text: string) => h.runTool(h.runtime.masterId, 'orchestrator_reply', { ticket_id: ticket.id, purpose: 'result', text })
@@ -255,7 +255,7 @@ it('returns where a reply stands: sent, or dropped when its conversation can no 
   expect(await reply('修好了，请看 PR。')).toEqual({ status: 'dropped' })
 })
 
-it('checks an acknowledgement against the IM word limit, not a character count', async () => {
+it('按即时消息的字数上限校验确认话术，而不是字符数', async () => {
   const trigger = feishu('1', '@bot 修一下回归')
   h.runtime.receive(trigger); await h.runtime.idle()
   const accept = (acknowledgement: string) => h.route({ kind: 'accept', trigger_id: trigger.id, title: 'Fix', worktree_name: 'fix-regression', acknowledgement })
@@ -263,7 +263,7 @@ it('checks an acknowledgement against the IM word limit, not a character count',
   expect(await accept(words(IM_WORDS))).toMatchObject({ decision: 'accept', ticket: { title: 'Fix' } })
 })
 
-it('saves a settings block by name, a Source\'s block with the Source\'s id', async () => {
+it('按名称保存设置块，来源块带来源 id', async () => {
   const save = (args: Record<string, unknown>) => h.runTool(h.runtime.masterId, 'orchestrator_settings_save', args)
   const github = { config: h.runtime.store.settings().sources.github!.config, revision: h.runtime.store.blockRevision('source:github') }
   const off = { enabled: false, config: github.config }
@@ -274,7 +274,7 @@ it('saves a settings block by name, a Source\'s block with the Source\'s id', as
   expect(await save({ block: 'pause', value: { paused: true }, revision: 0 })).toEqual({ paused: true })
 })
 
-it('previews a prompt configuration without saving it, and saves one only against the revision it edits', async () => {
+it('预览提示词配置而不保存，且只针对所编辑的修订号保存', async () => {
   const save = (args: Record<string, unknown>) => h.runTool(h.runtime.masterId, 'orchestrator_prompts_save', args)
   const config = { ...h.runtime.prompts.current().config, scope: 'Finish what was asked.' }
   const preview = await save({ config, preview: true }) as { previews: { role: string; read: string }[] }
@@ -284,24 +284,24 @@ it('previews a prompt configuration without saving it, and saves one only agains
     const page = await read(preview.previews[1]!.read, { offset, limit: 8000 }) as { text: string; next_offset: number | null }
     text += page.text; offset = page.next_offset
   }
-  expect(text).toContain('## Ticket scope\nFinish what was asked.')
+  expect(text).toContain('## 工单范围\nFinish what was asked.')
   expect(h.runtime.prompts.current().revision).toBe(0)
   await expect(save({ config })).rejects.toThrow('baseRevision')
   expect(await save({ config, baseRevision: 0 })).toMatchObject({ revision: 1 })
 })
 
-it('releases the tools it registered for a Session once its agent is disposed, and leaves the other Sessions\' tools', async () => {
+it('agent 被释放后收回为其 Session 注册的工具，其他 Session 的工具不受影响', async () => {
   const { ticket } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
   const worker = `worker-${ticket.id}`
   expect(h.tools.get(worker)!.size).toBeGreaterThan(0)
   h.ctx.emit('agent/disposed', { agent: h.agents.get(worker) } as never)
   expect([h.tools.get(worker)!.size, h.tools.get(h.runtime.masterId)!.size > 0]).toEqual([0, true])
-  // Releasing again, as at shutdown, finds nothing left of it.
+  // 再次释放（如同关机时）不会残留任何内容。
   h.ctx.emit('agent/disposed', { agent: h.agents.get(worker) } as never)
   expect(h.tools.get(worker)!.size).toBe(0)
 })
 
-it('reads a thread by the key cards show: its label, tickets, latest decisions and triggers, newest first, also for its own worker', async () => {
+it('按卡片显示的键读取线程：标签、工单、最近的决定与触发，从新到旧，其自己的执行器 Session 也可以', async () => {
   const { ticket, trigger, sessionId } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
   const key = `feishu:${CHAT}:om_1`
   const threads = await read('threads') as { items: { thread: string; label: string; read: string }[] }
@@ -317,7 +317,7 @@ it('reads a thread by the key cards show: its label, tickets, latest decisions a
   await expect(h.runTool(sessionId, 'orchestrator_read', { resource: 'thread/feishu:oc_other:om_5' })).rejects.toThrow('Unknown or inaccessible thread')
 })
 
-it('reads a ticket with the ids it is tied to, its reports by assignment, and its assignments and inputs a page at a time, each by the name its line gives or by its id', async () => {
+it('读取工单及其关联 id、按派工组织的报告，分页读取其派工与输入，各按其行给出的名称或 id', async () => {
   const { ticket, sessionId } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
   const stored = h.runtime.store.tickets.get(ticket.id)!
   const at = (n: number) => `2026-10-05T00:${String(n).padStart(2, '0')}:00.000Z`
@@ -332,7 +332,7 @@ it('reads a ticket with the ids it is tied to, its reports by assignment, and it
   expect(details).toMatchObject({ trigger_id: ticket.origin.triggerId, decision_id: ticket.decisionId, threads: [{ thread: `feishu:${CHAT}:om_1` }],
     inputs: { next_resource: `ticket/${ticket.id}/inputs`, next_offset: 10 }, assignments: { next_resource: `ticket/${ticket.id}/assignments`, next_offset: 3 } })
   expect([details.inputs.items.length, details.assignments.items.length]).toEqual([10, 3])
-  // The earlier assignments read on, so a worker reaches every report it continues from.
+  // 较早的派工可以继续读取，执行器 Session 能看到它接续的每份报告。
   const earlier = await read(details.assignments.next_resource!, { offset: details.assignments.next_offset! }) as Page
   expect([earlier.items.map(item => (item as { id?: string }).id), earlier.next_offset]).toEqual([['a4', 'a3', 'a2'], 6])
   expect(await read(details.assignments.next_resource!, { offset: 6 })).toEqual({ next_offset: null,
@@ -341,7 +341,7 @@ it('reads a ticket with the ids it is tied to, its reports by assignment, and it
   expect(JSON.stringify(details).length).toBeLessThan(3000)
   const page = await read(details.inputs.items[0]!.read!) as { text: string }
   expect(page.text).toContain('check the margin on mobile as well.')
-  // An Input also reads by the id it has on the ticket.
+  // 输入也可以用在工单上的 id 读取。
   expect(await read(`ticket/${ticket.id}/input/text:long`)).toMatchObject({ text: page.text })
   expect(await read(`ticket/${ticket.id}/inputs`, { offset: 20 })).toMatchObject({ items: expect.objectContaining({ length: 4 }), next_offset: null })
   expect(await read(details.assignments.items[0]!.report.read)).toMatchObject({ text: report(7).summary.slice(0, 4000) })
@@ -352,7 +352,7 @@ it('reads a ticket with the ids it is tied to, its reports by assignment, and it
   expect(transcript.preview.length).toBeLessThanOrEqual(80)
 })
 
-it('reads a trigger once with the message it replies to and the messages around it on its thread, without the CI runs', async () => {
+it('一次性读取触发及其所回复的消息与线程上其周围的消息，不含 CI 运行', async () => {
   const at = (minute: number) => `2026-10-06T00:0${minute}:00.000Z`
   const message = (id: string, minute: number, overrides: Record<string, unknown> = {}) => ({ ...feishu(id, `message ${id}`, { root_id: 'om_root', ...overrides }), at: at(minute) })
   const ci = (id: string, minute: number) => ({ ...message(id, minute), source: 'github', human: false, text: '{"check":"build"}', meta: { ci: true } })
@@ -361,7 +361,7 @@ it('reads a trigger once with the message it replies to and the messages around 
   const page = await read(`trigger/${replying.id}`)
   expect(page).toMatchObject({ trigger_id: replying.id, replied_to: { trigger_id: asked.id, read: `trigger/${asked.id}` },
     around: { before: { trigger_id: asked.id }, after: { trigger_id: feishu('later', '').id } }, text: 'message reply' })
-  // The page holds the text once, and no pointer to itself.
+  // 页面中的文本只出现一次，也没有指向自身的指针。
   expect(page).not.toHaveProperty('preview')
   expect(page).not.toHaveProperty('read')
 })
@@ -370,10 +370,10 @@ const relaysOf = (kind: string) => h.relays(h.runtime.masterId).filter(item => i
 const notices = () => h.agents.get(h.runtime.masterId)!.inject.mock.calls
   .map(([message]) => JSON.parse(message.content.map(block => block.type === 'text' ? block.text : '').join('')) as Record<string, unknown>)
 
-it('shows a candidate with its thread\'s tickets open first, the tickets it reached, those its text names, and a short next step', async () => {
+it('在候选中先列出其线程上已打开的工单、它到达的工单、其文本提到的工单，以及简短的下一步', async () => {
   const first = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
   const a = first.ticket
-  // Requests on its thread reach its worker, which hands back what is not its own; the main Session then routes them.
+  // 其线程上的请求到达执行器 Session，不属于它的会被交回，再由主 Session 路由。
   const handBack = async (id: string) => {
     await h.runTool(first.sessionId, 'orchestrator_trigger_handback', { trigger_id: id, reason: 'Another change.' })
     await h.runtime.pump(); await h.runtime.idle()
@@ -384,7 +384,7 @@ it('shows a candidate with its thread\'s tickets open first, the tickets it reac
   const b = (await h.route({ kind: 'accept', trigger_id: second.id, title: 'Other', worktree_name: 'fix-other', acknowledgement: '收到。' })).ticket as
     { ticket_id: string }
   h.runtime.engine.stopTicket(b.ticket_id)
-  // A follow-up reaches the live ticket without an Eval; handed back, its candidate shows where it went.
+  // 后续消息未经评估即到达进行中的工单；交回后其候选显示去向。
   const more = feishu('3', '@bot 还有按钮', { root_id: 'om_1' })
   h.runtime.receive(more); await h.runtime.idle()
   await handBack(more.id)
@@ -392,14 +392,14 @@ it('shows a candidate with its thread\'s tickets open first, the tickets it reac
   expect((followup.related_tickets as { ticket_id: string }[]).map(card => card.ticket_id)).toEqual([a.id, b.ticket_id])
   expect(followup).toMatchObject({ tickets_total: 2, delivered_to: [a.id], thread: `feishu:${CHAT}:om_1` })
   expect(String(followup.next_action).length).toBeLessThanOrEqual(100)
-  // A message elsewhere that names a pull request reads the tickets that follow it.
+  // 别处提到某个 PR 的消息会读取跟随它的工单。
   const thread = { key: 'github:123', ref: { source: 'github', id: '123' }, createdAt: '', subscriptions: [a.id], correlated: [], pending: [], meta: {} }
   h.runtime.store.threads.save(thread)
   h.runtime.receive(feishu('4', '@bot 看看 #123 的进展')); await h.runtime.idle()
   expect(relaysOf('candidate').at(-1)).toMatchObject({ related_tickets: [], tickets_total: 0, referenced_tickets: [{ ticket_id: a.id }] })
 })
 
-it('relays a worker\'s report with its ticket card and the start of its summary, and a question with the card alone', async () => {
+it('转发执行器 Session 的报告（附工单卡片与摘要开头），问题则只附卡片', async () => {
   const { ticket, trigger, sessionId } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
   await h.runTool(sessionId, 'orchestrator_report', { state: 'progress', summary: 'Needs a decision.', human_action: 'Desktop too?' })
   await h.runtime.idle()
@@ -413,11 +413,11 @@ it('relays a worker\'s report with its ticket card and the start of its summary,
     read: `ticket/${ticket.id}/result` })
   expect(String(report.summary)).toBe(summary.slice(0, 600))
   expect(report.ticket).not.toHaveProperty('preview')
-  // The end of the ticket, which the ready report brought, comes with its card.
+  // ready 报告带来的工单结束通知也附其卡片。
   expect(notices().at(-1)).toMatchObject({ ticket_ended: { ticket_id: ticket.id, state: 'completed' } })
 })
 
-it('tells the main Session of the settings, prompts, requeues and unsubscriptions others made, never of its own', async () => {
+it('把别人所做的设置、提示词、重新入队与退订变更通知主 Session，自己的变更不通知', async () => {
   const save = (args: Record<string, unknown>) => h.runTool(h.runtime.masterId, 'orchestrator_settings_save', args)
   const evaluation = h.runtime.store.settings().eval
   await h.runtime.settings.save('eval', { ...evaluation, mode: 'observe' }, h.runtime.store.blockRevision('eval'), 'panel')
@@ -437,12 +437,12 @@ it('tells the main Session of the settings, prompts, requeues and unsubscription
   expect(notices().slice(before).filter(notice => !('ticket_ended' in notice))).toEqual([])
 })
 
-it('answers a policy sync with the counts and what changed, not the whole list', async () => {
+it('策略同步只应答计数与变更内容，不返回完整名单', async () => {
   vi.mocked(Commands.prototype.lark).mockResolvedValue({ users: [{ member_id: 'ou_alice', name: 'Alice' }, { member_id: 'ou_bob', name: 'Bob' }], has_more: false })
   expect(await h.runTool(h.runtime.masterId, 'orchestrator_policy_sync', { source: 'feishu' })).toEqual({ source: 'feishu', allowed: 2, added: ['Bob'], removed: [] })
 })
 
-it('shows an Executor Session no id it cannot read: no Decision, no other ticket, no Trigger its ticket did not reach', async () => {
+it('不向执行器 Session 展示其无权读取的 id：无决定、无其他工单、无未到达其工单的触发', async () => {
   const { ticket, trigger, sessionId } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
   const another = feishu('2', '@bot 再修一个', { root_id: 'om_1' })
   h.runtime.receive(another); await h.runtime.idle()
@@ -462,7 +462,7 @@ it('shows an Executor Session no id it cannot read: no Decision, no other ticket
   expect(await read(`ticket/${ticket.id}`)).toMatchObject({ decision_id: ticket.decisionId })
 })
 
-it('marks the threads a worker follows for context apart from those a Source bound its ticket to', async () => {
+it('把执行器 Session 作上下文跟随的线程与来源绑定到工单的线程区分开', async () => {
   const { ticket, sessionId } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
   h.runtime.engine.bindThread(ticket.id, { source: 'github', id: '12' }, true)
   await h.runTool(sessionId, 'orchestrator_thread_follow', { thread: 'github:9', reason: 'The Issue it fixes.' })
@@ -471,8 +471,8 @@ it('marks the threads a worker follows for context apart from those a Source bou
   expect(threads).toHaveLength(3)
 })
 
-it('gives a worker the other messages of the request its ticket was accepted from, in its first message and on its ticket', async () => {
-  // Pause while receiving two messages so they are evaluated as a single batch.
+it('把工单所从接受请求的其他消息交给执行器 Session，体现在其首条消息与工单上', async () => {
+  // 接收两条消息时暂停处理，使它们作为同一批次研判。
   await h.runtime.settings.pause(true, 'panel')
   const first = feishu('1', '@bot 首页的标题'), second = feishu('2', '@bot 改成“浏览网页”', { root_id: 'om_1' })
   await h.runtime.receive(first); await h.runtime.receive(second)

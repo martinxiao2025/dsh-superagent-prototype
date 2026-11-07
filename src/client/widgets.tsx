@@ -1,4 +1,4 @@
-/** Context-aware shared UI widgets: page/section headers, timestamps, Markdown rendering, and confirmation actions. */
+/** 依赖上下文的共享 UI 部件：页面/分节标题、时间戳、Markdown 渲染与确认操作。 */
 import { Fragment, useState, type ReactNode } from 'react'
 import type { SetupProblem } from '../setup.ts'
 import { Button, Icon, InfoTip, Modal, StateDot, type DotState, type IconName } from './controls.tsx'
@@ -48,7 +48,7 @@ function Inlines({ parts }: { parts: Inline[] }) {
     : part.kind === 'link' ? <a key={index} className="dt-inline-link" href={part.url} title={part.url} {...external}>{part.text}</a>
     : <Fragment key={index}>{part.text}</Fragment>)}</>
 }
-/** Renders a safe Markdown subset (headings, lists, paragraphs, bold, inline code, links) without interpreting raw HTML. */
+/** 渲染安全的 Markdown 子集（标题、列表、段落、加粗、行内代码、链接），不解析原始 HTML。 */
 export function MarkdownLite({ text }: { text: string }) {
   const { t } = usePanel()
   return <div className="dt-md">{markdownBlocks(readableMarkers(t, text)).map((block, index) => {
@@ -130,7 +130,7 @@ export function PageHead({ title, children }: { title: ReactNode; children?: Rea
     <div className="dt-page-title"><h2>{title}</h2>{children && <span className="dt-actions">{children}</span>}</div>
   </div>
 }
-/** Trigger a host setup re-check and restart, prompting for confirmation when running Assignments would be interrupted. */
+/** 触发宿主部署检查的重新检查并重启；当会打断进行中的派工时先弹出确认。 */
 export function CheckSetupButton() {
   const { t, call, notify, restart } = usePanel()
   const { running } = usePanelData()

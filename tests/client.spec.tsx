@@ -21,7 +21,7 @@ function fixture(listed: string[]) {
     effect: (effect: () => unknown) => { effect() },
     sessions: { list: { getSnapshot: () => ({ phase: 'ready', byId: Object.fromEntries(listed.map(id => [id, {}])) }) }, refresh: vi.fn(async () => {}) },
     uiWorkspace: { openSession: vi.fn() },
-    // Omit config form service so Deployment renders read-only.
+    // 省略配置表单服务，使 Deployment 以只读方式渲染。
     get: () => undefined,
   }
   apply(ctx as never)
@@ -49,17 +49,17 @@ const serve = () => vi.stubGlobal('fetch', vi.fn(async (url: string) => {
 }))
 afterEach(() => { vi.unstubAllGlobals() })
 
-it('registers a localized main panel, sidebar entry and Plugin Manager row page, and no settings section', () => {
+it('注册带本地化的主面板、侧边栏条目与插件管理器行页面，且无设置节', () => {
   const { entries, dictionaries, main, nav } = fixture([])
   expect(entries.map(entry => entry.options.name)).toEqual(['main', 'sidebar.panellist', 'plugins.row.config'])
-  expect(entries[2]!.options).toMatchObject({ key: 'dsh-superagent#dsh-superagent', locale: 'dshSuperagent' })
-  expect(Object.keys(dictionaries)).toEqual(['dshSuperagent'])
-  expect(main.options).toMatchObject({ key: 'dsh-superagent', locale: 'dshSuperagent' })
-  expect(nav.options).toMatchObject({ id: 'dsh-superagent', order: 10, locale: 'dshSuperagent' })
+  expect(entries[2]!.options).toMatchObject({ key: 'dsh-superagent-cn#dsh-superagent-cn', locale: 'dshSuperagentCn' })
+  expect(Object.keys(dictionaries)).toEqual(['dshSuperagentCn'])
+  expect(main.options).toMatchObject({ key: 'dsh-superagent-cn', locale: 'dshSuperagentCn' })
+  expect(nav.options).toMatchObject({ id: 'dsh-superagent-cn', order: 10, locale: 'dshSuperagentCn' })
   expect(nav.options.label?.()).toBe('Superagent')
 })
 
-it('opens a listed Session through the workspace from the main panel', async () => {
+it('从主面板通过工作区打开一个已列出的 Session', async () => {
   serve()
   const { ctx, main } = fixture(['master'])
   const view = await render(main, { t })
@@ -68,7 +68,7 @@ it('opens a listed Session through the workspace from the main panel', async () 
   view.dispose()
 })
 
-it('reports a Session missing from the catalog in the interface language', async () => {
+it('以界面语言报告目录中缺失的 Session', async () => {
   serve()
   const { ctx, main } = fixture([])
   const view = await render(main, { t })
@@ -78,7 +78,7 @@ it('reports a Session missing from the catalog in the interface language', async
   view.dispose()
 })
 
-it('polls one request at a time, keeps the data while new dependencies load, and polls less while hidden', async () => {
+it('一次只轮询一个请求，新依赖加载时保留数据，隐藏时减少轮询', async () => {
   vi.useFakeTimers()
   const calls: { limit: number; done: (value: string[]) => void }[] = []
   let shown: { data?: string[]; limit: number } = { limit: 0 }
@@ -94,7 +94,7 @@ it('polls one request at a time, keeps the data while new dependencies load, and
   const root = createRoot(container)
   await act(async () => { root.render(<Harness />) })
   expect(calls).toHaveLength(1)
-  // A slow response holds the next poll back instead of overlapping.
+  // 慢响应会拦住下一次轮询，而不是重叠进行。
   await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
   expect(calls).toHaveLength(1)
   await act(async () => { calls[0]!.done(['a']) })
@@ -105,7 +105,7 @@ it('polls one request at a time, keeps the data while new dependencies load, and
   expect(shown).toEqual({ data: ['a'], limit: 2 })
   await act(async () => { calls[2]!.done(['a', 'b']) })
   expect(shown.data).toEqual(['a', 'b'])
-  // A late response to the superseded request must not replace the newer result.
+  // 被取代请求的迟来响应不得替换较新的结果。
   await act(async () => { calls[1]!.done(['stale']) })
   expect(shown.data).toEqual(['a', 'b'])
   const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
@@ -120,7 +120,7 @@ it('polls one request at a time, keeps the data while new dependencies load, and
   vi.useRealTimers()
 })
 
-it('tells a dsh-superagent that does not answer from a record it does not have, and words each failure by what failed', async () => {
+it('区分无应答的 dsh-superagent-cn 与它没有的记录，并按失败原因措辞每种失败', async () => {
   const messages = { offline: 'offline', notRunning: 'not running', serverError: (status: number) => `server ${status}`,
     requestFailed: (status: number) => `request ${status}`, setup: () => 'setup', user: ({ code }: { code: string }) => `user ${code}` }
   const call = caller(() => messages)
@@ -133,7 +133,7 @@ it('tells a dsh-superagent that does not answer from a record it does not have, 
   }
   expect(await failure(async () => { throw new TypeError('Failed to fetch') })).toEqual({ message: 'offline', status: 0, missing: false,
     unreachable: true })
-  // DSH's web server answers an empty 404 while dsh-superagent's routes are unregistered.
+  // 在 dsh-superagent-cn 的路由未注册期间，DSH 的 web 服务器返回空 404。
   expect(await failure(async () => new Response(null, { status: 404 }))).toEqual({ message: 'not running', status: 404, missing: false,
     unreachable: true })
   expect(await failure(async () => new Response(null, { status: 502 }))).toEqual({ message: 'server 502', status: 502, missing: false,

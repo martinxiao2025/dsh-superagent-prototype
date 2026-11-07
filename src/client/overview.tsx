@@ -1,4 +1,4 @@
-/** Overview page: pending Tickets requiring human action, active system problems, 24-hour flow counts, and Executor load. */
+/** 概览页：等待人工处理的工单、当前的系统问题、24 小时流量计数，以及执行器负载。 */
 import type { ReactNode } from 'react'
 import { usePoll, type Problem } from './api.ts'
 import { Button, Icon } from './controls.tsx'
@@ -24,7 +24,7 @@ function ProblemLine({ problem, onChanged }: { problem: Problem; onChanged: () =
   const raw = (text: string | undefined) => text && <p className="dt-error dt-clamp dt-mono">{text}</p>
   const worded = (text: string) => <p className="dt-error">{text}</p>
   switch (problem.kind) {
-    // A failed Feishu bot check pauses only the Feishu Source; other setup problems halt the entire service.
+    // 飞书机器人检查失败只会暂停飞书来源；其他部署检查问题会让整个服务停摆。
     case 'setup': return row(t(problem.place === 'feishu' ? 'problemSetupFeishu' : 'problemSetup'), <p className="dt-error"><SetupMessage
       problem={problem} /></p>,
       setupPage(problem.place), t(`problemSetupFix.${problem.place}`), <CheckSetupButton />)
@@ -82,7 +82,7 @@ export function OverviewPage() {
         onChanged={reload} />)}</ul>
     </Section>}
     <Section title={t('lastDay')} action={more({ page: 'trigger', query: { filter: 'recent' } })}>
-      {/* Received and evaluated counts operate on Triggers rather than Threads or Decisions, so they do not link to filtered views. */}
+      {/* 到达与已评估计数基于触发而非线程或决定，因此不链接到相应的过滤视图。 */}
       <div className="dt-stats">
         {stat(t('flowReceivedLabel'), data.flow.received)}
         {stat(t('flowFilteredLabel'), data.flow.filtered, data.flow.filtered ? { page: 'source' } : undefined)}
@@ -92,7 +92,7 @@ export function OverviewPage() {
       </div>
     </Section>
     <Section title={t('term.executor')} action={more({ page: 'execution' })}>
-      {/* Pauses surface in `problems` above, so Executor counts render the same in both states; while setup waits, nothing runs. */}
+      {/* 暂停状态已在上方的 `problems` 中呈现，因此两种状态下执行器计数渲染相同；等待部署检查时什么都不运行。 */}
       {setup?.problem ? <Hint>{t('executorWaitingSetup')}</Hint> : <div className="dt-stats">
         {stat(t('executingLabel'), `${data.executor.running} / ${data.executor.maxWorkers}`)}
         {stat(t('queuedLabel'), data.executor.queued)}

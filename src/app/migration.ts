@@ -1,6 +1,6 @@
 /**
- * Migrates a schema 10 database to schema 11 in a single transaction so runtime readers never convert legacy shapes.
- * Databases older than schema 10 are rejected: this version cannot migrate them.
+ * 在单个事务内把 schema 10 数据库迁移到 schema 11，使运行时读取方永远不需要转换旧形态。
+ * 比 schema 10 更旧的数据库会被拒绝：本版本无法迁移它们。
  */
 import { basename } from 'node:path'
 import { z } from 'zod'
@@ -18,9 +18,9 @@ import { Versions } from './versions.ts'
 import { KV, type Key } from '../kv.ts'
 
 export const SCHEMA_VERSION = 11
-/** The oldest database schema version this build can open and migrate directly. */
+/** 本构建可以直接打开并迁移的最旧数据库 schema 版本。 */
 export const OLDEST_SCHEMA = 10
-/** Returns an error message explaining why `version` cannot be opened: older schemas need a new state directory. */
+/** 返回解释 `version` 为何无法打开的错误消息：更旧的 schema 需要新的状态目录。 */
 export const tooOld = (version: number): string =>
   `Orchestrator database schema ${version} predates schema ${OLDEST_SCHEMA}, which this version cannot migrate; start with a new state directory`
 
@@ -28,11 +28,11 @@ type Stored = Record<string, unknown>
 const isObject = (value: unknown): value is Stored => !!value && typeof value === 'object' && !Array.isArray(value)
 const text = (value: unknown): string | undefined => typeof value === 'string' && value ? value : undefined
 
-/** Runs one migration step, prefixing any thrown error with the name of the record that failed. */
+/** 运行一个迁移步骤，给抛出的错误加上失败记录名称的前缀。 */
 function step<T>(record: string, work: () => T): T {
   try { return work() } catch (error) { throw new Error(`${record}: ${error instanceof Error ? error.message : String(error)}`, { cause: error }) }
 }
-/** Rewrite all schema 10 records into their schema 11 shapes in place. */
+/** 就地把所有 schema 10 记录改写为 schema 11 的形态。 */
 export function migrateTo11(store: Store): void {
   step('the settings', () => { migrateSettingsRecords(store) })
   step('the prompt versions', () => { migratePrompts(store) })
@@ -57,29 +57,29 @@ export function migrateTo11(store: Store): void {
     if (evaluating) step(`thread ${thread.key}`, () => { store.threads.save({ ...thread, evaluating: { ...evaluating, basis: basisOf(evaluating.basis as unknown) } }) })
   }
   step('the Threads\' activity times', () => { backfillThreadTimes(store) })
-  // Worker-readable input keys are now prefixed with `ticket/` instead of `task/`; keep any key already written under `ticket/`.
+  // 执行器可读的输入键现在以 `ticket/` 而不是 `task/` 为前缀；保留已写在 `ticket/` 下的键。
   for (const name of store.keys('task/')) {
     const renamed = `ticket/${name.slice('task/'.length)}`
     if (store.get(renamed) === undefined) store.set(renamed, store.get(name))
     store.delete(name)
   }
   for (const name of DEAD_KEYS.flatMap(prefix => prefix.endsWith(':') ? store.keys(prefix) : [prefix])) store.delete(name)
-  // Source read pages, prompt previews, and Feishu message links are now cached in memory instead of SQLite.
+  // Source 读取页、提示词预览与飞书消息链接现在缓存于内存而非 SQLite。
   store.db.exec(`DELETE FROM kv WHERE key LIKE 'feishu-read:%' OR key LIKE 'github-read:%' OR key LIKE 'feishu-source-link:%'
     OR key LIKE '%:prompt-preview/%'`)
   queueEarlierWork(store)
-  // Convert dropped-message prose reasons into reason codes localized by the panel.
+  // 把丢弃消息的散文式原因转换为面板本地化的原因代码。
   store.db.exec(`UPDATE outbox SET value = json_set(value, '$.dropped.reason', CASE value ->> '$.dropped.reason'
     WHEN 'The conversation can no longer receive messages' THEN 'channelGone'
     WHEN 'The Source no longer listens to this conversation' THEN 'channelIgnored'
     ELSE value ->> '$.dropped.reason' END) WHERE value -> '$.dropped' IS NOT NULL`)
   step('the outbox', () => { outboxReceipts(store) })
   step('the current settings', () => { settingsAsVersions(store) })
-  // Sessions persist the prompt revisions each Session worked under in `KV.sessions.prompts` (`session-prompts:`), which authorizes reads; drop the old `prompt-version-read:` markers.
+  // Sessions 把每个 Session 运行用过的提示词修订持久化在 `KV.sessions.prompts`（`session-prompts:`）中，用于授权读取；删除旧的 `prompt-version-read:` 标记。
   store.db.exec("DELETE FROM kv WHERE key LIKE 'prompt-version-read:%'")
-  // Schema 6 tables stay in place: schema 7 imported them, but did not import every row.
+  // schema 6 的表保持原位：schema 7 导入过它们，但没有导入每一行。
   step('the Sources\' records', () => { migrateSourceRecords(store) })
-  // Worker Sessions now render inputs directly from the ticket record, so standalone input body keys are obsolete.
+  // 执行器 Session 现在直接从工单记录渲染输入，因此独立的输入正文键已废弃。
   step('the Inputs\' bodies', () => { store.db.exec("DELETE FROM kv WHERE key LIKE 'ticket/%/input/%'") })
   step('the pull request ends', () => { dropPullEnds(store) })
   step('the dismissed problems', () => { moveDismissals(store) })
@@ -90,8 +90,8 @@ export function migrateTo11(store: Store): void {
   step('the Triggers\' times', () => { triggerTimes(store) })
 }
 /**
- * Normalize trigger and thread timestamps to fixed-width millisecond ISO strings so lexicographical text order matches
- * chronological order (GitHub wrote whole seconds like `…:00Z`, which sorted after `…:00.001Z`).
+ * 把触发与线程时间戳规范化为定宽的毫秒级 ISO 字符串，使字典序与时间顺序一致
+ * （GitHub 曾写整秒如 `…:00Z`，它会排在 `…:00.001Z` 之后）。
  */
 function triggerTimes(store: Store): void {
   for (const row of store.db.prepare('SELECT id, at FROM trigger').all()) {
@@ -107,8 +107,8 @@ function triggerTimes(store: Store): void {
   }
 }
 /**
- * Obsolete KV keys and prefixes (ending in `:`) from removed `github-issue` eligibility checks, earlier migrations,
- * and pre-schema-11 maintenance and subscription tracking.
+ * 已废弃的 KV 键与前缀（以 `:` 结尾），来自已移除的 `github-issue` 资格检查、更早的迁移，
+ * 以及 schema 11 之前的维护与订阅跟踪。
  */
 const DEAD_KEYS = ['github-object-state:', 'github-issue-eligibility:', 'github-auto-merge:',
   'source-labels-at:', 'legacy-migrated-at', 'thread-times-backfilled', 'settings-before-9', 'answer-ready:', 'prompt-sections', 'prompt-settings-text',
@@ -117,8 +117,8 @@ const DEAD_KEYS = ['github-object-state:', 'github-issue-eligibility:', 'github-
   'master-recovery:', 'github-issue-candidates']
 
 /**
- * Move legacy main-session queues into the unified effect queue in order (relays to steer, then notices for removed
- * subscriptions, saved prompts, and saved settings), then delete the legacy keys.
+ * 按顺序把旧的主 session 队列移入统一 effect 队列（先转向中继，再是移除订阅、已保存提示词与已保存设置的通知），
+ * 然后删除旧键。
  */
 function queueEarlierWork(store: Store): void {
   const queue = effectQueue(store)
@@ -132,8 +132,9 @@ function queueEarlierWork(store: Store): void {
 }
 
 /**
- * Insert effects directly into the database during migration before `Effects` exists, preserving prior failure counts;
- * unlike `Effects.enqueue` (which upserts payload, increments generation, and resets attempts), `INSERT OR IGNORE` leaves an already-queued row for that `kind` and `key` untouched.
+ * 在 `Effects` 尚不存在的迁移期间直接把 effect 插入数据库，保留先前的失败计数；
+ * 与 `Effects.enqueue`（会 upsert 负载、递增 generation 并重置 attempts）不同，`INSERT OR IGNORE`
+ * 不会改动该 `kind` 与 `key` 已排队的行。
  */
 function effectQueue(store: Store) {
   let seq = Number(store.db.prepare('SELECT IFNULL(MAX(seq), 0) AS seq FROM effect').get()?.seq ?? 0)
@@ -142,8 +143,8 @@ function effectQueue(store: Store) {
       .run(kind, key, JSON.stringify(payload), ++seq, failed.attempts, failed.error, Date.now(), new Date().toISOString())
 }
 /**
- * Convert outbox rows into status receipts (`pending`, `sent`, or `dropped`) and enqueue pending messages as `reply`
- * effects in row order, moving their prior `attempts` and `error` onto the effect.
+ * 把发件箱行转换为状态回执（`pending`、`sent` 或 `dropped`），并按行序把待发消息作为 `reply`
+ * effect 入队，把其先前的 `attempts` 与 `error` 移到该 effect 上。
  */
 function outboxReceipts(store: Store): void {
   const columns = store.db.prepare("SELECT name FROM pragma_table_xinfo('outbox')").all().map(row => String(row.name))
@@ -159,8 +160,8 @@ function outboxReceipts(store: Store): void {
 }
 
 /**
- * Ensure the latest settings revision snapshot holds the current settings (saving a new revision if missing or if earlier
- * migration steps stripped a removed Source), then delete the standalone `settings` key.
+ * 确保最新的设置修订快照持有当前设置（若缺失或更早的迁移步骤剥离了已移除的 Source 则保存新修订），
+ * 然后删除独立的 `settings` 键。
  */
 function settingsAsVersions(store: Store): void {
   const current = store.get<unknown>('settings')
@@ -176,13 +177,13 @@ function settingsAsVersions(store: Store): void {
   store.delete('settings')
 }
 
-/** Settings save origin names recorded by versions before schema 11, mapped to current `SettingsOrigin` values. */
+/** schema 11 之前的版本记录的设置保存来源名，映射到当前的 `SettingsOrigin` 值。 */
 const ORIGINS: Readonly<Record<string, SettingsOrigin>> = { web: 'panel', 'orchestrator-tool': 'tool', 'policy-sync': 'sync', 'member-sync': 'sync' }
-/** Source kinds removed from dsh-superagent; the unified `github` Source now ingests Issues via notifications. */
+/** 已从 dsh-superagent-cn 移除的 Source kind；统一的 `github` Source 现在经通知摄取 Issue。 */
 const REMOVED_SOURCES: readonly string[] = ['github-issue']
 /**
- * Upgrade current and historical settings records to the schema 11 structure: strip removed source kinds from active
- * settings while keeping them in historical revisions and mapping historical origin names.
+ * 把当前与历史设置记录升级到 schema 11 结构：从活跃设置中剥离已移除的 Source kind，
+ * 同时在历史修订中保留它们，并映射历史来源名。
  */
 function migrateSettingsRecords(store: Store): void {
   const stored = store.get<unknown>('settings')
@@ -190,7 +191,7 @@ function migrateSettingsRecords(store: Store): void {
     const settings = SettingsSchema.parse(migrateSettings(stored))
     store.set('settings', { ...settings, sources: Object.fromEntries(Object.entries(settings.sources).filter(([id]) => !REMOVED_SOURCES.includes(id))) })
   }
-  // Preserve unparseable historical revisions as-is so a corrupt history entry does not block startup.
+  // 原样保留无法解析的历史修订，使损坏的历史条目不会阻塞启动。
   for (const name of store.keys('settings-version:')) {
     const version = store.get<{ source: string; settings: unknown }>(name)!
     const settings = SettingsSchema.safeParse(migrateSettings(version.settings))
@@ -199,8 +200,10 @@ function migrateSettingsRecords(store: Store): void {
 }
 interface Member { name?: string; feishuId?: string; github?: string }
 /**
- * Convert legacy flat settings (chat lists in Policy, top-level pause flag) or pre-schema-11 domain settings into current domain blocks:
- * strips fields replaced by rule instructions and prompts (Executor reviewers and branch prefix, rule `visual` flag, `autoMergeLineLimit`, Source `authority`, GitHub `mergeCli`), extracts `paused` to the top level, and splits cross-source `members` into per-source `policy.sources` entries.
+ * 把旧式扁平设置（Policy 中的会话列表、顶层的暂停标志）或 schema 11 之前的领域设置转换为当前的领域块：
+ * 剥离被规则指令与提示词取代的字段（执行器 reviewer 与分支前缀、规则的 `visual` 标志、`autoMergeLineLimit`、
+ * Source 的 `authority`、GitHub 的 `mergeCli`），把 `paused` 提取到顶层，并把跨 Source 的 `members`
+ * 拆分为每个 Source 的 `policy.sources` 条目。
  */
 export function migrateSettings(value: unknown): unknown {
   if (!isObject(value)) return value
@@ -209,7 +212,7 @@ export function migrateSettings(value: unknown): unknown {
     allowDirectMessages?: boolean; pollSeconds?: number; maxWorkers?: number; admission?: { mode?: string; chats?: string[]; timeoutSeconds?: number; rules?: unknown[] } }
   const chats = new Map<string, 'mentions' | 'all'>()
   for (const chatId of old.allowedChats ?? []) chats.set(chatId, 'mentions')
-  // Observed chats were active only when admission was enabled.
+  // 只有准入启用时，观察中的会话才是活跃的。
   if (old.admission?.mode !== 'off') for (const chatId of old.admission?.chats ?? []) chats.set(chatId, 'all')
   const feishu = { chats: [...chats].map(([chatId, listen]) => ({ chatId, listen })), directMessages: old.allowDirectMessages ?? true }
   return withoutRemovedFields({
@@ -222,7 +225,7 @@ export function migrateSettings(value: unknown): unknown {
 }
 function withoutRemovedFields(value: Stored): Stored {
   const { executor, policy, sources, ...rest } = value as { executor?: Stored; policy?: Stored; sources?: Record<string, Stored> }
-  // `paused` is now a top-level setting rather than a field on `executor`.
+  // `paused` 现在是顶层设置，而不是 `executor` 上的字段。
   const { reviewer: _reviewer, visualReviewer: _visualReviewer, branchPrefix: _branchPrefix, paused, ...kept } = executor ?? {}
   const { members, memberChat, autoMergeLineLimit: _limit, rules: storedRules, ...policyRest } = policy ?? {}
   const rules = Array.isArray(storedRules) ? storedRules.map((rule: unknown) => { if (!isObject(rule)) return rule; const { visual: _visual, ...fields } = rule; return fields })
@@ -233,24 +236,24 @@ function withoutRemovedFields(value: Stored): Stored {
       ...(memberChat ? { syncChat: memberChat } : {}) },
     github: { allowed: people.filter(member => member.github).map(member => ({ id: member.github! })) },
   } : undefined
-  // The GitHub Source no longer configures a dedicated merge account; auto-merge policy now lives in prompts.
+  // GitHub Source 不再配置专用的合并账号；自动合并策略现在保存在提示词中。
   const withoutMerge = (id: string, config: unknown) => { if (id !== 'github' || !isObject(config)) return config; const { mergeCli: _mergeCli, ...fields } = config; return fields }
   const instances = sources ? Object.fromEntries(Object.entries(sources).map(([id, instance]) => {
     const { authority: _authority, ...fields } = instance
     return [id, 'config' in fields ? { ...fields, config: withoutMerge(id, fields.config) } : fields]
   })) : undefined
-  // Rewrite environment variable prefixes from the project's earlier names in `prepare` commands.
+  // 在 `prepare` 命令中，把项目旧名称的环境变量前缀改写为新名称。
   if (typeof kept.prepare === 'string') kept.prepare = kept.prepare.replace(/\bDSH_(?:TAG|GO|FREELANCER)_/g, 'DSH_SUPERAGENT_')
   return { ...rest, ...(typeof paused === 'boolean' ? { paused } : {}), ...(executor ? { executor: kept } : {}),
     ...(instances ? { sources: instances } : {}),
     ...(policy ? { policy: { ...policyRest, ...(rules ? { rules } : {}), ...(parts ? { sources: parts } : {}) } } : {}) }
 }
 
-/** Prompt configuration shape saved before team sections existed, when all sections (including fixed ones) were editable. */
+/** 团队段落出现之前保存的提示词配置形态，当时所有段落（包括固定段落）都可编辑。 */
 const LegacyPromptConfigSchema = z.object({ shared: z.string(), orchestrator: z.string(), worker: z.string(), guides: z.record(z.string(), z.string()) })
-/** Guide names from legacy prompt configurations that are now fixed built-in prompt sections or skills. */
+/** 旧提示词配置中的 guide 名称，它们现在是固定的内置提示词段落或技能。 */
 const LEGACY_FIXED = new Set(['cli', 'subscriptions', 'replies', 'reviews', 'dispatch', 'work', 'feishu', 'github'])
-/** Tool names used in saved prompts before the domain vocabulary rename, paired with what replaces them now. */
+/** 领域词汇重命名之前已保存提示词中使用的工具名，与其现在的替代成对。 */
 const RENAMED_TOOLS: readonly (readonly [string, string])[] = [
   ['orchestrator_subscription_remove', 'orchestrator_thread_unsubscribe'], ['orchestrator_subscriptions', 'orchestrator_threads'],
   ['orchestrator_create_task', 'orchestrator_route (kind accept)'], ['orchestrator_send_task', 'orchestrator_route (kind attach)'],
@@ -261,28 +264,30 @@ const RENAMED_TOOLS: readonly (readonly [string, string])[] = [
   ['orchestrator_tasks', 'orchestrator_tickets'], ['orchestrator_assess', 'orchestrator_eval'], ['admission_read', 'orchestrator_eval_read'],
   ['admission_decide', 'orchestrator_eval_decide'],
 ]
-/** Read-only tools replaced by `orchestrator_read <resource>`, mapped to their resource paths. */
+/** 被 `orchestrator_read <resource>` 取代的只读工具，映射到其资源路径。 */
 const READ_TOOLS: Readonly<Record<string, string>> = { orchestrator_tickets: 'tickets', orchestrator_threads: 'threads', orchestrator_decisions: 'decisions',
   orchestrator_settings_read: 'settings', orchestrator_prompts_read: 'prompts', orchestrator_models: 'models', orchestrator_ticket_inspect: 'ticket/<id>' }
 /**
- * Rewrites skill and variable prefixes from the project's earlier names (`dsh-tag`, `dsh-go`, `dsh-freelancer`), replaces retired
- * read tools with `orchestrator_read`, and the four routing tools with `orchestrator_route` and their kind.
+ * 把技能与变量前缀从项目旧名称（`dsh-tag`、`dsh-go`、`dsh-freelancer` 以及之前的
+ * `dsh-superagent`）改写过来，用 `orchestrator_read` 替换已退役的只读工具，
+ * 并用 `orchestrator_route` 及其 kind 替换四个路由工具。
  */
-const currentNames = (value: string): string => value.replace(/\bdsh-(?:tag|go|freelancer)-/g, 'dsh-superagent-').replace(/\bDSH_(?:TAG|GO|FREELANCER)_/g, 'DSH_SUPERAGENT_')
+const currentNames = (value: string): string => value.replace(/\bdsh-(?:tag|go|freelancer)-/g, 'dsh-superagent-cn-').replace(/\bdsh-superagent-(?!cn)/g, 'dsh-superagent-cn-')
+  .replace(/\bDSH_(?:TAG|GO|FREELANCER)_/g, 'DSH_SUPERAGENT_')
   .replace(/\borchestrator_(?:tickets|threads|decisions|settings_read|prompts_read|models|ticket_inspect)\b/g, name => `orchestrator_read ${READ_TOOLS[name]}`)
   .replace(/\borchestrator_(?:ticket_(accept|attach|stop)|trigger_(ignore))\b/g, (_name, ticket?: string, trigger?: string) =>
     `orchestrator_route (kind ${ticket ?? trigger ?? ''})`)
-/** Rewrites a legacy skill body to current tool, argument, resource, section, skill, and variable names. */
+/** 把旧技能正文改写为当前的工具、参数、资源、段落、技能与变量名。 */
 function legacyText(value: string): string {
   let result = value
   for (const [from, to] of RENAMED_TOOLS) result = result.replace(new RegExp(`\\b${from}\\b`, 'g'), to)
   return currentNames(result.replaceAll('reply_to_event_id', 'reply_to_trigger_id').replace(/\bevent_id\b/g, 'trigger_id').replace(/\btask_id\b/g, 'ticket_id')
     .replaceAll('related_tasks', 'related_tickets').replace(/(?<![\w/-])event\//g, 'trigger/').replace(/(?<![\w/-])task\//g, 'ticket/').replaceAll('<event-id>', '<trigger-id>')
-    .replace(/\bguide\/([a-z][a-z0-9-]*)\b/g, (_match, name: string) => LEGACY_FIXED.has(name) ? `the ${name} section` : `skill dsh-superagent-${name}`))
+    .replace(/\bguide\/([a-z][a-z0-9-]*)\b/g, (_match, name: string) => LEGACY_FIXED.has(name) ? `the ${name} section` : `skill dsh-superagent-cn-${name}`))
 }
 /**
- * Upgrade a stored prompt configuration to current sections, tool names, and skill references; legacy configurations take
- * built-in team sections, keep custom guides as skills, and carry any auto-merge line threshold into `delivery`.
+ * 把已存储的提示词配置升级到当前的段落、工具名与技能引用；旧配置采用内置团队段落，
+ * 把自定义 guide 保留为技能，并把自动合并行数阈值带入 `delivery`。
  */
 function normalize(config: unknown): PromptConfig {
   const legacy = LegacyPromptConfigSchema.safeParse(config)
@@ -294,12 +299,12 @@ function normalize(config: unknown): PromptConfig {
     skills: Object.fromEntries(Object.entries(current.skills).map(([name, body]) => [name, currentNames(body)])) }
 }
 /**
- * Normalize stored prompt revisions to current sections and names (recording original configs under `legacy` when saved
- * before team sections existed or unparseable) and synthesize a new revision for removed settings fields (auto-merge
- * threshold and cross-source member identities) unless an earlier migration already created it.
+ * 把已存储的提示词修订规范化到当前段落与名称（在团队段落出现之前保存或无法解析时，把原始配置记录在
+ * `legacy` 下），并为已移除的设置字段（自动合并阈值与跨 Source 成员身份）合成一个新修订，
+ * 除非更早的迁移已经创建。
  */
 function migratePrompts(store: Store): void {
-  // Preserve original configs on legacy or unparseable revisions, falling back to the last readable config so sessions always have valid prompts.
+  // 在旧式或无法解析的修订上保留原始配置，回退到最后一个可读的配置，使 session 始终有有效的提示词。
   const versions = store.keys('prompt-version:').map(name => store.get<PromptVersion & { config: unknown }>(name)!).sort((a, b) => a.revision - b.revision)
   let readable: PromptConfig = { ...teamDefaults, skills: {} }
   for (const version of versions) {
@@ -319,9 +324,9 @@ function migratePrompts(store: Store): void {
   const current = revision === undefined ? undefined : store.get<PromptVersion>(`prompt-version:${revision}`)
   const config = current?.config ?? { ...teamDefaults, skills: {} }
   const delivery = config.delivery.includes(autoMergeThreshold(200)) ? config.delivery.replace(autoMergeThreshold(200), autoMergeThreshold(limit))
-    : limit === 200 ? config.delivery : `${config.delivery}\nEnable auto-merge only on a PR that changes fewer than ${limit} lines (additions plus deletions).`
-  const identities = mapped.length && !config.skills.identities ? { identities: ['The same colleague may use a different account on each Source. When you mention, assign or request a review from someone you met on another Source, use their account on this one:',
-    ...mapped.map(person => `- ${person.name ?? person.feishuId} (Feishu ${person.feishuId}) is @${person.github} on GitHub`)].join('\n') } : {}
+    : limit === 200 ? config.delivery : `${config.delivery}\n仅对改动少于 ${limit} 行（新增加删除）的 PR 开启自动合并。`
+  const identities = mapped.length && !config.skills.identities ? { identities: ['同一位同事在不同 Source 上可能使用不同账号。当你提及、指派或请求评审一位你在其他 Source 上认识的人时，使用其在本 Source 上的账号：',
+    ...mapped.map(person => `- ${person.name ?? person.feishuId}（飞书 ${person.feishuId}）在 GitHub 上是 @${person.github}`)].join('\n') } : {}
   const next = { ...config, delivery, skills: { ...config.skills, ...identities } }
   if (JSON.stringify(next) === JSON.stringify(config)) return
   const previous = current?.revision ?? 0
@@ -332,15 +337,16 @@ function migratePrompts(store: Store): void {
 
 const CELLS: readonly string[] = ['listedUnaddressed', 'unlistedAddressed', 'unlistedUnaddressed']
 /**
- * Upgrade a legacy mandate basis object to the current tagged union shape.
- * Current bases recorded `source` and `scope`; older ones recorded a Feishu chat directly (`chatId`) or schema 6's `legacyAuthority`.
- * A basis with neither an admission table cell nor `followup` came from a listed sender (`addressed` when it recorded `addressed`, `sender`, and `source`, else `listed`), which holds while the sender remains listed.
+ * 把旧式授权依据对象升级到当前的标签联合形态。
+ * 当前依据记录 `source` 与 `scope`；更旧的直接记录飞书会话（`chatId`）或 schema 6 的 `legacyAuthority`。
+ * 既无准入表单元格也无 `followup` 的依据来自在列发送者（记录了 `addressed`、`sender` 与 `source` 时为
+ * `addressed`，否则为 `listed`），只要发送者仍在列即成立。
  */
 export function basisOf(stored: unknown): MandateBasis {
-  // Missing or non-object bases default to a listed-sender basis (`via: 'listed'`).
+  // 缺失或非对象的依据默认为在列发送者依据（`via: 'listed'`）。
   const old = isObject(stored) ? stored : {}
   if (typeof old.via === 'string') return old as unknown as MandateBasis
-  // Older Feishu bases recorded `chatId` and `direct` at the top level instead of inside `scope`.
+  // 更旧的飞书依据在顶层而非 `scope` 内记录 `chatId` 与 `direct`。
   const chat = text(old.chatId) ? { source: 'feishu', scope: { chatId: old.chatId, direct: old.direct === true } } : {}
   const received = text(old.source) ? { source: old.source as string, ...isObject(old.scope) ? { scope: old.scope } : {}, ...text(old.row) ? { row: old.row as string } : {} } : chat
   const sender = text(old.sender) ?? text(old.member)
@@ -348,20 +354,20 @@ export function basisOf(stored: unknown): MandateBasis {
   const addressed = old.addressed === 'mention' || old.addressed === 'direct' ? old.addressed
     : old.direct === true ? 'direct' as const : old.mention === true ? 'mention' as const : undefined
   const mode = text(old.mode) as AcceptMode | undefined
-  // Schema 6 imports recorded `legacyAuthority`.
+  // schema 6 导入记录了 `legacyAuthority`。
   const authority = text(old.legacyAuthority) ? { authority: old.legacyAuthority as string } : {}
   if (old.followup === true) return { via: 'followup', ...common, ...authority }
   if (CELLS.includes(String(old.admission))) {
     return { via: 'admission', ...common, cell: old.admission as AdmissionCell, ...addressed ? { addressed } : {}, ...old.observation === true ? { observation: { mode: mode ?? 'auto' } } : {} }
   }
   if (addressed && sender && text(old.source)) return { via: 'addressed', ...common, addressed }
-  // Any basis with neither a table cell nor `followup` came from a listed sender.
+  // 既无表单元格也无 `followup` 的依据都来自在列发送者。
   return { via: 'listed', ...common, ...addressed ? { addressed } : {}, ...old.observation === true ? { observation: mode ? { mode } : {} } : {}, ...authority }
 }
 /**
- * Upgrade a schema 10 ticket record to schema 11: extracts `origin`, `execution`, `delivery`, and followed PR threads
- * (`follows`) from `meta` and GitHub opener channels, merges reported `answers`, marks human trigger inputs (`human: true`),
- * and converts pending `reopen` inputs into `text` inputs for the worker.
+ * 把 schema 10 工单记录升级到 schema 11：从 `meta` 与 GitHub opener 渠道提取 `origin`、`execution`、`delivery`
+ * 与关注的 PR 线程（`follows`），合并已上报的 `answers`，标记人工触发输入（`human: true`），
+ * 并把待处理的 `reopen` 输入转换为给执行器的 `text` 输入。
  */
 export function ticketOf(old: Stored, answers = new Map<string, string[]>(), human: (triggerId: string) => boolean = () => false,
   closed: (number: number) => Follow['closed'] = () => undefined): Ticket {
@@ -371,7 +377,7 @@ export function ticketOf(old: Stored, answers = new Map<string, string[]>(), hum
   const triggerId = text(meta.sourceTriggerId) ?? ''
   const triggerIds = Array.isArray(meta.triggerIds) ? meta.triggerIds as string[] : triggerId ? [triggerId] : []
   const directory = text(meta.workspace)
-  // Remaining `meta` fields are obsolete: schema 6 task states stay in the `task` table, and accept fields live on `execution` and `mandate`.
+  // 其余 `meta` 字段已废弃：schema 6 的任务状态留在 `task` 表中，accept 字段保存在 `execution` 与 `mandate` 上。
   const execution: Execution | undefined = directory ? { name: text(meta.name) ?? basename(directory), directory,
     assignment: text(meta.assignment) ?? text(meta.legacyPrompt) ?? '' } : undefined
   const inputs = ticket.inputs.map((input): TicketInput => input.kind === 'trigger' ? { ...input, ...human(input.triggerId) ? { human: true } : {} }
@@ -385,17 +391,17 @@ export function ticketOf(old: Stored, answers = new Map<string, string[]>(), hum
   const kept = execution ?? ticket.execution
   const follows = ticket.follows ?? followsOf(meta, ticket.channels, closed)
   return { ...ticket, inputs, ...ended ? { ended } : {}, mandate, origin: ticket.origin ?? { triggerId, triggerIds },
-    // A ticket stopped by a person receives no further work, so clear any undelivered inputs.
+    // 被人停止的工单不再接收工作，因此清空所有未送达的输入。
     ...ended?.by === 'human' ? { undelivered: [] } : {},
     ...kept ? { execution: kept } : {}, ...delivery ? { delivery } : {},
     channels: ticket.channels.filter(channel => !opener(channel)), ...follows.length ? { follows } : {},
     ...reported.length ? { answers: reported } : {} }
 }
-/** Schema 10 recorded a PR opened by the ticket as a GitHub Channel without a comment URL (`address.url`). */
+/** schema 10 把工单打开的 PR 记录为没有评论 URL（`address.url`）的 GitHub 渠道。 */
 const opener = (channel: ChannelRef): boolean => channel.source === 'github' && !channel.address.url && !!Number(channel.address.number)
 /**
- * Reconstruct followed PR threads from legacy ticket metadata (`meta.prNumber` last, after PRs opened via GitHub opener
- * channels), marking opened PRs `own: true` and attaching recorded close outcomes.
+ * 从旧工单元数据重建关注的 PR 线程（`meta.prNumber` 排在最后，位于经 GitHub opener 渠道打开的 PR 之后），
+ * 把打开的 PR 标记为 `own: true`，并附加已记录的关闭结果。
  */
 function followsOf(meta: Stored, channels: ChannelRef[], closed: (number: number) => Follow['closed']): Follow[] {
   const opened = channels.filter(opener).map(channel => Number(channel.address.number))
@@ -405,15 +411,15 @@ function followsOf(meta: Stored, channels: ChannelRef[], closed: (number: number
     return { thread: `github:${number}`, own: opened.includes(number), ...end ? { closed: end } : {} }
   })
 }
-/** Parse a schema 10 `github-ended:<number>` record into a followed PR's `closed` state when valid. */
+/** 有效时把 schema 10 的 `github-ended:<number>` 记录解析为所关注 PR 的 `closed` 状态。 */
 function pullEnd(stored: unknown): Follow['closed'] {
   if (!isObject(stored) || typeof stored.at !== 'string' || (stored.reason !== 'merged' && stored.reason !== 'closed')) return undefined
   return { at: stored.at, outcome: stored.reason }
 }
 /**
- * Strip redundant fields stored twice on legacy tickets: removes `state` (derived from `ended`), moves top-level `summary`
- * onto the latest Assignment as a `progress` report when no Assignment has a report, and removes `execution.session` and
- * per-Assignment `ticketId` and `ref` (derived from `ticket.id`).
+ * 去掉旧工单上重复存储的冗余字段：移除 `state`（由 `ended` 推导），在没有派工带报告时把顶层 `summary`
+ * 作为 `progress` 报告移到最新派工上，并移除 `execution.session` 与每个派工的 `ticketId` 和 `ref`（由
+ * `ticket.id` 推导）。
  */
 export function withoutCopies(old: Stored): Ticket {
   const { state, summary, ...ticket } = old as Stored & Ticket & { state?: string; summary?: unknown }
@@ -426,17 +432,17 @@ export function withoutCopies(old: Stored): Ticket {
     latest.report = { state: 'progress', summary, at: ticket.updatedAt }
   }
   const { session: _session, ...execution } = (ticket.execution ?? {}) as Partial<Execution> & { session?: string }
-  // An open ticket has no `ended` record; a ticket marked `ended` without one defaults to `closed`.
+  // 未结工单没有 `ended` 记录；被标为 `ended` 却没有记录的工单默认为 `closed`。
   const closed = { at: ticket.updatedAt, by: 'executor' as const, reason: 'closed', outcome: 'closed' as const }
   const ended = state === 'open' ? undefined : ticket.ended ?? (state === 'ended' ? closed : undefined)
   const { ended: _ended, ...rest } = ticket
-  // Retain `ended.reason` only when it differs from `ended.outcome`, and drop duplicate end reasons from assignments stopped by that end.
+  // 仅当 `ended.reason` 与 `ended.outcome` 不同才保留它，并从因该结束而停止的派工中去掉重复的结束原因。
   const { reason, ...end } = ended ?? {} as NonNullable<Ticket['ended']>
   const once = ended && { ...end, ...reason && reason !== ended.outcome ? { reason } : {} } as NonNullable<Ticket['ended']>
   for (const item of assignments) if (ended && item.endedReason === reason && item.endedAt === ended.at) delete item.endedReason
   return { ...rest, ...once ? { ended: once } : {}, assignments, ...ticket.execution ? { execution: execution as Execution } : {} }
 }
-/** Fixed English reason sentences written by versions before schema 11, mapped to their current reason codes. */
+/** schema 11 之前的版本写下的固定英文原因句子，映射到其当前的原因代码。 */
 const SENTENCES: Readonly<Record<string, string>> = {
   'Assessment timed out': 'timeout', 'Assessment interrupted or timed out': 'timeout',
   'Assessment interrupted, timed out or ended without a decision': 'timeout',
@@ -450,7 +456,7 @@ const SENTENCES: Readonly<Record<string, string>> = {
   'Implementation intent or target direction is not established, or a product/design decision is still required': 'directionUnsettled',
   'No enabled admission rule matched': 'noRuleMatched',
 }
-/** Parse a legacy reason string into a `Reason` when it matches a fixed sentence in `SENTENCES`, a parameterized sentence (`routed`, `startedTicket`, `observed`), or a snake_case gate/source code. */
+/** 当旧原因字符串匹配 `SENTENCES` 中的固定句子、参数化句子（`routed`、`startedTicket`、`observed`）或 snake_case 的准入/来源代码时，把它解析为 `Reason`。 */
 function knownReason(text: string): Reason | undefined {
   if (SENTENCES[text]) return { code: SENTENCES[text] }
   const routed = /^Routed to ticket (\S+)$/.exec(text) ?? /^Already accepted as ticket (\S+)$/.exec(text)
@@ -460,9 +466,8 @@ function knownReason(text: string): Reason | undefined {
   return /^[a-z]+(?:_[a-z]+)+$/.test(text) ? { code: text } : undefined
 }
 /**
- * Parse a stored Decision reason into structured `Reason` codes: splits `<triggerId>: <reason>` batches joined by `; `
- * into per-Trigger reasons, maps known sentences/codes via `knownReason`, and wraps any other free-form assessor or human
- * text with `said`.
+ * 把已存储的决定原因解析为结构化的 `Reason` 代码：把以 `; ` 连接的 `<triggerId>: <reason>` 批量
+ * 拆分为每个触发的原因，经 `knownReason` 映射已知句子/代码，并用 `said` 包装其他自由格式的研判者或人工文本。
  */
 export function reasonsOf(stored: unknown): Reason[] {
   if (Array.isArray(stored)) return stored as Reason[]
@@ -471,7 +476,7 @@ export function reasonsOf(stored: unknown): Reason[] {
   if (parts.every(match => match && knownReason(match[2]!))) return parts.map(match => ({ ...knownReason(match![2]!)!, triggerId: match![1]! }))
   return [knownReason(text) ?? said(text)]
 }
-/** Convert stored decision, disposition, and assignment end reasons from free-form strings to reason codes. */
+/** 把已存储的决定、处置与派工结束原因从自由格式字符串转换为原因代码。 */
 function reasonsAsCodes(store: Store): void {
   for (const row of store.db.prepare('SELECT value FROM decision').all()) {
     const decision = JSON.parse(String(row.value)) as Decision & { reason: unknown }
@@ -488,7 +493,7 @@ function reasonsAsCodes(store: Store): void {
     store.tickets.save({ ...ticket, assignments })
   }
 }
-/** Move `problem-dismissed:<decisionId>` KV flags onto their corresponding `Decision.dismissed` fields and delete the KV keys. */
+/** 把 `problem-dismissed:<decisionId>` KV 标志移到对应的 `Decision.dismissed` 字段上，并删除这些 KV 键。 */
 function moveDismissals(store: Store): void {
   for (const name of store.keys('problem-dismissed:')) {
     const decision = store.decisions.get(name.slice('problem-dismissed:'.length))
@@ -496,16 +501,16 @@ function moveDismissals(store: Store): void {
     store.delete(name)
   }
 }
-/** Delete `github-ended:<number>` KV records after their close outcomes have been copied onto `Ticket.follows`. */
+/** 在关闭结果已复制到 `Ticket.follows` 之后，删除 `github-ended:<number>` KV 记录。 */
 function dropPullEnds(store: Store): void {
   for (const name of store.keys('github-ended:')) store.delete(name)
 }
-/** Infer a ticket's `ended.outcome` when predating recorded outcomes (`stopped` for human stops, else matching `reason` or defaulting to `closed`). */
+/** 在记录结果出现之前推断工单的 `ended.outcome`（人工停止为 `stopped`，否则匹配 `reason`，默认 `closed`）。 */
 function outcomeOf(ended: Pick<NonNullable<Ticket['ended']>, 'by' | 'reason'>): NonNullable<Ticket['ended']>['outcome'] {
   if (ended.by === 'human') return 'stopped'
   return (['completed', 'merged', 'closed', 'dropped'] as const).find(outcome => outcome === ended.reason) ?? 'closed'
 }
-/** Backfill thread creation and activity timestamps from their earliest and latest triggers. */
+/** 从最早与最新的触发回填线程的创建与活跃时间戳。 */
 function backfillThreadTimes(store: Store): void {
   if (store.get('thread-times-backfilled')) return
   for (const thread of store.threads.list()) {
@@ -517,7 +522,7 @@ function backfillThreadTimes(store: Store): void {
   }
 }
 
-/** Upgrade stored source state (Feishu topics, direct-chat flags, thread links, GitHub cursors, and pending assessments) to schema 11. */
+/** 把已存储的 Source 状态（飞书话题、直聊标志、线程链接、GitHub 游标与待处理评估）升级到 schema 11。 */
 function migrateSourceRecords(store: Store): void {
   feishuTopics(store)
   feishuDirectAddresses(store)
@@ -526,7 +531,7 @@ function migrateSourceRecords(store: Store): void {
   githubCursors(store)
   assessmentTriggers(store)
 }
-/** Convert legacy Feishu topic ID arrays into maps keyed by topic ID with the chat's last recovery timestamp. */
+/** 把旧式飞书话题 ID 数组转换为以话题 ID 为键的映射，附该会话最近一次恢复时间戳。 */
 function feishuTopics(store: Store): void {
   for (const name of store.keys(KV.feishu.topics)) {
     const topics: unknown = store.get(name)
@@ -536,8 +541,8 @@ function feishuTopics(store: Store): void {
   }
 }
 /**
- * Backfill `direct: 'true'` onto Feishu channel addresses from `KV.feishu.chats`, because Feishu `oc_` chat IDs do not
- * distinguish direct messages from group chats on their own.
+ * 从 `KV.feishu.chats` 回填 `direct: 'true'` 到飞书渠道地址，因为飞书的 `oc_` 会话 ID 自身
+ * 无法区分私聊与群聊。
  */
 function feishuDirectAddresses(store: Store): void {
   const chats = store.get(KV.feishu.chats) ?? {}
@@ -558,7 +563,7 @@ function feishuDirectAddresses(store: Store): void {
     if (ticket.channels.some(direct)) store.tickets.save({ ...ticket, channels: ticket.channels.map(marked) })
   }
 }
-/** Backfill chat URLs onto Feishu threads created before threads stored their own URL, inferring the brand from existing trigger URLs. */
+/** 为在线程存储自身 URL 之前创建的飞书线程回填会话 URL，依据已有触发 URL 推断品牌。 */
 function feishuThreadLinks(store: Store): void {
   const lark = store.db.prepare(`SELECT 1 FROM trigger WHERE value ->> '$.source' = 'feishu'
     AND value ->> '$.url' LIKE '%larksuite.com%' LIMIT 1`).get()
@@ -569,8 +574,8 @@ function feishuThreadLinks(store: Store): void {
   }
 }
 /**
- * Reassign triggers from the removed `github-issue` source to `github`, schedule a retry from the earliest waiting message
- * within `POLL_HORIZON_MS` on each issue that had pending messages, and delete the obsolete `github-issue` KV keys.
+ * 把已移除的 `github-issue` 来源的触发改派给 `github`，对有待发消息的每个 Issue，在其
+ * `POLL_HORIZON_MS` 内的最早等待消息处安排一次重试，并删除废弃的 `github-issue` KV 键。
  */
 function issueSourceRecords(store: Store): void {
   store.db.exec(`UPDATE trigger SET value = json_set(value, '$.source', 'github') WHERE value ->> '$.source' = 'github-issue'`)
@@ -585,7 +590,7 @@ function issueSourceRecords(store: Store): void {
   const kept = ['github-issue-pending', 'github-issues-since', 'github-issues-started-at', ...store.keys('github-issue-eligibility:')]
   for (const name of kept) store.delete(name)
 }
-/** Consolidate per-issue/PR notification and thread subscription cursors into a single cursor holding the later timestamp. */
+/** 把每个 Issue/PR 的通知与线程订阅游标合并为持有较晚时间戳的单一游标。 */
 function githubCursors(store: Store): void {
   for (const name of [...store.keys('github-thread:'), ...store.keys('thread-since:github:')]) {
     const at = store.get<string>(name as Key<string>)
@@ -595,7 +600,7 @@ function githubCursors(store: Store): void {
     store.delete(name)
   }
 }
-/** Attach trigger IDs to pending assessment effects and re-enqueue undelivered active evaluations so their timeout deadlines start. */
+/** 给待处理的评估 effect 附上触发 ID，并重新入队未送达的活跃评估，使其超时期限开始计时。 */
 function assessmentTriggers(store: Store): void {
   const triggers = new Map(store.threads.active()
     .flatMap(thread => thread.evaluating ? [[thread.evaluating.id, thread.evaluating.triggerIds[0]] as const] : []))
@@ -605,7 +610,7 @@ function assessmentTriggers(store: Store): void {
     if (triggerId) store.db.prepare("UPDATE effect SET value = ? WHERE kind = 'assessment' AND key = ?").run(named, row.key!)
     else store.db.prepare("DELETE FROM effect WHERE kind = 'assessment' AND key = ?").run(row.key!)
   }
-  // Re-enqueue active evaluations that predate delivery tracking so delivery starts their timeout deadline instead of leaving the thread stuck.
+  // 重新入队早于送达跟踪的活跃评估，使送达启动其超时期限，而不是让线程卡住。
   let seq = Number(store.db.prepare('SELECT COALESCE(MAX(seq), 0) AS seq FROM effect').get()?.seq ?? 0)
   for (const thread of store.threads.active()) {
     const evaluation = thread.evaluating

@@ -1,19 +1,19 @@
 // @vitest-environment jsdom
-// The overview.
+// 总览页。
 import { expect, it } from 'vitest'
 import { en, zh } from '../src/client/locales.ts'
 import { usePanel, mount, remount, all, find, tab, click, text } from './fixtures/panel.tsx'
 import { server, droppedReply, threadSummary } from './fixtures/panel-server.ts'
 
 usePanel()
-it('leads the overview with the pending Tickets, then problems, the last day and the Executor, each linking to its stage', async () => {
+it('总览以待处理工单打头，随后是系统问题、过去一天与执行器，各自链接到对应阶段', async () => {
   await mount()
   expect(tab(zh['tab.overview']).getAttribute('aria-selected')).toBe('true')
   expect(all('[role="tab"]').map(tab => tab.textContent)).toEqual(['概览', '来源', '触发', '评估', '执行', '设置'])
   expect(all('.dt-section-title').map(title => title.textContent)).toEqual(['待处理工单2', '系统问题2', '过去 24 小时详情 ›', '执行器详情 ›'])
   expect(all('.dt-cards .dt-ticket-stage').map(item => item.textContent)).toEqual(['待回答', '待处理失败'])
   expect(all('.dt-cards .dt-att-what').map(item => item.textContent)).toEqual(['飞书 来源异常', '评估未完成：这个文案好奇怪'])
-  // Actions sit below the title and Threads, apart from the stage, each with its icon.
+  // 操作按钮位于标题与线程之下，与阶段标记分开，各自带图标。
   expect(all('.dt-ticket').every(row => row.querySelector('.dt-ticket-stage button, .dt-ticket-stage a') === null
     && [...row.querySelectorAll('.dt-ticket-actions button, .dt-ticket-actions a')].every(action => action.querySelector('svg')))).toBe(true)
   expect(text()).toContain('来源会在每次轮询时自动重试')
@@ -26,7 +26,7 @@ it('leads the overview with the pending Tickets, then problems, the last day and
   expect(tab(zh['tab.execution']).getAttribute('aria-selected')).toBe('true')
 })
 
-it('re-evaluates or dismisses an unjudged Eval from the problem list', async () => {
+it('从问题列表重新评估或忽略一条未完成判定', async () => {
   await mount()
   await click(zh.requeue)
   expect(server.requests.some(request => request.path === 'triggers/e3/requeue' && request.method === 'POST')).toBe(true)
@@ -35,16 +35,16 @@ it('re-evaluates or dismisses an unjudged Eval from the problem list', async () 
   expect(server.requests.filter(request => request.path === 'overview').length).toBeGreaterThan(2)
 })
 
-it('opens the Thread of an unjudged Eval at its Trigger from the problem list', async () => {
+it('从问题列表打开未完成判定的线程并定位到其触发', async () => {
   await mount()
   await click('评估未完成：这个文案好奇怪')
   expect(server.requests.some(request => request.path.startsWith('threads/feishu:oc_1:om_root'))).toBe(true)
   expect(document.querySelector('.dt-highlight')?.textContent).toContain('message e3')
 })
 
-it('follows the last day\'s counts to the status of each stage', async () => {
+it('把过去一天的计数链接到各阶段的状态', async () => {
   await mount()
-  // Arrived Triggers include filtered ones, which have no Thread, so no list has that count to link to.
+  // 到达数包含被过滤的触发，它们没有线程，因此没有列表能链接这个计数。
   expect(all('.dt-stat button').map(button => button.textContent)).toEqual(['2', '1'])
   await click(all('.dt-stat button')[0]!)
   expect(tab(zh['tab.source']).getAttribute('aria-selected')).toBe('true')
@@ -53,7 +53,7 @@ it('follows the last day\'s counts to the status of each stage', async () => {
   expect(text()).toContain(zh['reason.source_disabled'])
 })
 
-it('offers each Ticket that needs a person its actions on the overview: answer in its Channel, retry or open a failed worker, and stop',
+it('在总览页为每个需要人工的工单提供操作：在其渠道回答、重试或打开失败的执行器 Session，以及停止',
   async () => {
   await mount()
   expect(all('.dt-ticket-actions a').map(link => [link.textContent, link.getAttribute('href')])).toEqual([['去飞书回答',
@@ -70,7 +70,7 @@ it('offers each Ticket that needs a person its actions on the overview: answer i
   expect(text()).not.toContain('截图工具')
 })
 
-it('shows paused processing as a system problem with its resume action, and says so on the Policy records', async () => {
+it('把处理暂停显示为带恢复操作的系统问题，并在评估记录中说明', async () => {
   server.settings = { ...server.settings, paused: true }
   await mount()
   expect(text()).toContain(zh.problemPaused)
@@ -84,7 +84,7 @@ it('shows paused processing as a system problem with its resume action, and says
   expect(server.requests.find(request => request.path === 'executor/pause')).toMatchObject({ method: 'POST', body: { paused: false } })
 })
 
-it('offers the step that fixes a settings problem as a button on the overview', async () => {
+it('把修复设置问题的步骤作为按钮放在总览页上', async () => {
   server.settings = { ...server.settings, policy: { ...server.settings.policy, sources: { feishu: { allowed: [], admission: {} },
     github: { allowed: [], admission: {} } } } }
   await mount()
@@ -94,7 +94,7 @@ it('offers the step that fixes a settings problem as a button on the overview', 
   expect(document.querySelector('.dt-settings-link[aria-current="page"]')?.textContent).toBe(zh['term.eval'])
 })
 
-it('counts the messages not sent in the last day, linking to the Source status, and shows nothing when there are none', async () => {
+it('统计过去一天未发出的消息并链接到来源状态，没有时则不显示', async () => {
   await mount()
   expect(all('.dt-stat-label').map(label => label.textContent)).not.toContain(zh.flowDroppedLabel)
   server.dropped = [droppedReply('m2', 1, 'feishu', 'channelGone'), droppedReply('m1', 2, 'github', 'channelIgnored'), droppedReply('m0',
@@ -106,16 +106,16 @@ it('counts the messages not sent in the last day, linking to the Source status, 
   expect(tab(zh['tab.source'])?.getAttribute('aria-selected')).toBe('true')
 })
 
-it('names a failing part of dsh-superagent itself by its label', async () => {
+it('按标签指出 dsh-superagent-cn 自身故障的部分', async () => {
   server.health = { launch: { state: 'error', detail: 'spawn failed' }, relay: { state: 'ready', detail: 'Nothing waiting' } }
   await mount()
   expect(all('.dt-cards .dt-att-what').map(item => item.textContent)).toContain(zh.problemRuntime.replace('{name}', zh['health.launch']))
   expect(text()).toContain('spawn failed')
 })
 
-it('words a refused retry in the interface language by its code', async () => {
+it('被拒绝的重试按其代码以界面语言表述', async () => {
   await mount()
-  // Simulate another user retrying the ticket after the overview loaded.
+  // 模拟总览页加载之后另一个用户重试该工单。
   server.person = server.person.map(ticket => ticket.id === 't4' ? { ...ticket, actions: { ...ticket.actions, retry: false } } : ticket)
   await click(find(zh.retry, '.dt-ticket-actions button'))
   await click(zh.confirm)
@@ -123,7 +123,7 @@ it('words a refused retry in the interface language by its code', async () => {
   expect(text()).not.toContain('Only an open ticket can be retried, and only when its worker last reported failed or blocked and no person has sent a message since, or when delivering an Input to its worker failed')
 })
 
-it('shows the overview in English', async () => {
+it('以英文显示总览页', async () => {
   await mount(en)
   expect(all('.dt-section-title').map(title => title.textContent)).toEqual([`${en.pendingTickets}2`, `${en.problems}2`,
     `${en.lastDay}${en.details}`, `${en['term.executor']}${en.details}`])
@@ -132,14 +132,14 @@ it('shows the overview in English', async () => {
     en.flowAcceptedLabel, en.executingLabel, en.queuedLabel, en.idleLabel])
 })
 
-it('lists the unavailable Evals one by one, without the health entry that counts them as a failure of dsh-superagent', async () => {
+it('逐条列出不可用的评估，不显示把它们计为 dsh-superagent-cn 故障的健康条目', async () => {
   server.health.evals = { state: 'error', detail: '1 Eval(s) unavailable in the last hour without a later judgement' }
   await mount()
   expect(all('.dt-cards .dt-att-what').map(item => item.textContent)).toEqual(['飞书 来源异常', '评估未完成：这个文案好奇怪'])
   expect(text()).not.toContain(zh['health.evals'])
 })
 
-it('says when no Source is on, an Eval is past its deadline or a message keeps failing, each with the way to it', async () => {
+it('在没有启用的来源、评估超期未决或消息持续发送失败时给出提示，并附各自的处理入口', async () => {
   for (const kind of ['feishu', 'github']) server.settings.sources[kind] = { ...server.settings.sources[kind]!, enabled: false }
   server.threads = [threadSummary({ key: 'github:9', title: '#9 迟迟未决', stage: 'evaluating',
     evaluating: { id: 'v9', triggers: 1, strength: 'inferred', startedAt: '2026-08-31T23:58:00Z', deadline: '2026-09-01T00:00:00Z' } })]
@@ -148,7 +148,7 @@ it('says when no Source is on, an Eval is past its deadline or a message keeps f
     error: 'HTTP 502 from GitHub' }]
   await mount()
   const titles = () => all('.dt-cards .dt-att-what').map(item => item.textContent)
-  // The Feishu Source is off, so its error is no problem any more.
+  // 飞书来源已停用，其异常不再算作问题。
   expect(titles()).toEqual([zh.problemNoSource, '评估超时未决定：#9 迟迟未决', '评估未完成：这个文案好奇怪', 'GitHub 回复发送失败（已重试 4 次）'])
   expect(text()).toContain('HTTP 502 from GitHub')
   await click(zh.actionOpenSources)

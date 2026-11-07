@@ -9,7 +9,7 @@ import { Modal, SegmentedTabs } from '../src/client/controls.tsx'
 declare global { var IS_REACT_ACT_ENVIRONMENT: boolean }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
-it('imports no DSH client runtime package, only React and type declarations', () => {
+it('不导入 DSH client 的运行时包，只导入 React 与类型声明', () => {
   const dir = join(process.cwd(), 'src/client')
   for (const name of readdirSync(dir)) {
     const source = readFileSync(join(dir, name), 'utf8')
@@ -18,7 +18,7 @@ it('imports no DSH client runtime package, only React and type declarations', ()
   }
 })
 
-it('imports each module of the panel only from modules that do not import it back', () => {
+it('面板的每个模块只被不反向导入它的模块导入', () => {
   const dir = join(process.cwd(), 'src/client')
   const graph = new Map(readdirSync(dir).filter(name => /\.tsx?$/.test(name)).map(name => [name, [...readFileSync(join(dir, name), 'utf8')
     .matchAll(/^import [^'"]*from '\.\/([\w-]+\.tsx?)'/gm)].map(match => match[1]!)]))
@@ -33,12 +33,12 @@ it('imports each module of the panel only from modules that do not import it bac
   expect(cycles).toEqual([])
 })
 
-it('describes the management API in a module the panel can bundle, which imports types only', () => {
+it('在面板可打包的模块中描述管理 API，该模块只导入类型', () => {
   const source = readFileSync(join(process.cwd(), 'src/app/api.ts'), 'utf8')
   expect([...source.matchAll(/^import (type )?/gm)].every(match => match[1])).toBe(true)
 })
 
-it('closes the dialog on Escape and returns focus to the opener', async () => {
+it('按 Escape 关闭对话框并把焦点还给打开者', async () => {
   function Harness() {
     const [open, setOpen] = useState(false)
     return <><button type="button" onClick={() => setOpen(true)}>open</button><Modal open={open} onClose={() => setOpen(false)} title="Title" closeLabel="Close">body</Modal></>
@@ -56,12 +56,12 @@ it('closes the dialog on Escape and returns focus to the opener', async () => {
   act(() => { root.unmount() })
 })
 
-it('keeps the focus inside the dialog when its parent re-renders, and Tab and Shift+Tab wrap within it', async () => {
+it('父组件重新渲染时焦点保持在对话框内，Tab 与 Shift+Tab 在其中循环', async () => {
   let rerender = () => {}
   function Harness() {
     const [, setCount] = useState(0)
     rerender = () => setCount(count => count + 1)
-    // Pass a new inline onClose on each render (as polling parents do) to verify the effect does not reset focus.
+    // 每次渲染传入一个新的内联 onClose（轮询的父组件正是如此），以验证 effect 不会重置焦点。
     return <Modal open onClose={() => {}} title="Title" closeLabel="Close" footer={<button type="button">last</button>}><input aria-label="first field" /></Modal>
   }
   const container = document.createElement('div'); document.body.append(container)
@@ -80,7 +80,7 @@ it('keeps the focus inside the dialog when its parent re-renders, and Tab and Sh
   act(() => { root.unmount() })
 })
 
-it('moves the tab selection with arrow keys and wraps at the ends', async () => {
+it('用方向键移动标签选择，并在两端循环', async () => {
   const seen: string[] = []
   function Harness() {
     const [value, setValue] = useState<'a' | 'b' | 'c'>('a')

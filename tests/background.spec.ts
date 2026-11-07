@@ -1,11 +1,11 @@
-/** A worker's background work in DSH: waiting for its shell jobs and subagents, and stopping them. */
+/** DSH 中执行器的后台工作：等待其 shell job 与子 agent，并停止它们。 */
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { expect, it, vi } from 'vitest'
 import { stopSubagents, untilQuiet } from '../src/executor/background.ts'
 import { jobRegistry } from './fixtures/host.ts'
 
-/** A context with DSH's job registry and subagents, and an idle worker agent with one live subagent, `child-1`. */
+/** 一个带 DSH job 注册表与子 agent 的 context，以及一个空闲的 worker agent，带一个存活的子 agent `child-1`。 */
 function setup(waitForChildren: (agent: Agent) => Promise<boolean>, drainChildren: () => Promise<void> = async () => {}) {
   const jobs = jobRegistry()
   const agent = { id: 'worker-t1', status: 'idle', whenIdle: async () => {}, inbox: { nextTurn: [], nextStep: [] }, cancel: vi.fn() } as unknown as
@@ -16,9 +16,9 @@ function setup(waitForChildren: (agent: Agent) => Promise<boolean>, drainChildre
   return { ctx, agent, jobs, subagents }
 }
 
-it('is not quiet when an end during the subagent check woke the worker, whose own idle looks again', async () => {
+it('子 agent 检查期间一次结束唤醒了 worker 时不算安静，其自身的空闲检查会再看一次', async () => {
   const { ctx, agent, jobs } = setup(async () => {
-    // The job settles meanwhile, and its end wakes the worker.
+    // job 在此期间落定，其结束唤醒了 worker。
     jobs.end(id); (agent as { status: string }).status = 'running'
     return false
   })
@@ -26,19 +26,19 @@ it('is not quiet when an end during the subagent check woke the worker, whose ow
   expect(await untilQuiet(ctx, agent, new AbortController().signal)).toBe(false)
 })
 
-it('stops waiting for subagents that never settle once the host stops', async () => {
+it('host 停止后不再等待永不落定的子 agent', async () => {
   let joining!: () => void
   const joined = new Promise<void>(resolve => { joining = resolve })
   const { ctx, agent } = setup(() => { joining(); return new Promise(() => {}) })
   const stop = new AbortController()
   const quiet = untilQuiet(ctx, agent, stop.signal)
-  // The host stops while the wait for its subagents runs.
+  // 在等待其子 agent 的过程中 host 停止。
   await joined
   stop.abort()
   expect(await quiet).toBe(false)
 })
 
-it('looks at the jobs only when one ends, not at each output of a noisy one', async () => {
+it('只在某个 job 结束时查看 job，而不是在嘈杂 job 的每次输出时', async () => {
   const { ctx, agent, jobs } = setup(async () => false)
   const id = jobs.run('worker-t1')
   const stop = new AbortController()
@@ -51,7 +51,7 @@ it('looks at the jobs only when one ends, not at each output of a noisy one', as
   expect(await quiet).toBe(true)
 })
 
-it('joins a worker\'s subagents once for the looks that wait on them, as DSH cannot cancel the join', async () => {
+it('等待它们的各次查看共享对 worker 子 agent 的一次 join，因为 DSH 无法取消 join', async () => {
   const { ctx, agent, subagents } = setup(() => new Promise(() => {}))
   for (let look = 0; look < 3; look++) {
     const stop = new AbortController()
@@ -62,7 +62,7 @@ it('joins a worker\'s subagents once for the looks that wait on them, as DSH can
   expect(subagents.waitForChildren).toHaveBeenCalledTimes(1)
 })
 
-it('gives up a release of subagents that does not end within 10 seconds, and cancels the turn their ends woke', async () => {
+it('放弃 10 秒内未结束的子 agent 释放，并取消它们的结束所唤醒的 turn', async () => {
   const { ctx, agent } = setup(async () => false, () => new Promise(() => {}))
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   try {

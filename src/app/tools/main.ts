@@ -1,4 +1,4 @@
-/** Main Session tools for routing triggers, assessing candidates, sending replies, and updating settings and prompts. */
+/** 主 Session 工具：路由触发、研判候选、发送回复，以及更新设置与提示词。 */
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { z } from 'zod'
@@ -26,13 +26,13 @@ export interface MainToolsHost {
   readonly settings: Pick<Settings, 'view' | 'block' | 'save' | 'pause' | 'sync'>
   readonly assessor: Pick<MasterAssessor, 'context' | 'read' | 'decide'>
   readonly resources: ResourceHost
-  /** Schedules a pass to carry out work queued by an Engine command (such as an Eval or ticket resume). */
+  /** 安排一次 pass，执行 Engine 命令排队的工作（如一次评估或恢复工单）。 */
   requestPass(): void
   sendReplies(): Promise<void>
-  /** Runs an Engine command initiated by the main Session without emitting self-notifications. */
+  /** 运行主 Session 发起的 Engine 命令，而不发出自我通知。 */
   quietly<T>(run: () => T): T
 }
-/** Schedules an Engine pass to execute the recorded routing decision and formats the tool response. */
+/** 安排一次 Engine pass 执行已记录的路由决定，并格式化工具响应。 */
 function routed(host: MainToolsHost, result: { decision?: DecisionKind; reason: string; ticketId?: string | undefined }) {
   host.requestPass()
   const ticket = result.ticketId ? host.store.tickets.get(result.ticketId) : undefined
@@ -41,8 +41,8 @@ function routed(host: MainToolsHost, result: { decision?: DecisionKind; reason: 
 }
 const fromDecision = (decision: Decision) => ({ decision: decision.kind, reason: reasonText(decision.reason), ticketId: decision.ticketId })
 /**
- * One routing decision of `orchestrator_route`. The schema holds only its shape: each kind's fields are checked as its item
- * runs (`FIELDS`), so an item that lacks one, or whose value breaks a limit, is refused alone.
+ * `orchestrator_route` 的一条路由决定。schema 只保存其形状：每个 kind 的字段在其条目运行时检查（`FIELDS`），
+ * 因此缺少字段或字段值超限的条目只会被单独拒绝。
  */
 const RouteItemSchema = z.object({
   kind: z.enum(['accept', 'attach', 'ignore', 'stop']),
@@ -57,7 +57,7 @@ const RouteItemSchema = z.object({
 type RouteItem = z.infer<typeof RouteItemSchema>
 type Kind = RouteItem['kind']
 type Field = Exclude<keyof RouteItem, 'kind' | 'trigger_id'>
-/** Each field's check, the kinds whose items read it and those that need it; an item of another kind leaves it unread. */
+/** 每个字段的校验、哪些 kind 的条目会读它以及哪些需要它；其他 kind 的条目不读它。 */
 const FIELDS: Record<Field, { check: z.ZodType; reads: readonly Kind[]; needs: readonly Kind[] }> = {
   ticket_id: { check: z.string(), reads: ['attach', 'stop'], needs: ['attach', 'stop'] },
   title: { check: z.string().max(200), reads: ['accept'], needs: ['accept'] },
@@ -66,7 +66,7 @@ const FIELDS: Record<Field, { check: z.ZodType; reads: readonly Kind[]; needs: r
   note: { check: RoutingNoteSchema, reads: ['accept', 'attach'], needs: [] },
   reason: { check: z.string().max(500), reads: ['ignore', 'stop'], needs: ['ignore'] },
 }
-/** Why an item cannot run: a field its kind needs is missing, or one it reads breaks its limit. */
+/** 条目无法运行的原因：其 kind 需要的字段缺失，或其读取的字段超限。 */
 function invalid(item: RouteItem): string | undefined {
   for (const [field, { check, reads, needs }] of Object.entries(FIELDS) as [Field, typeof FIELDS[Field]][]) {
     const value = item[field]
@@ -82,13 +82,12 @@ function invalid(item: RouteItem): string | undefined {
 }
 type Routed = { decision?: DecisionKind; reason: string; ticketId?: string | undefined; triggerIds?: readonly string[] }
 /**
- * Carry out one routing decision as its Engine command, in a transaction of its own. `decided` holds the Triggers that this
- * call's earlier items decided, with their batches.
+ * 把一条路由决定作为其 Engine 命令执行，使用独立的事务。`decided` 保存本次调用中较早条目已决定的触发及其批量。
  */
 function route(host: MainToolsHost, item: RouteItem, decided: ReadonlyMap<string, string>): Routed | { refused: string } {
   const note = item.note ? { note: item.note } : {}
-  // A Trigger an earlier item decided went with that item's Decision, also as a member of its batch.
-  // A stop of it for another ticket is the Engine's to judge.
+  // 较早条目已决定的触发随该条目的决定处理，也作为其批量的成员。
+  // 对它为另一个工单执行 stop，则由 Engine 裁决。
   const earlier = decided.get(item.trigger_id)
   if (earlier && item.kind === 'ignore') return { refused: `Decided in this call with ${earlier}, whose Decision took its batch` }
   switch (item.kind) {
@@ -96,7 +95,7 @@ function route(host: MainToolsHost, item: RouteItem, decided: ReadonlyMap<string
       const before = host.store.triggers.disposition(item.trigger_id)?.decisionId
       const decision = host.engine.decide(item.trigger_id, { kind: 'accept', title: item.title!, scope: item.title!, reason: { code: 'explicitRouted' },
         acknowledgement: item.acknowledgement!, name: item.worktree_name!, ...note })
-      // A Decision that created no ticket is the item's refusal; one that existed before keeps what it was accepted with.
+      // 未创建工单的决定即该条目的拒绝；此前已存在的决定保持其被接受时的内容。
       if (decision.kind !== 'accept' || !decision.ticketId) return { refused: `Ticket was not created: ${reasonText(decision.reason)}` }
       if (decision.id === before) {
         return { decision: 'accept', reason: `Already accepted as ${decision.ticketId}; title and acknowledgement unchanged`, ticketId: decision.ticketId }
@@ -107,7 +106,7 @@ function route(host: MainToolsHost, item: RouteItem, decided: ReadonlyMap<string
       const ticket = host.quietly(() => host.engine.attach(item.ticket_id!, item.trigger_id, item.note ?? undefined))
       return { reason: 'Attached: the ticket follows the trigger\'s thread and receives the trigger', ticketId: ticket.id }
     }
-    // Through `engine.decide`, so only a person's message the gate admits with explicit strength stops a ticket.
+    // 经由 `engine.decide`，因此只有被准入闸门以显式强度接受的人的消息才能停止工单。
     case 'stop': {
       const decision = host.engine.decide(item.trigger_id, { kind: 'stop', ticketId: item.ticket_id!, reason: item.reason || { code: 'humanStop' } })
       return { ...fromDecision(decision), triggerIds: decision.triggerIds }
@@ -119,8 +118,8 @@ function route(host: MainToolsHost, item: RouteItem, decided: ReadonlyMap<string
   }
 }
 /**
- * `orchestrator_route`: routing decisions for several triggers in one call, in order. Each runs as its own Engine command; one
- * that is refused, or fails, is answered so, and the others still run.
+ * `orchestrator_route`：在一次调用中按顺序对多个触发做路由决定。每个都作为自己的 Engine 命令运行；
+ * 被拒绝或失败的条目按此应答，其余条目仍会运行。
  */
 function routeTool(host: MainToolsHost): Tool {
   return tool({
@@ -142,7 +141,7 @@ function routeTool(host: MainToolsHost): Tool {
             ...(ticket ? { ticket: ticketCard(ticket) } : {}) }
         } catch (error) {
           if (error instanceof UserError) return { ...head, refused: error.message }
-          host.context.logger.warn('dsh-superagent could not route trigger %s: %s', item.trigger_id, String(error))
+          host.context.logger.warn('dsh-superagent-cn could not route trigger %s: %s', item.trigger_id, String(error))
           return { ...head, refused: `Not recorded: ${error instanceof Error ? error.message : String(error)}; retry this item` }
         }
       })
@@ -151,7 +150,7 @@ function routeTool(host: MainToolsHost): Tool {
     },
   })
 }
-/** Builds the main Session's tools; `agent` scopes prompt preview resources to that Session. */
+/** 构建主 Session 的工具；`agent` 把提示词预览资源限定到该 Session。 */
 export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
   const resources: MainResourceHost = { ...host.resources, sessions: host.sessions, settings: host.settings }
   return [
@@ -190,7 +189,7 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
       description: 'Queue a trigger for a fresh assessment, such as after its Source\'s access changed; a follow-up that reached a ticket comes back only from its worker.',
       schema: z.object({ trigger_id: z.string() }).strict(),
       execute: async args => {
-        // A follow-up that reached a ticket is its worker's to judge, which hands back what is not its own; a person may still requeue it.
+        // 已送达工单的跟进由其执行器判断，不属于它的会被交回；人仍可以重新排队它。
         const trigger = host.store.triggers.get(args.trigger_id)
         const owners = trigger ? followupOwners(trigger, host.store) : []
         if (owners.length) throw new UserError('workerDecides', { tickets: owners.join(', ') })
@@ -257,7 +256,7 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
         .refine(args => (args.block === 'source') === (args.source !== undefined), 'source names the Source instance, with block source only'),
       execute: async args => {
         if (args.block === 'pause') return host.settings.pause(z.object({ paused: z.boolean() }).parse(args.value).paused, 'tool')
-        // Strip context_delivery since the main Session initiated the save itself.
+        // 去掉 context_delivery，因为这次保存是主 Session 自己发起的。
         const { context_delivery: _delivery, ...saved } = await host.settings.save(args.block === 'source' ? `source:${args.source!}` : args.block,
           args.value, args.revision, 'tool')
         return saved

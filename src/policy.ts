@@ -1,6 +1,6 @@
 /**
- * Runtime settings schemas, assessment validation, and policy gate evaluation.
- * Who may originate work is configured per Source in that Source's own identities; the Policy never maps a person across Sources.
+ * 运行时设置 schema、研判校验以及策略准入判定。
+ * 谁可以发起工作由各 Source 在其自身的身份配置中决定；策略从不在不同 Source 之间映射同一个人。
  */
 import { LIMITS } from './limits.ts'
 import { z } from 'zod'
@@ -22,7 +22,7 @@ export const AdmissionDirectionSchema = z.object({
   evidence: z.string().trim().min(1).max(700),
 }).strict()
 export type AdmissionDirection = z.infer<typeof AdmissionDirectionSchema>
-/** Check whether an assessment established implementation intent and a settled target without open design decisions. */
+/** 检查一次研判是否确立了实现意图和已确定的落点，且不存在未解决的设计决定。 */
 export function directionAllowed(value: unknown): value is AdmissionDirection {
   const result = AdmissionDirectionSchema.safeParse(value)
   return result.success && result.data.implementation_requested && result.data.target_basis !== 'undetermined' && !result.data.requires_design_decision
@@ -32,10 +32,10 @@ export interface Assessment {
   title: string; scope: string; reason: string; intent_evidence?: string | null; acknowledgement?: string | null; worktree_name?: string
 }
 /**
- * Validate an assessment against enabled rules and convert it into an engine `AssessmentOutcome`.
- * Acceptance requires a settled direction, at least one matched enabled rule, and `intent_evidence`, and accepts an
- * inferred candidate only in `auto` mode (otherwise recording it as `would_accept`).
- * @throws when `rule_assessments` does not cover every enabled rule exactly once, or an accept omits `intent_evidence`.
+ * 依据启用的规则校验一次研判，并将其转换为引擎的 `AssessmentOutcome`。
+ * 接受需要已确定的落点、至少一条匹配的启用规则以及 `intent_evidence`，且只有在 `auto` 模式下才接受
+ * 推断候选（否则将其记录为 `would_accept`）。
+ * @throws 当 `rule_assessments` 未对每条启用规则恰好覆盖一次，或接受缺少 `intent_evidence` 时抛出。
  */
 export function assessmentOutcome(assessment: Assessment, settings: Pick<Settings, 'policy' | 'eval'>, strength: Strength): AssessmentOutcome {
   const enabled = settings.policy.rules.filter(rule => rule.enabled)
@@ -63,7 +63,7 @@ const DEFAULT_RULES = [
   { id: 'copy', name: 'Copy fixes', enabled: true, instruction: 'Explicit requests to correct a typo, wording, punctuation or existing translation. Preserve product promises and business meaning.' },
   { id: 'visual', name: 'Visual fixes', enabled: true, instruction: 'Explicit implementation requests for local spacing, alignment, overflow or styling, with a specified target or an objectively established existing standard/correct state to restore. Locating an element or calling it inconsistent, unattractive or hard to understand does not establish a target. Do not invent visual style, information hierarchy, rendering or interaction decisions. No redesign, new interaction or behavior. A known spacing defect does not authorize adjacent undefined restyling; assess only a clearly separable authorized scope. If direction or scope is unsettled, observe only: no acknowledgement, worker or unsolicited question.' },
 ]
-/** An assessment rule; its instruction may also specify PR reviewers and whether to wait for their approval. */
+/** 一条研判规则；其 instruction 还可指定 PR 审阅者以及是否等待其批准。 */
 export const RuleSchema = z.object({ id: RuleIdSchema, name: z.string().trim().min(1).max(LIMITS.ruleName), enabled: z.boolean(),
   instruction: z.string().trim().min(1).max(LIMITS.ruleInstruction) }).strict()
 export type Rule = z.infer<typeof RuleSchema>
@@ -87,11 +87,12 @@ export const EvalConfigSchema = z.object({
 }).strict()
 const CommandNameSchema = z.string().regex(/^[A-Za-z0-9._-]+$/).refine(name => name !== '.' && name !== '..', 'Not a command name')
   .refine(name => !WORKER_COMMANDS.includes(name), `${WORKER_COMMANDS.join(', ')} cannot be blocked`)
-/** Executor settings: worker model, concurrency, ticket directory root (empty defaults to `<stateDir>/work`), `prepare` command, and blocked commands. */
+/** 执行器设置：worker 模型、并发数、工单目录根（留空默认为 `<stateDir>/work`）、`prepare` 命令以及被封锁的命令。 */
 export const ExecutorConfigSchema = z.object({
   model: RoleModelSchema.nullable().default(null),
   maxWorkers: z.number().int().min(LIMITS.maxWorkers.min).max(LIMITS.maxWorkers.max).default(3),
-  directory: z.string().trim().refine(path => path === '' || path.startsWith('/'), 'An absolute path, or empty for <stateDir>/work').default(''),
+  directory: z.string().trim().refine(path => path === '' || path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path),
+    'An absolute path, or empty for <stateDir>/work').default(''),
   prepare: z.string().max(LIMITS.prepareCommand).default(''),
   blockedCommands: z.array(CommandNameSchema).default([]),
 }).strict()
@@ -110,8 +111,8 @@ export type SettingsOrigin = 'panel' | 'tool' | 'sync'
 
 export const POLICY_REVISION = 'mandate-v3'
 /**
- * Compute a version hash for settings that affect work authorization.
- * Changes to models, concurrency, pause state, or polling intervals do not invalidate existing decisions.
+ * 为影响工作授权的设置计算版本哈希。
+ * 模型、并发数、暂停状态或轮询间隔的变更不会使既有决定失效。
  */
 export function policyVersion(settings: Settings): string {
   return key(POLICY_REVISION, JSON.stringify({ rules: settings.policy.rules, mode: settings.eval.mode, sources: settings.policy.sources }))
@@ -119,7 +120,7 @@ export function policyVersion(settings: Settings): string {
 export function allowedSender(settings: Settings, actor: ActorRef): z.infer<typeof AllowedSchema> | undefined {
   return settings.policy.sources[actor.source]?.allowed.find(entry => sameName(entry.id, actor.id))
 }
-/** Look up `actor` in the Source's `bots` policy list (validated by the Source's kind), whose messages are admitted as inferred candidates at most. */
+/** 在 Source 的 `bots` 策略列表（按该 Source 的 kind 校验）中查找 `actor`，其消息至多作为推断候选被接纳。 */
 export function listedBot(settings: Settings, actor: ActorRef): z.infer<typeof AllowedSchema> | undefined {
   const bots = z.array(AllowedSchema).catch([]).parse(settings.policy.sources[actor.source]?.bots ?? [])
   return bots.find(entry => sameName(entry.id, actor.id))
@@ -127,7 +128,7 @@ export function listedBot(settings: Settings, actor: ActorRef): z.infer<typeof A
 export const anyoneAllowed = (settings: Settings): boolean => Object.values(settings.policy.sources).some(part => part.allowed.length > 0)
 const senderName = (entry: z.infer<typeof AllowedSchema>): string => entry.name || entry.id
 
-/** Check whether a thread has tickets of its own (excluding context-only subscriptions). */
+/** 检查一个线程是否拥有属于自己的工单（排除仅作为上下文的订阅）。 */
 const participating = (thread: Thread, tickets: Ticket[]): boolean =>
   [...thread.subscriptions, ...tickets.map(ticket => ticket.id)].some(id => !thread.context?.includes(id))
 const listened = (sources: SourceScope, source: string, meta: Record<string, unknown>) => sources.scope({ source, meta })
@@ -140,7 +141,7 @@ function admissionOf(settings: Settings, source: string, row: string | undefined
 }
 const STRENGTH: Readonly<Record<Admission, number>> = { ignore: 0, inferred: 1, explicit: 2 }
 
-/** Compute how a settings change from `old` to `now` affects the authorization or matched rules of each open ticket. */
+/** 计算设置从 `old` 到 `now` 的变更会如何影响每个未结工单的授权或所匹配的规则。 */
 export function policyEffects(tickets: readonly Ticket[], old: Settings, now: Settings, scope: (settings: Settings) => SourceScope):
   Map<string, PolicyEffect> {
   const before = settingsPolicy(old, scope(old)), after = settingsPolicy(now, scope(now))
@@ -153,7 +154,7 @@ export function policyEffects(tickets: readonly Ticket[], old: Settings, now: Se
     })
     const effect: PolicyEffect = rules.length ? { rules } : {}
     if (before.revalidate(ticket.mandate) && !after.revalidate(ticket.mandate)) {
-      // With the previous accept mode and rules, the Mandate holds unless the sender or receiving scope lost authorization.
+      // 在沿用原先的接单模式和规则时，授权依然成立，除非发件人或接收范围失去了授权。
       const asBefore = { ...now, eval: old.eval, policy: { ...now.policy, rules: old.policy.rules } }
       if (!settingsPolicy(asBefore, scope(now)).revalidate(ticket.mandate)) {
         Object.assign(effect, { requesterAllowed: false, requester: ticket.mandate.actor })
@@ -163,11 +164,11 @@ export function policyEffects(tickets: readonly Ticket[], old: Settings, now: Se
   }
   return effects
 }
-/** Build the active Policy for gating incoming Triggers and revalidating existing Ticket Mandates. */
+/** 构建生效的策略，用于对收到的触发做准入，并重新校验既有工单的授权。 */
 export function settingsPolicy(settings: Settings, sources: SourceScope): Policy {
   const version = policyVersion(settings)
   const mode = settings.eval.mode
-  /** Gate non-human triggers: only listed bots (as inferred candidates) and senderless system/CI events may pass; other bots are rejected. */
+  /** 对非人类触发做准入：只有已列出的 bot（作为推断候选）和无发件人的系统/CI 事件可以通过；其余 bot 一律拒绝。 */
   const machineGate = (trigger: Trigger): GateResult => {
     const bot = trigger.actor.id ? listedBot(settings, trigger.actor) : undefined
     if (trigger.actor.id && !bot) return { admissible: false, reason: 'not_human' }
@@ -196,13 +197,13 @@ export function settingsPolicy(settings: Settings, sources: SourceScope): Policy
       const recorded = { source: trigger.source, scope: trigger.meta, ...row === undefined ? {} : { row }, ...allowed ? { sender: senderName(allowed) } : {} }
       if (allowed && trigger.addressed) return { admissible: true, strength: 'explicit', basis: { ...recorded, via: 'addressed', addressed: trigger.addressed } }
       const cell = admissionCell(!!allowed, !!trigger.addressed)!
-      // Unaddressed messages only use the admission table when the Source observes all messages in that scope.
+      // 只有当 Source 观察该范围内的所有消息时，未点名的消息才会使用准入表。
       const receivable = !!trigger.addressed || (scope.listened && scope.observed)
       const admission = receivable ? admissionOf(settings, trigger.source, row, cell) : 'ignore'
       const basis = { ...recorded, via: 'admission' as const, cell, ...trigger.addressed ? { addressed: trigger.addressed } : {} }
-      // Check explicit admission cells before thread follow-ups so a thread's tickets never weaken an explicit request to a follow-up.
+      // 先检查显式准入单元格，再检查线程跟进，使线程中的工单永远不会把显式请求弱化成跟进。
       if (admission === 'explicit') return { admissible: true, strength: 'explicit', basis }
-      // Direct-message threads belong to one sender (no follow-up for others), and inferred follow-ups require an accept mode other than off (when off, the table decides).
+      // 单聊线程只属于一个发件人（其他人的消息不构成跟进），而推断跟进要求接单模式不是 off（off 时由准入表决定）。
       if (!(trigger.addressed === 'direct' && !allowed) && (allowed || mode !== 'off') && participating(thread, tickets)) {
         return { admissible: true, strength: allowed ? 'explicit' : 'inferred', basis: { ...recorded, via: 'followup' } }
       }
@@ -211,30 +212,30 @@ export function settingsPolicy(settings: Settings, sources: SourceScope): Policy
     },
     admitsInferred: rules => mode === 'auto' && rules.length > 0 && rules.every(id => settings.policy.rules.some(rule => rule.enabled && rule.id === id)),
     revalidate(mandate: Mandate) {
-      // Revalidation rules follow docs/002 (Eval path; Resume revalidates).
+      // 重新校验规则遵循 docs/002（评估路径；Resume 时重新校验）。
       const { basis } = mandate
       const { source } = basis
       const current = source && basis.scope ? listened(sources, source, basis.scope) : undefined
       if (current && !current.listened) return false
       const rulesOn = (rules: string[] | undefined) => (rules ?? []).every(id => settings.policy.rules.some(rule => rule.enabled && rule.id === id))
-      // Explicit follow-ups remain valid; inferred follow-ups require auto mode and enabled matched rules.
+      // 显式跟进仍然有效；推断跟进要求 auto 模式且所匹配的规则均处于启用状态。
       if (basis.via === 'followup') return mandate.strength === 'explicit' || (mode === 'auto' && rulesOn(basis.rules))
-      // A bot's candidate holds only while the bot remains on its Source's bot list and passes the observation checks below.
+      // bot 的候选只有在该 bot 仍在其 Source 的 bot 列表上、并通过下方的观察检查时才保持有效。
       if (basis.via === 'bot' && !listedBot(settings, mandate.actor)) return false
-      // An admission-table Mandate holds while the sender's current cell still grants at least the original strength.
+      // 只要发件人当前所在单元格仍授予不低于原始强度的准入，准入表授权就保持有效。
       if (basis.via === 'admission') {
         const { cell } = basis
         const listed = !!allowedSender(settings, mandate.actor)
-        // A listed sender who addresses the agent is always explicit and uses no table cell.
+        // 已列出的发件人只要点名 agent 就始终是显式请求，不使用任何表格单元格。
         if (cell === 'unlistedAddressed' && listed) return true
-        // A sender added to the allowed list since acceptance moves to the listed cell, and still undergoes observation checks below.
+        // 接受之后被加入 allowed 列表的发件人会切换到已列出单元格，但仍需通过下方的观察检查。
         const now = cell === 'unlistedUnaddressed' && listed ? 'listedUnaddressed' : cell
         if (now === 'listedUnaddressed' && !listed) return false
         const admission = admissionOf(settings, source ?? '', current?.listened ? current.row : undefined, now)
         if (STRENGTH[admission] < STRENGTH[mandate.strength]) return false
         if (mandate.strength === 'explicit') return true
       } else if (basis.via !== 'bot' && !allowedSender(settings, mandate.actor)) return false
-      // Observed/inferred Mandates hold only while auto mode is active and all matched rules remain enabled.
+      // 观察/推断产生的授权只有在 auto 模式激活且所有匹配规则仍启用时才保持有效。
       if ((basis.via === 'admission' || basis.via === 'listed' || basis.via === 'bot') && basis.observation) return mode === 'auto' && rulesOn(basis.rules)
       return true
     },

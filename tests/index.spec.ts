@@ -2,7 +2,7 @@ import { expect, it, vi } from 'vitest'
 import { Config, type Machine } from '../src/deployment.ts'
 import { apply } from '../src/index.ts'
 
-// Stub Runtime to capture the resolved Machine settings and restart callback.
+// 替换 Runtime 以捕获解析出的 Machine 设置与重启回调。
 const runtimes = vi.hoisted(() => [] as { machine: Machine; restart: () => void }[])
 vi.mock('../src/app/runtime.ts', () => ({ Runtime: class {
   ready = Promise.resolve()
@@ -10,7 +10,7 @@ vi.mock('../src/app/runtime.ts', () => ({ Runtime: class {
   configured() { return true }
   async stop() {}
 } }))
-/** Simulate the Cordis loader updating a volatile configuration reference in place. */
+/** 模拟 Cordis 加载器原地更新易变的配置引用。 */
 const commit = (reference: unknown, value: unknown) => { (reference as Record<symbol, (value: unknown) => void>)[Symbol.for('cosmokit.volatile.write')]!(value) }
 
 function context() {
@@ -28,7 +28,7 @@ function context() {
   return { ctx, handlers, configure, describe }
 }
 
-it('reads a limit DSH commits a new value of without a restart, and asks DSH to generate no settings page', async () => {
+it('读取 DSH 无需重启即可提交新值的上限，并要求 DSH 不生成设置页', async () => {
   const { ctx, handlers, configure } = context()
   const config = Config({ stateDir: '/srv/state', promptMaxChars: 5000 })
   await apply(ctx as never, config)
@@ -41,12 +41,12 @@ it('reads a limit DSH commits a new value of without a restart, and asks DSH to 
   expect(ctx.fiber.restart).not.toHaveBeenCalled()
 })
 
-it('asks DSH to read its settings entry again once a restart it started finished', async () => {
+it('在其发起的重启完成后，要求 DSH 重新读取其设置条目', async () => {
   const { ctx, describe } = context()
   let finish = () => {}
   ctx.fiber.restart.mockImplementation(() => new Promise<void>(resolve => { finish = resolve }))
   await apply(ctx as never, Config({ stateDir: '/srv/state' }))
-  // Saving a Source account change restarts dsh-superagent, which re-runs setup and refreshes the settings descriptor.
+  // 保存 source 账号变更会重启 dsh-superagent-cn，后者重跑 setup 并刷新设置描述符。
   runtimes.at(-1)!.restart()
   await Promise.resolve()
   expect(describe).not.toHaveBeenCalled()
@@ -54,7 +54,7 @@ it('asks DSH to read its settings entry again once a restart it started finished
   await vi.waitFor(() => { expect(describe).toHaveBeenCalledTimes(1) })
 })
 
-it('refuses keys of the previous configuration before registering anything', async () => {
+it('在注册任何东西之前拒绝上一个配置的键', async () => {
   const { ctx } = context()
   await expect(apply(ctx as never, Config({ stateDir: '/srv/state', github: { cli: 'gh' } } as never))).rejects.toThrow('github (now on the GitHub Source)')
   expect(ctx.on).not.toHaveBeenCalled()

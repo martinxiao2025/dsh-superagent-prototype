@@ -1,4 +1,4 @@
-/** Browser plugin entry point registering the sidebar icon, main management panel, and Plugin Manager config view. */
+/** 浏览器插件入口：注册侧边栏图标、主管理面板以及插件管理器的配置视图。 */
 import { useCallback, useEffect, useRef } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
@@ -17,9 +17,9 @@ import { en, zh } from './locales.ts'
 import type { T } from './text.ts'
 
 type ClientContext = Context & { sessions: ISessions }
-const NS = 'dshSuperagent'
-const PANEL_ID = 'dsh-superagent' as MainPanelId
-const ENTRY = 'dsh-superagent'
+const NS = 'dshSuperagentCn'
+const PANEL_ID = 'dsh-superagent-cn' as MainPanelId
+const ENTRY = 'dsh-superagent-cn'
 
 function HammerIcon({ size }: SidebarPanelIconOwnerProps) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -27,7 +27,7 @@ function HammerIcon({ size }: SidebarPanelIconOwnerProps) {
   </svg>
 }
 
-/** Mounted panel wrapper; cancels any pending Session navigation when a new one starts or the panel unmounts. */
+/** 已挂载面板的包装组件；在新的 Session 导航开始或面板卸载时取消仍在等待的 Session 导航。 */
 function Mounted({ ctx, t }: { ctx: ClientContext; t: T }) {
   const pending = useRef<AbortController>(undefined)
   useEffect(() => () => { pending.current?.abort() }, [])
@@ -46,9 +46,9 @@ function Mounted({ ctx, t }: { ctx: ClientContext; t: T }) {
 }
 
 export const inject = ['slots', 'locale', 'sessions', 'uiWorkspace']
-/** Registers the panel, sidebar icon, and Plugin Manager config view; `configForms` is optional (without it, machine settings are read-only). */
+/** 注册面板、侧边栏图标与插件管理器配置视图；`configForms` 是可选的（没有它时本机设置为只读）。 */
 export function apply(ctx: ClientContext): void {
-  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-superagent: dictionaries')
+  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-superagent-cn: dictionaries')
   const t = ctx.locale.bind(NS)
   ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID, locale: NS, inject: () => ({}) },
     (props: { t: T }) => <Mounted ctx={ctx} t={props.t} />))

@@ -21,7 +21,7 @@ async function fixture() {
   const record = (selection: ModelSelection) => { const event = session.append('request/header', { header: { config: selection }, reason: 'initial' }); ctx.emit('session/event', session, event) }
   return { ctx, agent, host, resolve, flush, request, record }
 }
-it('keeps prompt variables and initial routing on the role model without saving the host default', async () => {
+it('在角色模型上保留 prompt 变量与初始路由，而不保存宿主默认值', async () => {
   const { ctx, agent, request, record, flush } = await fixture()
   await initializeRoleModel(ctx, agent, { provider: 'worker-provider', model: 'worker-model' })
   expect((await ctx.systemPrompt.assemble()).variables).toMatchObject({ provider: 'worker-provider', model: 'worker-model' })
@@ -30,12 +30,12 @@ it('keeps prompt variables and initial routing on the role model without saving 
   expect(agent.session.snapshotEvents().some(event => event.type === 'model/selection')).toBe(true)
   expect(flush).toHaveBeenCalledOnce()
   record(selected)
-  // A retry of the same assembled step keeps the same model even after the header is persisted.
+  // 同一已组装步骤的重试保持同一模型，即使 header 已持久化。
   expect(await request()).toEqual(selected)
   await ctx.systemPrompt.assemble()
   expect(await request()).toEqual(selected)
 })
-it('lets a later explicit selection win without changing the in-flight assembled step', async () => {
+it('让后来的显式选择生效，而不改变进行中的已组装步骤', async () => {
   const { ctx, agent, host, request } = await fixture()
   await initializeRoleModel(ctx, agent, { provider: 'worker', model: 'one' })
   await ctx.systemPrompt.assemble()
@@ -46,7 +46,7 @@ it('lets a later explicit selection win without changing the in-flight assembled
   await ctx.systemPrompt.assemble()
   expect(await request()).toEqual(manual)
 })
-it.each(['header', 'selection'])('preserves a resumed Session with existing %s', async kind => {
+it.each(['header', 'selection'])('恢复 Session 时保留已有的 %s', async kind => {
   const { ctx, agent, resolve } = await fixture()
   const existing = { provider: 'existing', model: 'keep' }
   if (kind === 'header') agent.session.append('request/header', { header: { config: existing }, reason: 'initial' })
@@ -54,7 +54,7 @@ it.each(['header', 'selection'])('preserves a resumed Session with existing %s',
   await initializeRoleModel(ctx, agent, { provider: 'worker', model: 'new' })
   expect(resolve).not.toHaveBeenCalled()
 })
-it('inherits the host when unset and fails unavailable routes before recording a selection', async () => {
+it('未设置时继承宿主，并在记录选择前先让不可用的路由失败', async () => {
   const { ctx, agent, resolve, request } = await fixture()
   await initializeRoleModel(ctx, agent, null)
   await ctx.systemPrompt.assemble()

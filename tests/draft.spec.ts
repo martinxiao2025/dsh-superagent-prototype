@@ -5,40 +5,40 @@ import type { T } from '../src/client/text.ts'
 const merged = (base: unknown, mine: unknown, theirs: unknown) => { const conflicts: string[][] = []; return { value: merge3(base, mine,
   theirs, conflicts), conflicts } }
 
-it('takes each key from the side that changed it, through nested records', () => {
+it('每个键取自改动它的一方，嵌套记录也是如此', () => {
   const base = { mode: 'observe', model: { provider: 'a', model: 'x' }, skills: { one: '1', two: '2' } }
   expect(merged(base, { ...base, mode: 'auto', skills: { one: '1!', two: '2' } }, { ...base, model: { provider: 'b', model: 'x' },
     skills: { one: '1', two: '2?' } }))
     .toEqual({ value: { mode: 'auto', model: { provider: 'b', model: 'x' }, skills: { one: '1!', two: '2?' } }, conflicts: [] })
 })
 
-it('keeps mine where both sides changed a key, and names it by its path', () => {
+it('双方都改了某个键时保留己方，并按其路径命名冲突', () => {
   const base = { eval: { timeoutSeconds: 120, mode: 'off' } }
   expect(merged(base, { eval: { timeoutSeconds: 60, mode: 'off' } }, { eval: { timeoutSeconds: 300, mode: 'auto' } }))
     .toEqual({ value: { eval: { timeoutSeconds: 60, mode: 'auto' } }, conflicts: [['eval', 'timeoutSeconds']] })
 })
 
-it('removes a key one side removed, unless the other side changed it', () => {
+it('一方删除的键会被移除，除非另一方改动过它', () => {
   const base = { skills: { one: '1', two: '2', three: '3' } }
   expect(merged(base, { skills: { two: '2', three: '3!' } }, { skills: { one: '1', two: '2' } }))
     .toEqual({ value: { skills: { two: '2', three: '3!' } }, conflicts: [['skills', 'three']] })
 })
 
-it('merges lists of named elements element by element, in their order, with what each side added', () => {
+it('按名称逐个合并元素列表，保持顺序，并纳入各方新增的内容', () => {
   const rule = (id: string, name: string) => ({ id, name, enabled: true })
   const base = [rule('a', 'A'), rule('b', 'B'), rule('c', 'C')]
-  // Mine renames a, removes c, and adds d after b; theirs renames b, prepends e, and removes nothing.
+  // 己方重命名 a、删除 c、并在 b 后添加 d；对方重命名 b、在最前面插入 e、不删除任何内容。
   const mine = [rule('a', 'A!'), rule('b', 'B'), rule('d', 'D')]
   const theirs = [rule('e', 'E'), rule('a', 'A'), rule('b', 'B?'), rule('c', 'C')]
   expect(merged({ rules: base }, { rules: mine }, { rules: theirs }))
     .toEqual({ value: { rules: [rule('e', 'E'), rule('a', 'A!'), rule('b', 'B?'), rule('d', 'D')] }, conflicts: [] })
-  // Chat rows are keyed by chatId; concurrent edits to the same row field conflict on that row only.
+  // 会话行以 chatId 为键；对同一行字段的并发编辑只在该行上冲突。
   const chats = (listen: string, other: string) => [{ chatId: 'oc_1', listen }, { chatId: 'oc_2', listen: other }]
   expect(merged(chats('mentions', 'mentions'), chats('all', 'mentions'), chats('none', 'all')))
     .toEqual({ value: chats('all', 'all'), conflicts: [['oc_1', 'listen']] })
 })
 
-it('merges a list without names as a whole', () => {
+it('没有名称的列表整体合并', () => {
   expect(merged(['a'], ['a', 'b'], ['c'])).toEqual({ value: ['a', 'b'], conflicts: [[]] })
   expect(merged(['a'], ['a'], ['c'])).toEqual({ value: ['c'], conflicts: [] })
 })
@@ -53,7 +53,7 @@ const edit = (value: Value, from = saved, revision = 1): DraftAction<Value, unde
 const arrived = (value: Value, revision: number): DraftAction<Value, undefined> =>
   ({ type: 'revisionArrived', saved: value, revision })
 
-it('saves an edit and shows it until its revision is read back, holding edits and other revisions while the save runs', () => {
+it('保存一次编辑并展示它，直到其版本被读回；保存期间暂存编辑与其他版本', () => {
   const mine = { mode: 'auto', limit: 1 }
   const saving = after([edit(mine), { type: 'submit' }])
   expect(saving).toMatchObject({ phase: 'saving', draft: { base: saved, value: mine, revision: 1 } })
@@ -65,7 +65,7 @@ it('saves an edit and shows it until its revision is read back, holding edits an
   expect(after([edit(mine), edit(saved)])).toEqual({ phase: 'clean', seen: 1 })
 })
 
-it('merges another saved revision into a draft, tells a merge from a conflict, and keeps only the conflict across an edit', () => {
+it('把另一个已保存版本合并进草稿，区分合并与冲突，并在编辑后只保留冲突', () => {
   const editing = after([edit({ mode: 'auto', limit: 1 })])
   const merged = after([arrived({ mode: 'off', limit: 5 }, 2)], editing)
   expect(merged).toMatchObject({ phase: 'editing', seen: 2, notice: { kind: 'merged', revision: 2 },
@@ -74,11 +74,11 @@ it('merges another saved revision into a draft, tells a merge from a conflict, a
   expect(saveBarText(t, conflict)).toEqual({ error: 'saveConflict', status: '' })
   expect(after([edit({ mode: 'auto', limit: 6 }, { mode: 'off', limit: 5 }, 2)], merged).notice).toBeUndefined()
   expect(after([edit({ mode: 'auto', limit: 2 }, { mode: 'observe', limit: 1 }, 2)], conflict).notice).toMatchObject({ kind: 'conflict' })
-  // Another save that made the same change leaves nothing to save.
+  // 另一次保存做了相同改动时，就没有需要保存的内容了。
   expect(after([arrived({ mode: 'auto', limit: 1 }, 2)], editing)).toEqual({ phase: 'clean', seen: 2 })
 })
 
-it('keeps a refused save as a draft with why, and words a restored draft unless its block words its drafts itself', () => {
+it('被拒绝的保存保留为带原因的草稿，并措辞恢复的草稿，除非其 block 自行措辞草稿', () => {
   const saving = after([edit({ mode: 'auto', limit: 1 }), { type: 'submit' }])
   expect(saveBarText(t, after([{ type: 'refused', notice: { kind: 'rebasing' } }], saving))).toEqual({ status: 'saveRebasing' })
   const invalid = after([{ type: 'refused', notice: { kind: 'invalid', fields: ['limit', 'mode'] } }], saving)
@@ -92,7 +92,7 @@ it('keeps a refused save as a draft with why, and words a restored draft unless 
     .toEqual({ status: 'Prompts at 2' })
 })
 
-it('waits for the revision its save made, keeping the value it sent, while an older revision arrives', () => {
+it('等待其保存产生的版本并保留其发送的值，期间旧版本到达', () => {
   const sent = { mode: 'auto', limit: 1 }
   const waiting = after([edit(sent), { type: 'submit' }, { type: 'saved', revision: 3, restarting: false }])
   const older = after([arrived(saved, 2)], waiting)
@@ -101,14 +101,14 @@ it('waits for the revision its save made, keeping the value it sent, while an ol
   expect(after([arrived(sent, 3)], older)).toEqual({ phase: 'clean', seen: 3 })
 })
 
-it('keeps editing when the browser cannot store the draft, and says so', () => {
+it('浏览器无法存储草稿时继续编辑，并如实说明', () => {
   const unstored = after([edit({ mode: 'auto', limit: 1 }), { type: 'refused', notice: { kind: 'unstored', error: 'QuotaExceededError' } }])
   expect(unstored.phase).toBe('editing')
   expect(saveBarText(t, unstored)).toEqual({ error: 'draftFailed {"error":"QuotaExceededError"}', status: '' })
   expect(after([edit({ mode: 'auto', limit: 2 })], unstored).notice).toEqual({ kind: 'unstored', error: 'QuotaExceededError' })
 })
 
-it('removes an element of a named list that mine deleted and theirs changed, and names the conflict', () => {
+it('移除命名列表中己方删除而对方改动的元素，并指出冲突', () => {
   const rule = (id: string, name: string) => ({ id, name })
   expect(merged([rule('a', 'A'), rule('b', 'B')], [rule('a', 'A')], [rule('a', 'A'), rule('b', 'B?')]))
     .toEqual({ value: [rule('a', 'A')], conflicts: [['b']] })

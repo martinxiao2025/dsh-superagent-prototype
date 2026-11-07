@@ -3,7 +3,7 @@ import { SKILL_NAME, defaultPrompts } from '../src/app/prompts.ts'
 import { changedSections, lineDiff, partText, partWith, sectionText, skillNameFree, withOverride, withOverrides, withSection, withoutSkill }
   from '../src/client/prompt-config.ts'
 
-it('reads and writes a configuration by section, and lists the sections two configurations differ in', () => {
+it('按小节读写配置，并列出两个配置有差异的小节', () => {
   const config = withSection(defaultPrompts(), 'skill/testing', 'Run the tests.')
   expect(sectionText(config, 'skill/testing')).toBe('Run the tests.')
   expect([sectionText(config, 'runtime/shared'), sectionText(config, 'skill/github'), sectionText(config, 'skills')])
@@ -13,7 +13,7 @@ it('reads and writes a configuration by section, and lists the sections two conf
     builtin: ['github'] }))).toEqual([false, false, false, true])
 })
 
-it('diffs two texts by line, folding a long unchanged run to its ends, and reads a team part with another text', () => {
+it('按行对两段文本做 diff，把长段未变更区间折叠到两端，并用另一段文本读取团队部件', () => {
   expect(lineDiff('a\nb\nc\nd\ne\nf\nold', 'a\nb\nc\nd\ne\nf\nnew')).toEqual([{ kind: 'same', text: 'a' }, { kind: 'fold', count: 4 },
     { kind: 'same', text: 'f' }, { kind: 'ins', text: 'new' }, { kind: 'del', text: 'old' }])
   expect(lineDiff('a\nb', 'a\nx\nb')).toEqual([{ kind: 'same', text: 'a' }, { kind: 'ins', text: 'x' }, { kind: 'same', text: 'b' }])
@@ -21,18 +21,18 @@ it('diffs two texts by line, folding a long unchanged run to its ends, and reads
   expect(partWith({ name: 'skill/testing' }, 'Theirs')).toBe('Theirs')
 })
 
-it('overrides a built-in part, keeping the built-in text it was edited from until re-based, and drops an override equal to the built-in text', () => {
+it('覆盖内置部件，在重新基于前保留其编辑时依据的内置文本，并丢弃与内置文本相同的覆盖', () => {
   const part = { key: 'runtime/shared', roles: ['orchestrator', 'worker'] as ('orchestrator' | 'worker')[], text: 'Built in.', base: 'now' }
   const edited = withOverride(defaultPrompts(), part, 'Ours.')
   expect(edited.overrides).toEqual({ 'runtime/shared': { text: 'Ours.', base: 'now' } })
   expect([sectionText(edited, 'part/runtime/shared'), partText(edited, part), partText(defaultPrompts(), part)]).toEqual(['Ours.', 'Ours.', 'Built in.'])
-  // An override edited from an earlier built-in text keeps that base while edited, and takes the current one when re-based.
+  // 从较早内置文本编辑而来的覆盖，在编辑期间保留那个 base，重新基于后则采用当前文本。
   const earlier = { ...defaultPrompts(), overrides: { 'runtime/shared': { text: 'Ours.', base: 'earlier' } } }
   expect(withOverride(earlier, part, 'Ours, edited.').overrides).toEqual({ 'runtime/shared': { text: 'Ours, edited.', base: 'earlier' } })
   const rebased = withOverride(earlier, part, 'Ours.', true)
   expect(rebased.overrides).toEqual({ 'runtime/shared': { text: 'Ours.', base: 'now' } })
   expect(changedSections(rebased, earlier)).toEqual(['part/runtime/shared'])
-  // The editor keeps no overrides as an empty map, which the host stores as none.
+  // 编辑器把「无覆盖」表示为空 map，宿主据此将其存为无覆盖。
   expect(withOverride(edited, part, 'Built in.')).toEqual(withOverrides(defaultPrompts()))
   expect(withOverride(edited, part, undefined)).toEqual({ ...defaultPrompts(), overrides: {} })
 })

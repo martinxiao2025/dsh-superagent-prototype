@@ -1,4 +1,4 @@
-/** Source status view: health, 24-hour trigger counts, and recently filtered or dropped messages per Source instance. */
+/** Source 状态视图：每个 Source 实例的健康状态、24 小时触发计数，以及近期被过滤或丢弃的消息。 */
 import { threadKey } from '../../core/index.ts'
 import type { Deployment } from '../../deployment.ts'
 import type { Health } from '../../sources/host.ts'
@@ -9,7 +9,7 @@ import { dayAgo, snapshot, type ViewHost } from './records.ts'
 import { preview } from './text.ts'
 
 export type HealthMap = Record<string, Health>
-/** Resolves health entries for a Source instance, treating stale `sourceOff` entries on an enabled Source as `starting`. */
+/** 解析一个 Source 实例的健康条目；已启用的 Source 上过期的 `sourceOff` 条目按 `starting` 处理。 */
 export function sourceHealth(sources: SourceRegistry, instance: SourceInstance, health: HealthMap) {
   const kind = sources.kind(instance.kind)
   const starting: Health = { state: 'starting', detail: '' }
@@ -20,15 +20,15 @@ export function sourceHealth(sources: SourceRegistry, instance: SourceInstance, 
   return { id: instance.id, title: kind?.title ?? { zh: instance.id, en: instance.id }, health: parts }
 }
 export interface SetupState {
-  /** Resolved deployment facts; undefined while waiting for initial setup. */
+  /** 已解析的部署事实；等待初始 setup 期间为 undefined。 */
   deployment?: Deployment | undefined
-  /** Setup failure that stops all Sources. */
+  /** 使所有 Source 停止的 setup 失败。 */
   problem?: SetupProblem | undefined
-  /** Feishu bot check failure that pauses only the Feishu Source. */
+  /** 只暂停飞书 Source 的飞书机器人检查失败。 */
   feishuProblem?: SetupProblem | undefined
 }
 export const problemOf = (id: string, setup: SetupState) => [setup.problem, setup.feishuProblem].find(problem => problem?.place === id)
-/** Source lifecycle state in priority order: missing kind, disabled, setup/part error, blocked on global setup, starting, paused, or ready. */
+/** Source 生命周期状态，按优先级排列：缺少 kind、被禁用、setup/部件错误、被全局 setup 阻塞、启动中、已暂停或就绪。 */
 export type SourceState = 'missing' | 'off' | 'error' | 'setup' | 'starting' | 'paused' | 'ready'
 function sourceState(instance: SourceInstance & { installed: boolean }, parts: { state: string }[], setup: SetupState): SourceState {
   if (!instance.installed) return 'missing'
@@ -56,9 +56,9 @@ export function sourcesStatus(host: ViewHost, health: HealthMap, setup: SetupSta
   })
 }
 export type SourceStatusView = ReturnType<typeof sourcesStatus>[number]
-/** Replies dropped in the last 24 hours, enriched with their associated ticket and thread. */
+/** 最近 24 小时内被丢弃的回复，附上其关联的工单与线程。 */
 export function droppedReplies({ store, links }: Pick<ViewHost, 'store' | 'links'>) {
-  // Fetch the exact 24-hour dropped count so this list's length matches the overview's `dropped` metric.
+  // 取准确的 24 小时丢弃计数，使本列表的长度与总览的 `dropped` 指标一致。
   return store.read.droppedReplies(store.read.droppedSince(dayAgo())).map(item => {
     const ticket = item.ticketId ? store.tickets.get(item.ticketId) : undefined
     const { triggerId } = links(item.channel)

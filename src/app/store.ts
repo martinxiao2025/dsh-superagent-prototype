@@ -1,4 +1,4 @@
-/** SQLite persistence for domain aggregates, key-value state, settings history, and the channel outbox. */
+/** 领域聚合、键值状态、设置历史与渠道发件箱的 SQLite 持久化。 */
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite'
 import { chmodSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
@@ -10,27 +10,27 @@ import { OLDEST_SCHEMA, SCHEMA_VERSION, migrateTo11, tooOld } from './migration.
 import { Versions } from './versions.ts'
 import { storeReads } from './store-read.ts'
 
-/** A Trigger's position on its thread timeline, ordered by timestamp and then `id` as tie-breaker. */
+/** 触发在线程时间线上的位置，按时间戳排序、再以 `id` 决胜。 */
 export interface TimelinePlace { at: string; id: string }
-/** Why a message was dropped: its conversation can never receive it (`channelGone`), or its Source no longer listens to it (`channelIgnored`). */
+/** 消息被丢弃的原因：其会话永远收不到它（`channelGone`），或其 Source 已不再监听它（`channelIgnored`）。 */
 export type DropReason = 'channelGone' | 'channelIgnored'
-/** Outbound message receipt tracked in the outbox from the moment it is queued (`pending`, `sent`, or `dropped`); delivery attempt counts live on its `reply` effect. */
+/** 出站消息回执，从入队起就在发件箱中跟踪（`pending`、`sent` 或 `dropped`）；投递尝试计数保存在其 `reply` effect 上。 */
 export interface Receipt extends OutboundMessage { status: ReplyStatus; dropped?: { at: string; reason: DropReason } }
-/** A dropped outbound message receipt, with the timestamp and reason it was dropped. */
+/** 已丢弃的出站消息回执，附丢弃的时间戳与原因。 */
 export type Dropped = Receipt & { dropped: { at: string; reason: DropReason } }
-/** Saved settings snapshot with the policy version and ticket notifications it produced (`internal` saves have no origin). */
+/** 已保存的设置快照，附其产生的策略版本与工单通知（`internal` 保存没有来源）。 */
 export interface SettingsVersion {
   revision: number; savedAt: string; source: SettingsOrigin | 'internal'; block?: SettingsSave
   policyVersion: string; policyChanged: boolean; notified: string[]; settings: Settings
 }
 /**
- * Generated columns and partial indexes defining active working sets so passes scan only active rows.
- * Older databases missing a column get it added on open and populated by SQLite from stored JSON rows.
+ * 定义活跃工作集的生成列与部分索引，使 pass 只扫描活跃行。
+ * 缺少某列的旧数据库在打开时补上该列，并由 SQLite 从存储的 JSON 行填充。
  */
 const SETS: Record<string, Record<string, string>> = {
   ticket: {
     open: "INTEGER AS (CASE WHEN value -> '$.ended' IS NULL THEN 1 END)",
-    // Only the latest assignment can be pending or running because the Engine closes one before adding the next.
+    // 只有最后一个派工可能处于 pending 或 running，因为 Engine 在加入下一个之前会结束当前派工。
     active: `INTEGER AS (CASE WHEN json_array_length(value, '$.undelivered') > 0
       OR value ->> '$.assignments[#-1].state' IN ('pending', 'running') THEN 1 END)`,
   },
@@ -38,22 +38,22 @@ const SETS: Record<string, Record<string, string>> = {
     active: "INTEGER AS (CASE WHEN json_array_length(value, '$.pending') > 0 OR value -> '$.evaluating' IS NOT NULL THEN 1 END)",
     subscribed: "TEXT AS (CASE WHEN json_array_length(value, '$.subscriptions') > 0 THEN value ->> '$.ref.source' END)",
   },
-  // Composite key (ticketId + thread) used to preserve per-conversation reply order.
+  // 复合键（ticketId + thread），用于保持每个会话的回复顺序。
   outbox: { dropped: "TEXT AS (value ->> '$.dropped.at')", pending: `TEXT AS (CASE WHEN value ->> '$.status' = 'pending'
     AND value ->> '$.ticketId' IS NOT NULL THEN (value ->> '$.ticketId') || ' ' || (value ->> '$.channel.thread') END)` },
 }
 export { SCHEMA_VERSION }
 /**
- * SQLite backing store implementing domain `Repositories`, view read queries, versioned settings, outbox receipts, and key-value state.
- * The Runtime opens it after locking the state directory and automatically migrates supported older schemas on startup.
- * The Engine mutates domain aggregates inside `atomic` transactions while Sources, views, and the Outbox read state or update their own records.
+ * SQLite 底层存储，实现领域 `Repositories`、视图读取查询、带版本的设置、发件箱回执与键值状态。
+ * Runtime 在锁定状态目录之后打开它，并在启动时自动迁移受支持的旧 schema。
+ * Engine 在 `atomic` 事务内修改领域聚合，而 Source、视图与发件箱读取状态或更新自己的记录。
  */
 export class Store implements Repositories {
   readonly db: DatabaseSync
   /**
-   * Opens or creates the SQLite database at `path`, migrating schema 10 to schema 11 in a single transaction.
-   * @param report - Receives errors thrown by `afterCommit` callbacks without failing the committed transaction.
-   * @throws When the database schema is older than `OLDEST_SCHEMA` (10), newer than `SCHEMA_VERSION` (11), or when migration fails; in every case the database file is left unchanged and the SQLite handle is closed so a later attempt in the same process can open it.
+   * 打开或创建 `path` 处的 SQLite 数据库，在单个事务内把 schema 10 迁移到 schema 11。
+   * @param report - 接收 `afterCommit` 回调抛出的错误，而不使已提交的事务失败。
+   * @throws 数据库 schema 比 `OLDEST_SCHEMA`（10）旧、比 `SCHEMA_VERSION`（11）新或迁移失败时抛出；任何情况下数据库文件都保持不变并关闭 SQLite 句柄，使同进程稍后的尝试可以重新打开。
    */
   constructor(path: string, private readonly report: (error: unknown) => void = () => {}) {
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
@@ -99,11 +99,11 @@ export class Store implements Repositories {
       throw error
     }
   }
-  /** Reconciles generated working-set columns and indexes when opening databases created by earlier versions. */
+  /** 打开旧版本创建的数据库时，调和生成的工作集列与索引。 */
   private addColumns(): void {
     const columns = (table: string) => new Set(this.db.prepare('SELECT name FROM pragma_table_xinfo(?)').all(table).map(row => String(row.name)))
     for (const [table, definitions] of Object.entries(SETS)) {
-      // Drop generated columns whose definition changed or that were removed, along with their index, before adding current ones.
+      // 在添加当前列之前，删除定义已变化或已被移除的生成列及其索引。
       const sql = String(this.db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(table)?.sql ?? '')
       const generated = this.db.prepare('SELECT name FROM pragma_table_xinfo(?) WHERE hidden IN (2, 3)').all(table).map(row => String(row.name))
       for (const name of generated) {
@@ -118,24 +118,24 @@ export class Store implements Repositories {
     }
     if (!columns('effect').has('generation')) this.db.exec('ALTER TABLE effect ADD COLUMN generation INTEGER NOT NULL DEFAULT 0')
   }
-  /** Closes the underlying SQLite database connection. */
+  /** 关闭底层 SQLite 数据库连接。 */
   close(): void { this.db.close() }
-  /** Parses JSON `value` columns returned by `sql`. */
+  /** 解析 `sql` 返回的 JSON `value` 列。 */
   private values<T>(sql: string, ...parameters: SQLInputValue[]): T[] {
     return this.db.prepare(sql).all(...parameters).map(row => JSON.parse(String(row.value)) as T)
   }
-  /** Re-indexes which threads a Trigger belongs to, replacing any rows from an earlier save of the same Trigger. */
+  /** 重建触发所属线程的索引，替换同一触发早先保存留下的行。 */
   private indexThreads(trigger: Trigger): void {
     this.db.prepare('DELETE FROM trigger_thread WHERE id=?').run(trigger.id)
     const insert = this.db.prepare('INSERT OR IGNORE INTO trigger_thread VALUES (?,?,?,?)')
     for (const ref of trigger.threads) insert.run(threadKey(ref), trigger.id, trigger.at, trigger.human ? 1 : 0)
   }
   private depth = 0
-  /** Callbacks queued to run once the outermost transaction commits, indexed by savepoint level; rolling back a level discards its callbacks. */
+  /** 排队等最外层事务提交后运行的回调，按 savepoint 层级索引；回滚某一层会丢弃该层的回调。 */
   private readonly committed: (() => void)[][] = []
   /**
-   * Executes `operation` in a savepoint transaction (nested inside the current transaction if any); a failure rolls back its changes.
-   * Post-commit callbacks run only after the outermost transaction commits, and callback errors are reported without failing the committed transaction.
+   * 在 savepoint 事务中执行 `operation`（若已有事务则嵌套其中）；失败会回滚其变更。
+   * 提交后回调只在外层事务提交之后运行，回调错误会被上报而不使已提交的事务失败。
    */
   atomic<T>(operation: () => T): T {
     const level = this.depth++
@@ -152,26 +152,26 @@ export class Store implements Repositories {
     return value
   }
   /**
-   * Schedules `action` to run once the outermost transaction commits, or immediately if outside a transaction;
-   * callbacks queued inside a transaction that rolls back are discarded and never run.
-   * Use `afterCommit` for immediate in-memory follow-ups to a committed write (such as refreshing health or cancelling an in-memory turn) that cannot wait for the effect queue and need not survive a restart; use `Effects` for durable side effects that must survive a crash.
+   * 安排 `action` 在最外层事务提交后运行；若不在事务中则立即运行。
+   * 在回滚事务内排队的回调会被丢弃，永不运行。
+   * `afterCommit` 用于对已提交写入的即时内存后续处理（如刷新健康状态或取消内存中的回合），它们不能等 effect 队列、也无需在重启后存续；必须经受崩溃的持久副作用请用 `Effects`。
    */
   afterCommit(action: () => void): void {
     if (this.depth) this.committed[this.depth - 1]!.push(action)
     else action()
   }
-  /** Reads a typed KV record by its key in `KV`. */
+  /** 按 `KV` 中的键读取带类型的 KV 记录。 */
   get<V>(name: Key<V>): V | undefined {
     const row = this.db.prepare('SELECT value FROM kv WHERE key=?').get(name)
     return row === undefined ? undefined : JSON.parse(String(row.value)) as V
   }
-  /** Writes a typed KV record under `name`. */
+  /** 在 `name` 下写入带类型的 KV 记录。 */
   set<V>(name: Key<V>, value: V): void {
     this.db.prepare('INSERT INTO kv VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(name, JSON.stringify(value))
   }
-  /** Deletes the KV record at `name`. */
+  /** 删除 `name` 处的 KV 记录。 */
   delete(name: string): void { this.db.prepare('DELETE FROM kv WHERE key=?').run(name) }
-  /** Returns all KV keys belonging to `family` or starting with `prefix`. */
+  /** 返回属于 `family` 或以 `prefix` 开头的所有 KV 键。 */
   keys<V>(family: Family<V, never>): Key<V>[]
   keys(prefix: string): string[]
   keys(family: string | { prefix: string }): string[] {
@@ -180,13 +180,13 @@ export class Store implements Repositories {
     return this.db.prepare("SELECT key FROM kv WHERE key LIKE ? ESCAPE '\\'").all(pattern).map(row => String(row.key))
   }
 
-  /** Versioned settings snapshots; the current settings are the snapshot of the latest revision. */
+  /** 带版本的设置快照；当前设置即最新修订的快照。 */
   private readonly settingsVersions = new Versions<SettingsVersion>(this, KV.settings.revision, KV.settings.version)
-  /** Current validated settings. */
+  /** 当前已校验的设置。 */
   settings(): Settings { return SettingsSchema.parse(this.settingsVersions.current()?.settings ?? {}) }
-  /** Revision of one settings block; each configuration page saves against its own block for optimistic concurrency. */
+  /** 一个设置块的修订；每个配置页面按自己的块保存，实现乐观并发。 */
   blockRevision(block: SettingsSave): number { return this.get(KV.settings.block(block)) ?? 0 }
-  /** Saves settings as the next revision (making it current) and increments `record.block`'s revision counter when present. */
+  /** 把设置保存为下一个修订（使其成为当前版本），并在 `record.block` 存在时递增其修订计数。 */
   saveSettings(value: unknown, record: Omit<SettingsVersion, 'revision' | 'savedAt' | 'settings'> = { source: 'internal', policyVersion: '', policyChanged: false, notified: [] }): Settings {
     const settings = SettingsSchema.parse(value)
     return this.atomic(() => {
@@ -195,7 +195,7 @@ export class Store implements Repositories {
       return settings
     })
   }
-  /** Saved settings revisions, newest first; revisions predating settings history are absent. */
+  /** 已保存的设置修订，新在前；早于设置历史机制的修订不存在。 */
   settingsHistory(limit = 20): SettingsVersion[] { return this.settingsVersions.list(limit) }
 
   readonly triggers = {
@@ -212,7 +212,7 @@ export class Store implements Repositories {
     save: (thread: Thread): void => { this.db.prepare('INSERT INTO thread VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(thread.key, JSON.stringify(thread)) },
     list: (): Thread[] => this.db.prepare('SELECT value FROM thread ORDER BY rowid').all().map(row => JSON.parse(String(row.value)) as Thread),
     active: (): Thread[] => this.values('SELECT value FROM thread WHERE active = 1 ORDER BY rowid'),
-    /** Updates human-facing thread metadata (`label`, `url`, and `facts`, where `null` removes a fact by ID); no-op if the thread does not exist. */
+    /** 更新面向人的线程元数据（`label`、`url` 与 `facts`，其中 `null` 按 ID 移除一个 fact）；线程不存在时为空操作。 */
     describe: (keyValue: string, patch: { label?: string; url?: string; facts?: Record<string, ThreadFact | null> }): void => {
       const thread = this.threads.get(keyValue)
       if (!thread) return
@@ -221,7 +221,7 @@ export class Store implements Repositories {
       const meta = { ...thread.meta, ...(patch.label === undefined ? {} : { label: patch.label }), ...(patch.url === undefined ? {} : { url: patch.url }), facts }
       if (JSON.stringify(meta) !== JSON.stringify(thread.meta)) this.threads.save({ ...thread, meta })
     },
-    /** Atomically sets or removes (`undefined`) source-specific metadata keys on a thread after re-reading it; no-op if the thread does not exist. */
+    /** 重新读取线程后，原子地设置或移除（`undefined`）Source 特有的元数据键；线程不存在时为空操作。 */
     patchMeta: (keyValue: string, patch: Record<string, unknown>): void => this.atomic(() => {
       const thread = this.threads.get(keyValue)
       if (!thread) return
@@ -233,11 +233,11 @@ export class Store implements Repositories {
   readonly tickets = {
     get: (id: string): Ticket | undefined => { const row = this.db.prepare('SELECT value FROM ticket WHERE id=?').get(id); return row ? JSON.parse(String(row.value)) as Ticket : undefined },
     save: (ticket: Ticket): void => { this.db.prepare('INSERT INTO ticket VALUES (?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value').run(ticket.id, JSON.stringify(ticket)) },
-    /** Newest first. */
+    /** 新在前。 */
     list: (): Ticket[] => this.values('SELECT value FROM ticket ORDER BY rowid DESC'),
-    /** Newest first. */
+    /** 新在前。 */
     open: (): Ticket[] => this.values('SELECT value FROM ticket WHERE open = 1 ORDER BY rowid DESC'),
-    /** Newest first. */
+    /** 新在前。 */
     active: (): Ticket[] => this.values('SELECT value FROM ticket WHERE active = 1 ORDER BY rowid DESC'),
   }
   readonly decisions = {
@@ -245,31 +245,31 @@ export class Store implements Repositories {
     save: (decision: Decision): void => { this.db.prepare('INSERT INTO decision VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value, thread=excluded.thread').run(decision.id, decision.threadKey, JSON.stringify(decision)) },
     byThread: (threadKeyValue: string): Decision[] => this.db.prepare('SELECT value FROM decision WHERE thread=? ORDER BY rowid').all(threadKeyValue).map(row => JSON.parse(String(row.value)) as Decision),
   }
-  /** Read-only queries for management views, orchestrator tools, and source polling (see `storeReads`). */
+  /** 供管理视图、orchestrator 工具与 Source 轮询使用的只读查询（见 `storeReads`）。 */
   readonly read: ReturnType<typeof storeReads>
 
-  /** Delivery status of a queued message; receipts are retained permanently so message IDs are idempotent. */
+  /** 排队消息的投递状态；回执永久保留，使消息 ID 具有幂等性。 */
   replyStatus(id: string): ReplyStatus | undefined { return this.receipts.get(id)?.status }
-  /** Outbox message receipts for channel delivery; only `Outbox` writes to `receipts`. */
+  /** 供渠道投递使用的发件箱消息回执；只有 `Outbox` 写入 `receipts`。 */
   readonly receipts = {
     get: (id: string): Receipt | undefined => this.values<Receipt>('SELECT value FROM outbox WHERE id = ?', id)[0],
-    /** Pending message receipts, oldest first. */
+    /** 待发送的消息回执，旧在前。 */
     waiting: (): Receipt[] => this.values("SELECT value FROM outbox WHERE value ->> '$.status' = 'pending' ORDER BY rowid"),
-    /** True if an earlier message for the same ticket and conversation is still pending with fewer than `failures` consecutive failed `reply` effect attempts. */
+    /** 若同一工单与会话的较早消息仍在待发，且其 `reply` effect 连续失败次数少于 `failures`，则为 true。 */
     behind: (id: string, failures: number): boolean => !!this.db.prepare(`SELECT 1 FROM outbox earlier
       JOIN outbox message ON message.id = ? LEFT JOIN effect ON effect.kind = 'reply' AND effect.key = earlier.id
       WHERE earlier.pending = message.pending AND earlier.rowid < message.rowid AND IFNULL(effect.attempts, 0) < ? LIMIT 1`).get(id, failures),
     /**
-     * Records a new pending message receipt; an already-recorded message ID keeps its original receipt.
-     * @returns Whether the message ID was newly recorded.
+     * 记录一条新的待发消息回执；已记录过的消息 ID 保留其原始回执。
+     * @returns 消息 ID 是否为新记录。
      */
     add: (message: OutboundMessage): boolean => {
       const receipt: Receipt = { ...message, status: 'pending' }
       return Number(this.db.prepare('INSERT OR IGNORE INTO outbox (id, value) VALUES (?, ?)').run(message.id, JSON.stringify(receipt)).changes) > 0
     },
     /**
-     * Marks a pending receipt as sent or dropped (with drop reason and timestamp), recreating the receipt if the message
-     * was withdrawn while being sent so its ID cannot be queued again.
+     * 把待发回执标记为已发送或已丢弃（附丢弃原因与时间戳）；若消息在发送途中被撤回，
+     * 则重建回执，使其 ID 无法再次入队。
      */
     settle: (message: OutboundMessage, outcome: 'sent' | DropReason): void => {
       const settled = outcome === 'sent' ? { status: 'sent' } : { status: 'dropped', dropped: { at: new Date().toISOString(), reason: outcome } }
@@ -280,8 +280,8 @@ export class Store implements Repositories {
         .run(id, JSON.stringify({ id, channel, text, kind, ...ticketId ? { ticketId } : {}, ...settled }))
     },
     /**
-     * Withdraws a pending message that has not yet been sent.
-     * @returns Whether a pending message with `id` was waiting and removed.
+     * 撤回尚未发送的待发消息。
+     * @returns 是否存在等待中的待发消息 `id` 并已移除。
      */
     withdraw: (id: string): boolean =>
       Number(this.db.prepare("DELETE FROM outbox WHERE id = ? AND value ->> '$.status' = 'pending'").run(id).changes) > 0,

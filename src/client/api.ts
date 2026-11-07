@@ -1,17 +1,17 @@
-/** Same-origin client and polling hook for the orchestrator management API. */
+/** 面向 orchestrator 管理 API 的同源客户端与轮询 Hook。 */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Api, ApiRequest, ApiResponse } from '../app/api.ts'
 import { USER_ERRORS, type UserErrorCode } from '../core/errors.ts'
 import type { TicketStage } from '../core/stage.ts'
 import type { SetupProblem } from '../setup.ts'
 
-/** Host rejection identified by a structured user error code and interpolation values. */
+/** 主机拒绝响应，由结构化的用户错误码与插值标识。 */
 export interface UserFailure { code: UserErrorCode; values: Record<string, string> }
 /**
- * Represents a failed management API request with a localized message and structured diagnostic details.
- * Thrown by API callers and inspected by UI views and draft state to distinguish validation issues, missing records,
- * and unreachable hosts (`details.unreachable` is set when `dsh-superagent` did not answer at all, such as during a restart,
- * in which case a 404 does not mean a record is missing).
+ * 表示一次失败的管理 API 请求，携带本地化后的消息与结构化诊断细节。
+ * 由 API 调用方抛出，供 UI 视图与 draft 状态检查，用以区分校验问题、记录缺失与主机不可达
+ * （当 `dsh-superagent-cn` 完全没有应答（例如重启期间）时会设置 `details.unreachable`，
+ * 此时 404 并不代表记录缺失）。
  */
 export class ApiError extends Error {
   constructor(message: string, readonly status: number,
@@ -19,7 +19,7 @@ export class ApiError extends Error {
     super(message)
   }
   get issues() { return this.details.issues ?? [] }
-  /** True when the host confirmed the record does not exist, rather than being unreachable. */
+  /** 主机已确认记录确实不存在（而非主机不可达）时为 true。 */
   get missing() { return this.status === 404 && !this.details.unreachable }
 }
 export interface ApiMessages {
@@ -29,7 +29,7 @@ export interface ApiMessages {
 }
 const isUserError = (code: unknown): code is UserErrorCode => typeof code === 'string' && Object.hasOwn(USER_ERRORS, code)
 
-/** Calls one management endpoint; the `x-orchestrator-request` header marks the request as originating from this page. */
+/** 调用一个管理端点；`x-orchestrator-request` 请求头用于标记该请求来自本页面。 */
 async function api<T>(messages: ApiMessages, path: string, method: string, body?: unknown): Promise<T> {
   let response: Response
   const json = body === undefined ? {} : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }
@@ -46,7 +46,7 @@ async function api<T>(messages: ApiMessages, path: string, method: string, body?
       values?: Record<string, string> }
     const issues = Array.isArray(failure.issues) ? failure.issues as { path: string; message: string }[] : []
     const user = isUserError(failure.code) ? { code: failure.code, values: failure.values ?? {} } : undefined
-    // dsh-superagent always responds with a body; an empty 404 comes from the DSH web server when dsh-superagent routes are unmounted during startup or restart.
+    // dsh-superagent-cn 总是返回响应体；空的 404 来自 DSH web 服务器，出现在启动或重启期间 dsh-superagent-cn 路由尚未挂载时。
     const { status } = response
     const message = failure.setup ? messages.setup(failure.setup) : user ? messages.user(user)
       : typeof failure.error === 'string' ? failure.error : !text && status === 404 ? messages.notRunning
@@ -60,9 +60,9 @@ async function api<T>(messages: ApiMessages, path: string, method: string, body?
 const HIDDEN_FACTOR = 6
 const same = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b)
 /**
- * Poll an endpoint while mounted, backing off when the document is hidden.
- * Preserves the last successful value across dependency changes and errors, skips state updates when the response is unchanged,
- * and drops stale responses when `deps` or `intervalMs` changes start a new subscription.
+ * 在组件挂载期间轮询端点，文档隐藏时退避拉长间隔。
+ * 在依赖变化与出错时保留最近一次成功值，响应未变化时跳过状态更新，
+ * 并在 `deps` 或 `intervalMs` 变化开启新订阅时丢弃过期的响应。
  */
 export function usePoll<T>(load: () => Promise<T>, deps: readonly unknown[], intervalMs = 5000) {
   const [state, setState] = useState<{ data?: T; error?: Error }>({})
@@ -72,7 +72,7 @@ export function usePoll<T>(load: () => Promise<T>, deps: readonly unknown[], int
   useEffect(() => {
     let active = true
     let timer: ReturnType<typeof setTimeout> | undefined
-    // Serialize requests so a manual reload after a mutation runs after the current poll finishes.
+    // 将请求串行化，使变更之后的手动重载在当前轮询完成后再执行。
     let queue = Promise.resolve()
     const once = async () => {
       clearTimeout(timer)
@@ -104,7 +104,7 @@ export const DECISION_KINDS: Readonly<Record<DecisionFilter, string>> = { work: 
 
 export type Call = <K extends keyof Api>(route: K, ...request: {} extends ApiRequest<K> ? [request?: ApiRequest<K>] : [request: ApiRequest<K>])
   => Promise<ApiResponse<K>>
-/** Build a typed route caller that resolves localized error messages on each request. */
+/** 构建带类型的路由调用器，在每次请求时解析本地化的错误消息。 */
 export function caller(messages: () => ApiMessages): Call {
   return (route, ...[request]) => {
     const [method, pattern] = route.split(' ') as [string, string]

@@ -1,4 +1,4 @@
-/** Thread timeline pagination, neighbour lookup, and timestamp normalization. */
+/** 线程时间线的分页、相邻项查找与时间戳规范化。 */
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -14,7 +14,7 @@ import { SourceRegistry } from '../src/sources/registry.ts'
 let directory: string
 let store: Store
 beforeEach(() => {
-  directory = mkdtempSync(join(tmpdir(), 'dsh-superagent-timeline-'))
+  directory = mkdtempSync(join(tmpdir(), 'dsh-superagent-cn-timeline-'))
   store = new Store(join(directory, 'orchestrator.sqlite'))
 })
 afterEach(() => { store.close(); rmSync(directory, { recursive: true, force: true }) })
@@ -30,19 +30,19 @@ const saveThread = () => store.threads.save({ key: 'github:7', ref: { source: 'g
   meta: {} })
 const ids = (detail: ReturnType<typeof threadDetail>) => detail!.timeline.map(item => item.id)
 
-it('pages a thread by time and then id, so a Trigger of the same second as a page\'s oldest one shows on the next page', () => {
+it('先按时间再按 id 对线程分页，与某页最旧条目同秒的触发会出现在下一页', () => {
   saveThread()
   for (const item of [comment('a', '2026-10-01T00:00:00.000Z'), comment('b', '2026-10-01T00:00:01.000Z'), comment('c', '2026-10-01T00:00:01.000Z')]) store.triggers.save(item)
   const first = threadDetail(host(), 'github:7', undefined, 1)!
   const second = threadDetail(host(), 'github:7', first.earlier!, 1)!
   const third = threadDetail(host(), 'github:7', second.earlier!, 1)!
   expect([ids(first), ids(second), ids(third), third.earlier]).toEqual([['c'], ['b'], ['a'], null])
-  // Legacy timestamp-only cursors still page before that timestamp.
+  // 旧式的纯时间戳游标仍然在该时间戳之前分页。
   expect(ids(threadDetail(host(), 'github:7', '2026-10-01T00:00:01.000Z', 5))).toEqual(['a'])
 })
 
-it('shows the page around a GitHub comment with that comment, though GitHub writes its time in whole seconds', () => {
-  // Lexicographically, `...:00Z` sorts after `...:00.001Z` unless normalized to milliseconds.
+it('围绕 GitHub 评论展示所在页并包含该评论，尽管 GitHub 记录的时间精确到整秒', () => {
+  // 按字典序，`...:00Z` 会排在 `...:00.001Z` 之后，除非规范化到毫秒。
   const taking = engine()
   for (const item of [comment('old', '2026-10-01T00:00:00Z'), comment('new', '2026-10-01T00:00:00.500Z'), comment('newest', '2026-10-01T00:00:01Z')]) {
     taking.receive(item)
@@ -51,13 +51,13 @@ it('shows the page around a GitHub comment with that comment, though GitHub writ
   expect(ids(threadDetail(host(), 'github:7', undefined, 50, 'new'))).toEqual(['old', 'new'])
 })
 
-it('finds the Triggers before and after one among Triggers of the same time', () => {
+it('在同一时间的触发之间找到某条触发的前一项与后一项', () => {
   for (const item of [comment('a', '2026-10-01T00:00:01.000Z'), comment('b', '2026-10-01T00:00:01.000Z'), comment('c', '2026-10-01T00:00:01.000Z')]) store.triggers.save(item)
   const around = store.read.neighbours('github:7', '2026-10-01T00:00:01.000Z', 'b')
   expect([around.before?.id, around.after?.id]).toEqual(['a', 'c'])
 })
 
-it('stores every received Trigger\'s time in the one form stored times take', () => {
+it('把每条收到的触发的时间统一存储为既定格式', () => {
   engine().receive(comment('raw', '2026-10-01T08:00:00+08:00'))
   expect(store.triggers.get('raw')?.at).toBe('2026-10-01T00:00:00.000Z')
   expect(store.read.threadTriggers('github:7').map(item => item.at)).toEqual(['2026-10-01T00:00:00.000Z'])

@@ -1,4 +1,4 @@
-/** Root panel shell: header with global search and glossary, top-level navigation tabs, and active route view. */
+/** 管理面板根壳：包含全局搜索与术语表的头部、顶层导航标签页，以及当前路由对应的视图。 */
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import type { SearchView } from './api.ts'
 import { Button, Dot, Icon, Input, Modal, SegmentedTabs } from './controls.tsx'
@@ -86,7 +86,7 @@ function SearchResults({ result, query, onClose }: { result: SearchView; query: 
         id: thread.key })}>
         <span>{t('term.thread')}</span>
       </Result>)}
-      {/* Filtered triggers have no Thread and display their filter reason instead of a link. */}
+      {/* 被过滤的触发没有线程，改为展示其被过滤的原因，而不是链接。 */}
       {result.items.map(item => <Result key={item.id} name={<Highlight text={readableMarkers(t, item.preview) || t('empty')}
         query={query} />}
         open={item.filtered === undefined ? go({ page: 'trigger', id: item.threads[0]!, query: { trigger: item.id } }) : undefined}>
@@ -103,7 +103,7 @@ function Header({ masterId }: { masterId: string | undefined }) {
   const [glossary, setGlossary] = useState(false)
   const [query, setQuery] = useState('')
   const [result, setResult] = useState<{ query: string; value: SearchView }>()
-  // Ignore responses from superseded or cleared search requests.
+  // 忽略已被取代或已清空的搜索请求的响应。
   const latest = useRef(0)
   const show = (value?: { query: string; value: SearchView }) => { latest.current++; setResult(value) }
   const search = useRef<HTMLFormElement>(null)
@@ -141,7 +141,7 @@ function Header({ masterId }: { masterId: string | undefined }) {
 function Pages({ route, openTab, deploymentForm }: { route: Route; openTab: (tab: Tab) => void; deploymentForm: DeploymentForm }) {
   const { t } = usePanel()
   const { state, error, reload } = usePanelData()
-  // Keep the active tab scrolled into view on narrow screens when routes change via links.
+  // 当路由通过链接变化时，让窄屏上的当前标签页保持滚动到可见位置。
   useEffect(() => { document.getElementById(`dt-tab-${route.page}`)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }) }, [route.page])
   const waiting = error ? <p className="dt-error" role="alert">{error.message}</p> : <p className="dt-hint">{t('loading')}</p>
   const page = (() => {
@@ -169,14 +169,14 @@ function Pages({ route, openTab, deploymentForm }: { route: Route; openTab: (tab
   </div>
 }
 
-/** Root panel component managing route history and shared panel state. */
+/** 管理面板的根组件，负责路由历史与共享的面板状态。 */
 export function App({ t, openSession, deploymentForm }: AppProps) {
   const [location, setLocation] = useState(initialLocation)
   useEffect(() => { remember(location) }, [location])
-  // Preserve the last opened settings group across navigation so the Settings tab reopens at it.
+  // 跨导航保留最近打开的设置分组，使设置标签页重新打开时落在同一分组。
   const move = useCallback((next: (current: Location) => Pick<Location, 'route' | 'stack'>) =>
     setLocation(current => ({ ...next(current), group: lastSettingsGroup(current) })), [])
-  /** Navigates to `route`; `replace` swaps the current entry (filters, paging) instead of pushing a back step. */
+  /** 导航到 `route`；`replace` 表示替换当前条目（过滤、翻页），而不是压入一条后退步骤。 */
   const navigate = useCallback((route: Route, replace = false) => move(current => ({ route,
     stack: replace ? current.stack : [...current.stack, current.route].slice(-20) })), [move])
   const back = useCallback(() => move(current => ({ route: current.stack.at(-1) ?? HOME, stack: current.stack.slice(0, -1) })), [move])

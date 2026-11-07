@@ -1,22 +1,22 @@
-/** Resolves and seeds per-role default models on newly created sessions without mutating the global DSH default. */
+/** 在新建 session 上解析并写入各角色默认的模型初始值，而不改动全局 DSH 默认值。 */
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent, ModelSelection } from '@deepseek-ai/dsh-agent'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { RoleModel } from '../policy.ts'
 
-/** Resolve a configured route through the live provider; catalog membership is not a restriction. */
+/** 通过实际运行的 provider 解析已配置的路由；是否在目录中并不是限制。 */
 export async function resolveRoleModel(ctx: Context, model: RoleModel): Promise<ModelSelection> {
   const value = await ctx.llm.resolveCallConfig({ provider: model.provider, model: model.model,
     ...(model.reasoningEffort ? { reasoningEffort: ReasoningEffortId(model.reasoningEffort) } : {}) })
   return { provider: value.provider, model: value.model, ...(value.reasoningEffort ? { reasoningEffort: value.reasoningEffort } : {}) }
 }
 
-/** Seed a role's configured model onto a brand-new session before its first request, leaving later manual or durable selections intact. */
+/** 在全新 session 的首次请求之前写入其角色配置的模型，后续的手动或持久选择不受影响。 */
 export async function initializeRoleModel(ctx: Context, agent: Agent, model: RoleModel | null): Promise<void> {
   if (!model) return
   if (agent.session.requestHeader() || agent.session.snapshotEvents().some(event => event.type === 'model/selection')) return
   const selected = await resolveRoleModel(ctx, model)
-  // Avoid selectModel because it mutates the global DSH default; inject the selection for the initial request only.
+  // 不用 selectModel，因为它会改动全局 DSH 默认值；只为初始请求注入该选择。
   agent.session.append('model/selection', selected)
   let initial = true
   let assembled: ModelSelection | undefined

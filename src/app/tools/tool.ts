@@ -1,4 +1,4 @@
-/** Shared tool primitives and schemas for the main and executor Sessions. */
+/** 主 Session 与执行器 Session 共享的工具原语和 schema。 */
 import { z } from 'zod'
 import { IM_WORDS, wordCount } from '../../infra/text.ts'
 import { resourceGrammar } from '../resources.ts'
@@ -12,12 +12,12 @@ export interface Tool<S extends z.ZodType = z.ZodType> {
 export type RegisterTool = <S extends z.ZodType>(name: string, description: string, schema: S, execute: Tool<S>['execute']) => void
 export const tool = <S extends z.ZodType>(definition: Tool<S>): Tool => definition as unknown as Tool
 
-/** Human-facing acknowledgement text, constrained to `IM_WORDS` regardless of which channel it is posted to. */
+/** 面向人的确认文本，无论发布到哪个渠道都限制在 `IM_WORDS` 之内。 */
 export const AcknowledgementSchema = z.string().trim().min(1)
   .refine(text => wordCount(text) <= IM_WORDS, `An acknowledgement has at most ${IM_WORDS} words (Chinese uses word segmentation); write one short sentence.`)
 /**
- * Builds the `orchestrator_read` tool, scoping allowed resource patterns to the main Session or to an
- * Executor Session (which may read only its own ticket and messages that reached it).
+ * 构建 `orchestrator_read` 工具，把允许的资源模式限定为主 Session 或
+ * 执行器 Session（后者只能读取自己的工单和送达给它的消息）。
  */
 export function readTool(description: string, executor: boolean,
   read: (resource: string, offset: number, limit: number | undefined, signal: AbortSignal) => Promise<unknown>): Tool {

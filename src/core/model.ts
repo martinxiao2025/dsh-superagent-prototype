@@ -1,82 +1,82 @@
-/** Domain model of a proactive agent: the concepts and their invariants, independent of any source, policy, or executor. */
+/** 主动式 agent 的领域模型：概念及其不变量，独立于任何 Source、策略或执行器。 */
 import type { Reason } from './reasons.ts'
 
-/** Actor identity in the source's own vocabulary; Policy decides which actors may originate work on that Source. */
+/** 以 Source 自身词汇表示的行动者身份；由策略决定哪些行动者可以在该 Source 上发起工作。 */
 export interface ActorRef { source: string; id: string }
-/** Thread identity; the rule that derives `id` from a native event belongs to the source. */
+/** 线程身份；从原生事件推导 `id` 的规则属于 Source。 */
 export interface ThreadRef { source: string; id: string }
-/** Write-only address on a thread; the address format belongs to the source. */
+/** 线程上只写的地址；地址格式属于 Source。 */
 export interface ChannelRef { source: string; thread: string; address: Record<string, string> }
 
-/** Stable key of a thread across the whole domain. */
+/** 线程在整个领域中的稳定键。 */
 export const threadKey = (ref: ThreadRef): string => `${ref.source}:${ref.id}`
 /**
- * Normalizes valid timestamps to `Date#toISOString` form so stored timestamps compare lexicographically in memory and SQL;
- * values that do not parse as a timestamp are returned unchanged.
+ * 把有效的时间戳规范化为 `Date#toISOString` 形式，使存储的时间戳在内存与 SQL 中都能按字典序比较；
+ * 无法解析为时间戳的值原样返回。
  */
 export function isoTime(value: string): string {
   const time = Date.parse(value)
   return Number.isFinite(time) ? new Date(time).toISOString() : value
 }
 
-/** One immutable event produced by a source. `text` and `meta` are untrusted external data. */
+/** Source 产生的一条不可变事件。`text` 与 `meta` 是不受信任的外部数据。 */
 export interface Trigger {
   id: string
   source: string
-  /** Every thread the trigger belongs to; the first (`threads[0]`) is the primary thread that hosts its evaluation. */
+  /** 触发所属的每个线程；第一个（`threads[0]`）是承载其评估的主线程。 */
   threads: ThreadRef[]
   actor: ActorRef
-  /** Source-declared: the event was written by a person rather than a bot, CI, or this agent. */
+  /** Source 声明：该事件由人而非 bot、CI 或本 agent 写下。 */
   human: boolean
-  /** Source-declared: the sender addressed the agent, by mentioning it or in a direct message to it. */
+  /** Source 声明：发件人点名了 agent，或在发给它的单聊消息中写道。 */
   addressed?: 'mention' | 'direct'
   at: string
   text: string
   channel?: ChannelRef
   url?: string
-  /** Source-native details for adapters; the core never interprets them. */
+  /** 供适配器使用的 Source 原生细节；核心从不解释它们。 */
   meta: Record<string, unknown>
 }
 
-/** Where a trigger went after intake; it grants nothing, but decides who decides a person's follow-up (see `followupOwners`). */
+/** 触发在接收之后的去向；它不授予任何权限，但决定由谁来决定一个人的跟进消息（见 `followupOwners`）。 */
 export interface TriggerDisposition {
-  /** Rejected by the source scope filter before entering the domain, for the Source's reason. */
+  /** 在进入领域之前被 Source 范围过滤器拒绝，附 Source 给出的理由。 */
   filtered?: Reason
   evalId?: string
   decisionId?: string
   /**
-   * The tickets it reached, by subscription fan-out or attached by the main Session; a ticket that ended or could not resume
-   * without its worker taking it up no longer counts.
+   * 它所到达的工单，经由订阅扇出或由主 Session 附加；已结束、或在其 worker 接手前无法恢复
+   * 的工单不再计入。
    */
   fanout: string[]
-  /** The tickets of `fanout` it reached only on a Thread their Executor follows for context, which makes it none of theirs. */
+  /** `fanout` 中仅经由其执行器为上下文而跟进的线程到达的工单，这使它不属于它们。 */
   context?: string[]
-  /** A person, or the main Session for a message no ticket decides, sent it to Eval again; a hand-back does not set it. */
+  /** 由人、或由主 Session（针对没有任何工单决定的消息）再次送去评估；交回不会设置它。 */
   requeued?: true
-  /** The tickets whose Executor handed it back as beyond the ticket, each once, with why; it goes to Eval once none decides it. */
+  /** 其执行器把该触发交回为超出工单范围的工单，每个工单一次，并附原因；在没有任何工单决定它时送去评估。 */
   handbacks?: { ticketId: string; reason: string; at: string }[]
-  /** The tickets whose Executor acknowledged it or answered it, taking it up as within the ticket. */
+  /** 其执行器确认或答复了该触发的工单，将其接手为工单范围内的事。 */
   acked?: string[]
   at: string
 }
-/** What deciding a follow-up's owners reads: the stored tickets, Threads and dispositions, as the Store and the core keep them. */
+/** 决定跟进消息的归属者时所需读取的内容：按 Store 与核心保存的形式存储的工单、线程与处置记录。 */
 export interface FollowupRecords {
   tickets: { get(id: string): Ticket | undefined }
   threads: { get(key: string): Thread | undefined }
   triggers: { disposition(id: string): TriggerDisposition | undefined }
 }
 /**
- * The tickets whose worker decides a person's follow-up: those it reached on their own Threads that can still decide it
- * and did not hand it back. A ticket can while it is live, also once a person dropped its Subscription to the Thread, and
- * while it is ended, not by a person, with the Trigger waiting to resume it. None once a person sent it to Eval, or while
- * an Eval holds it, which an earlier version may have queued. While a ticket owns it, the message goes to no Eval, and the
- * main Session may only stop the work on it.
+ * 其 worker 决定一个人的跟进消息的工单：该消息经由工单自己的线程到达、仍可决定它
+ * 且未曾交回它的那些工单。工单在存续期间可以决定，即便有人已取消其对线程的订阅；
+ * 工单已结束但并非被人停止、且触发正等待恢复它时也可以。一旦有人把它送去评估，
+ * 或某个评估正持有它——更早版本可能排的队——就没有归属者。工单持有该消息期间，消息不会进入评估，
+ * 主 Session 只能停止其上的工作。
  */
 export function followupOwners(trigger: Pick<Trigger, 'id' | 'human' | 'threads'>, records: FollowupRecords): string[] {
   if (!trigger.human) return []
   const disposition = records.triggers.disposition(trigger.id)
   if (!disposition || disposition.requeued) return []
-  // The disposition alone rules most messages out, so a Thread or a ticket is read only for one that may have an owner.
+  // 处置记录本身就能排除大多数消息，因此只有可能存在归属者的消息才会去读线程或工单。
   const returned = new Set(disposition.handbacks?.map(item => item.ticketId))
   const reached = disposition.fanout.filter(id => !returned.has(id) && !disposition.context?.includes(id))
   if (!reached.length || records.threads.get(threadKey(trigger.threads[0]!))?.evaluating?.triggerIds.includes(trigger.id)) return []
@@ -87,108 +87,108 @@ export function followupOwners(trigger: Pick<Trigger, 'id' | 'human' | 'threads'
   })
 }
 /**
- * Whether a Decision settled what a person's message asks for: a stop on it, taken or refused, decides only that ticket's
- * work, routing it to a ticket leaves it to that ticket's worker, and an unavailable one decided nothing.
+ * 某个决定是否已就人的消息所求作出处置：针对它的 stop（无论执行还是拒绝）只决定该工单的
+ * 工作，把它路由到某个工单则交给该工单的 worker，而 unavailable 什么也没有决定。
  */
 export const settled = (decision: Pick<Decision, 'kind' | 'reason'>): boolean => !['stop', 'unavailable'].includes(decision.kind)
   && !decision.reason.some(reason => ['stopNotExplicit', 'stopUnknown', 'routed'].includes(reason.code))
 
 export type Strength = 'explicit' | 'inferred'
-/** The cells of a receiving scope's row in the admission table, by whether the sender is listed and addresses the agent. */
+/** 准入表中接收范围所在行的各单元格，按发件人是否已列出以及是否点名 agent 划分。 */
 export type AdmissionCell = 'listedUnaddressed' | 'unlistedAddressed' | 'unlistedUnaddressed'
 /**
- * Whether proactive candidates are assessed and accepted (`auto`), still assessed so Decisions record what they would accept
- * (`would_accept`) without accepting (`observe`), or not admitted (`off`).
+ * 主动候选是被研判并接受（`auto`），是仍被研判、由决定记录下本会接受什么
+ * （`would_accept`）但不接受（`observe`），还是不被接纳（`off`）。
  */
 export type AcceptMode = 'off' | 'observe' | 'auto'
-/** Where a Mandate's Trigger was received: its Source, its receiving scope as the Source recorded it, and its admission row. */
+/** 授权的触发在哪里被接收：其 Source、Source 记录的接收范围，以及其准入行。 */
 interface Received { source?: string; scope?: Record<string, unknown>; row?: string }
 /**
- * How the gate admitted the Trigger a Mandate came from, which `revalidate` re-checks (see `docs/002`):
- * - `addressed`: a sender on the Source's list addressed the agent;
- * - `followup`: a message on a Thread that has tickets;
- * - `admission`: the cell of the receiving scope's admission row; `observation` when it made an inferred candidate under
- *   an accept mode;
- * - `listed`: accepted before Mandates recorded their basis, from a sender who must still be on the list; `authority` is
- *   what an earlier version recorded instead.
- * `sender` names the allowed sender at acceptance time, and `rules` the rules an assessment matched.
+ * 准入如何接纳授权所来自的触发，`revalidate` 会重新检查它（见 `docs/002`）：
+ * - `addressed`：Source 列表上的发件人点名了 agent；
+ * - `followup`：一条到达拥有工单的线程上的消息；
+ * - `admission`：接收范围准入行中的单元格；当它在一
+ *   种接单模式下成为推断候选时附 `observation`；
+ * - `listed`：在授权开始记录其依据之前接受的，来自仍必须留在列表上的发件人；`authority` 是
+ *   更早版本记录的替代字段。
+ * `sender` 记录接受时被允许的发件人，`rules` 记录研判所匹配的规则。
  */
 export type MandateBasis = Received & { sender?: string; rules?: string[] } & (
   | { via: 'addressed'; addressed: 'mention' | 'direct' }
   | { via: 'followup'; authority?: string }
   | { via: 'admission'; cell: AdmissionCell; addressed?: 'mention' | 'direct'; observation?: { mode: AcceptMode } }
   | { via: 'listed'; addressed?: 'mention' | 'direct'; observation?: { mode?: AcceptMode }; authority?: string }
-  /** A message of a bot on its Source's bot list: an inferred candidate at most, never an explicit request or a stop. */
+  /** 其 Source 的 bot 列表上某个 bot 的消息：至多是推断候选，绝不是显式请求，也不是 stop。 */
   | { via: 'bot'; addressed?: 'mention' | 'direct'; observation: { mode: AcceptMode } }
 )
 
-/** Immutable authorization produced by an accept decision; execution is bounded by it and it never changes. */
+/** 由 accept 决定产生的不可变授权；执行以其为界，且它永不改变。 */
 export interface Mandate {
   strength: Strength
   policyVersion: string
-  /** How the gate admitted it, for re-validation and audit. */
+/** 准入如何接纳它，供重新校验与审计使用。 */
   basis: MandateBasis
   actor: ActorRef
   scope: string
 }
 
-/** Active trigger evaluation on a thread; at most one exists per thread. */
+/** 线程上正在进行的触发评估；每个线程至多一个。 */
 export interface Evaluation {
   id: string
   threadKey: string
   triggerIds: string[]
-  /** The admissible Trigger that gave the batch its strength, which a ticket the Eval starts takes as its origin. */
+  /** 给出该批次强度的可接纳触发，评估所开启的工单以它为源头。 */
   primary?: string
   strength: Strength
-  /** Actor and gate basis of the strongest admissible trigger; they seed the mandate on accept. */
+  /** 最强可接纳触发的行动者与准入依据；accept 时它们构成授权的雏形。 */
   actor: ActorRef
   basis: MandateBasis
   policyVersion: string
   startedAt: string
-  /** Timestamp when the candidate reached the assessor's Session; it cannot expire before, and its deadline counts from then. */
+  /** 候选到达研判者 Session 的时间戳；在此之前它不会过期，其截止时间从那一刻起算。 */
   delivered?: string
-  /** Expiration timestamp, counted from delivery (or from start until delivered); a processing pause shifts it forward by the pause duration. */
+  /** 过期时间戳，从送达起算（送达前从开始起算）；处理暂停会使其按暂停时长顺延。 */
   deadline: string
-  /** Timestamp when processing pause began; resuming shifts `deadline` forward by the pause duration; cleared on resume. */
+  /** 处理暂停开始的时间戳；恢复时 `deadline` 按暂停时长顺延；恢复时清除。 */
   pausedAt?: string
 }
 
-/** Thread aggregate: consistency boundary of eval, holder of subscriptions and decision history. */
+/** 线程聚合：评估的一致性边界，订阅与决定历史的持有者。 */
 export interface Thread {
   key: string
   ref: ThreadRef
   createdAt: string
-  /** Time of the newest trigger on the thread. */
+  /** 线程上最新一个触发的时间。 */
   lastAt?: string
-  /** Tickets subscribed to this thread; live ones receive every trigger as context through fan-out. */
+  /** 订阅了该线程的工单；存续的工单通过扇出把每个触发作为上下文接收。 */
   subscriptions: string[]
   /**
-   * The subscribed tickets whose Executor follows the thread for read-only context, such as an Issue or another pull request
-   * it found: its messages reach them, but grant nothing, and a person's message there resumes none of them that ended.
+   * 其执行器为只读上下文而跟进该线程的订阅工单，例如它发现的某个 Issue 或另一条 pull request：
+   * 线程上的消息会到达它们，但不授予任何权限，其中人的消息也不能恢复其中任何一个已结束的工单。
    */
   context?: string[]
-  /** Keys of threads that shared a trigger with this one; context only. */
+  /** 与本线程共享过触发的其他线程的键；仅作上下文。 */
   correlated: string[]
-  /** Triggers waiting for the next eval (debounce buffer). */
+  /** 等待下一次评估的触发（去抖缓冲区）。 */
   pending: string[]
   evaluating?: Evaluation
-  /** How many Evals of its queued Triggers expired in a row, each of which queued them again; a Decision clears it. */
+  /** 其排队触发的评估连续过期的次数，每次过期都会把它们重新排队；决定会清除它。 */
   expired?: number
   /**
-   * Source-native attributes needed by channels or readers (for example a Feishu thread id). Its Source may also describe
-   * the thread for people: `label`, a display name, and `facts`, a {@link ThreadFacts} map.
+   * 渠道或读取方所需的 Source 原生属性（例如飞书线程 id）。其 Source 还可以为
+   * 人描述该线程：`label` 为显示名，`facts` 为一个 {@link ThreadFacts} 映射。
    */
   meta: Record<string, unknown>
 }
-/** Text in both interface languages, or the same text in both. */
+/** 两种界面语言各自的文本，或两者相同的一段文本。 */
 export type Text = string | { zh: string; en: string }
-/** One fact a Source states about its thread, such as an issue number or a CI result; `problem` marks one that needs a person. */
+/** Source 就其线程陈述的一条事实，例如 issue 编号或 CI 结果；`problem` 标记需要人处理的事实。 */
 export interface ThreadFact { label?: Text; value: Text; problem?: true }
-/** A thread's facts by id, ordered for display; each writer owns its fact ids. */
+/** 线程的事实，按 id 索引、按展示排序；每个写入方拥有自己的事实 id。 */
 export type ThreadFacts = Record<string, ThreadFact>
 
 export type DecisionKind = 'ignore' | 'accept' | 'reopen' | 'stop' | 'unavailable'
-/** Outcome of one eval, recorded on the thread. */
+/** 一次评估的结果，记录在线程上。 */
 export interface Decision {
   id: string
   evalId: string
@@ -197,24 +197,24 @@ export interface Decision {
   policyVersion: string
   at: string
   kind: DecisionKind
-  /** Why, by code: one reason, or one for each Trigger of the batch it concerns. */
+  /** 理由，按 code：一条理由，或其所涉批次中每个触发各一条。 */
   reason: Reason[]
   strength: Strength
   ticketId?: string
   mandate?: Mandate
-  /** Assessor-supplied audit data (rule assessments, direction, evidence). */
+  /** 研判者提供的审计数据（规则研判、落点、证据）。 */
   audit?: Record<string, unknown>
-  /** A person dismissed the problem an unavailable Decision shows. */
+  /** 有人关闭了 unavailable 决定所显示的问题。 */
   dismissed?: true
 }
 
 export type AssignmentState = 'pending' | 'running' | 'ended'
 /**
- * What an Assignment reports: work is in progress (`progress`), its worker waits for a Trigger (`waiting`), a result is
- * ready (`ready`), a person must act to unblock or recover it (`blocked` or `failed`), or nothing is left to do (`dropped`).
+ * 派工上报的内容：工作正在进行（`progress`）、其 worker 在等待触发（`waiting`）、结果
+ * 已就绪（`ready`）、需要人介入以解除阻塞或恢复（`blocked` 或 `failed`），或已无事可做（`dropped`）。
  */
 export type ReportState = 'progress' | 'waiting' | 'ready' | 'blocked' | 'failed' | 'dropped'
-/** Binding between a ticket and one executor instance. */
+/** 工单与一个执行器实例之间的绑定。 */
 export interface Assignment {
   id: string
   state: AssignmentState
@@ -223,43 +223,43 @@ export interface Assignment {
   endedAt?: string
   endedReason?: string
   report?: { state: ReportState; summary: string; at: string }
-  /** When Inputs last reached the worker; one at or after `report.at` means the worker has been busy with Inputs since that report. */
+  /** 输入最后一次到达 worker 的时间；有一条不早于 `report.at` 即表示自该报告以来 worker 一直在处理输入。 */
   deliveredAt?: string
   /**
-   * When a turn of its worker last ended with nothing left to run for it and nothing waiting for it: what its Session took
-   * into a step before, the worker read.
+   * 其 worker 最后一轮对话结束、且既没有留给它运行的也没有等待它的内容的时间：在此之前其
+   * Session 带入某一步骤的内容，worker 都已读过。
    */
   idleAt?: string
 }
 
 export type TicketInput =
-  /** A Trigger on one of its Threads, or attached to it; `human` when a person wrote it. */
+  /** 其某条线程上的触发，或被附加给它的触发；人写下时带 `human`。 */
   | { id: string; kind: 'trigger'; triggerId: string; at: string; note?: string; human?: true
-    /** It reached the ticket only on a Thread its Executor follows for context. */
+    /** 它只经由工单执行器为上下文而跟进的线程到达该工单。 */
     context?: true
     /**
-     * When the worker's Session took the message that carried it into a step, from which its model reads it; `null` while
-     * it waits in the Session. One delivered before reads were recorded has none, and counts as read from `deliveredAt`.
+     * worker 的执行器 Session 把携带它的消息带入某一步骤的时间，其模型从该步骤读取它；在
+     * Session 中等待期间为 `null`。在记录读取机制引入之前送达的输入没有此字段，从 `deliveredAt` 起视为已读。
      */
     readAt?: string | null
-    /** The Assignment it was last delivered to. */
+    /** 它最后一次被投递到的派工。 */
     deliveredTo?: string
-    /** When an earlier version handed it to the worker. */
+    /** 更早版本把它交给 worker 的时间。 */
     deliveredAt?: string }
-  /** The Policy changed in a way that bears on the ticket, as `effect` says; Inputs written before effects have none. */
+  /** 策略发生了与该工单相关的变更，如 `effect` 所述；在效果机制引入之前写入的输入没有此字段。 */
   | { id: string; kind: 'policy-changed'; from: string; to: string; at: string; effect?: PolicyEffect }
-  /** A Decision reopened the ticket; written before ended tickets resumed on their own. */
+  /** 某个决定重新打开了工单；在已结束工单可自行恢复之前写入。 */
   | { id: string; kind: 'reopen'; decisionId: string; at: string }
-  /** A human's message on one of its Threads resumed the ended ticket under its unchanged Mandate. */
+  /** 其某条线程上的人的消息在授权不变的前提下恢复了已结束的工单。 */
   | { id: string; kind: 'resumed'; triggerId: string; at: string }
   | { id: string; kind: 'text'; text: string; at: string }
-  /** A fact the main Session gave the ticket from other work: context, which asks for nothing and grants nothing. */
+  /** 主 Session 从其他工作中给予工单的一条事实：上下文，不求任何结果，也不授予任何权限。 */
   | { id: string; kind: 'note'; text: string; at: string }
 
 /**
- * How a Policy change bears on a ticket: the rules it was accepted under that changed, with their instruction now, or no
- * longer apply; `proactive: false` once inferred work is no longer accepted, as when the accept mode leaves `auto`; and
- * `requesterAllowed: false` once the sender it is for, `requester`, a person or a bot, may no longer start work there.
+ * 策略变更与某工单的关系：其被接受时依据的规则中发生了变化、附其现行 instruction，或已
+ * 不再适用的部分；当推断工作不再被接受（例如接单模式离开 `auto`）时为 `proactive: false`；以及
+ * 当其针对的发件人 `requester`——一个人或一个 bot——不再能在那里发起工作时为 `requesterAllowed: false`。
  */
 export interface PolicyEffect {
   rules?: { id: string; name: string; change: 'changed' | 'disabled'; instruction?: string }[]
@@ -269,59 +269,59 @@ export interface PolicyEffect {
 }
 
 export type TicketEndBy = 'executor' | 'human'
-/** How a ticket ended: with its result, with its pull request merged or closed unmerged, with nothing to do, or stopped by a person. */
+/** 工单如何结束：取得其结果、其 pull request 被合并或以未合并状态关闭、无事可做，或被人停止。 */
 export type TicketOutcome = 'completed' | 'merged' | 'closed' | 'dropped' | 'stopped'
-/** A question for a person; `triggerId` is the human message that raised it, whose conversation it goes back to. */
+/** 向人提出的问题；`triggerId` 是引发它的那条人的消息，问题会回到其会话中。 */
 export interface Attention { id: string; question: string; triggerId?: string }
-/** Ticket aggregate: an authorized work item with its assignments, channels, thread bindings, and inputs. */
+/** 工单聚合：一项获得授权的工作，连同其派工、渠道、线程绑定与输入。 */
 export interface Ticket {
   id: string
   title: string
   decisionId: string
   mandate: Mandate
-  /** The Channels of the messages it was accepted from, which its replies go to. */
+  /** 它被接受时所来自消息的渠道，其回复发往这里。 */
   channels: ChannelRef[]
-  /** When, by whom, and how the ticket ended, with a person's or the host's reason beyond the outcome; an open ticket has none. */
+  /** 工单何时、由谁、如何结束，并附结果之外由人或宿主给出的原因；未结工单没有此字段。 */
   ended?: { at: string; by: TicketEndBy; outcome: TicketOutcome; reason?: string }
-  /** Open question for a person; cleared by the executor or when the ticket ends. */
+  /** 向人提出的待回答问题；由执行器清除，或在工单结束时清除。 */
   attention?: Attention
   assignments: Assignment[]
   inputs: TicketInput[]
-  /** Inputs not yet handed to a running assignment. */
+  /** 尚未交给运行中派工的输入。 */
   undelivered: string[]
   /**
-   * Threads a Source made the ticket follow, such as its pull requests': a `ready` report ends the ticket only once
-   * `followsDone` holds; the close that makes it hold ends the ticket with that outcome unless its work has not finished (see
-   * `Tickets.unfinished`), and then its next `ready` or `dropped` report ends it.
+   * Source 让工单跟进的线程，例如其各条 pull request：`ready` 报告只有在
+   * `followsDone` 成立时才结束工单；使 `followsDone` 成立的那次关闭会以该结果结束工单，除非其工作尚未完成（见
+   * `Tickets.unfinished`），此时其下一个 `ready` 或 `dropped` 报告才会结束工单。
    */
   follows?: Follow[]
-  /** People's questions the worker answered, whose answers the main Session may send. */
+  /** worker 已回答的人的问题，主 Session 可以发送其答案。 */
   answers?: string[]
   createdAt: string
   updatedAt: string
-  /** The Triggers it was accepted from: the one that started it, and the batch its Eval held. */
+  /** 它被接受时所来自的触发：开启它的那一个，以及其评估所持有的批次。 */
   origin: { triggerId: string; triggerIds: string[] }
-  /** What its Executor chose: its short name, directory and assignment text. */
+  /** 其执行器选择的内容：短名称、目录与派工文本。 */
   execution?: Execution
-  /** The latest failed delivery of an Input to its worker, until a delivery succeeds. */
+  /** 最近一次向其 worker 投递输入的失败，直到某次投递成功为止。 */
   delivery?: { error: string; at: string }
 }
 /**
- * A Thread a ticket follows, by its key: `own` when the ticket opened it, such as its own pull request, and when and how it
- * closed. `followsDone` holds once no Thread of its own is open, or, when the ticket has no `own` Thread, once every followed
- * Thread closed; the ticket then ends unless its work has not finished (see `Tickets.unfinished`).
+ * 工单跟进的一个线程，按其键索引：工单自己开启它（例如其自己的 pull request）时为 `own`，以及它
+ * 何时、如何关闭。只要没有自己开启的线程仍处于打开状态，`followsDone` 即成立；若工单没有 `own`
+ * 线程，则所有被跟进的线程关闭后成立；此时工单随之结束，除非其工作尚未完成（见 `Tickets.unfinished`）。
  */
 export interface Follow { thread: string; own: boolean; closed?: { at: string; outcome: 'merged' | 'closed' } }
 export interface Execution { name: string; directory: string; assignment: string }
 
-/** Whether a ticket is open: it has not ended. */
+/** 工单是否未结：它尚未结束。 */
 export const liveTicket = (ticket: Pick<Ticket, 'ended'>): boolean => !ticket.ended
-/** How a ticket ended. */
+/** 工单结束的方式。 */
 export const ticketOutcome = (ticket: Pick<Ticket, 'ended'>): TicketOutcome | undefined => ticket.ended?.outcome
 export const runningAssignment = (ticket: Ticket): Assignment | undefined => ticket.assignments.find(assignment => assignment.state === 'running')
 /**
- * Whether a Trigger reached a ticket: it started the ticket, came to it as an Input, or is on a Thread the ticket subscribes
- * to; with `context` false, not a Thread the ticket follows only for context, where its worker may read but not write.
+ * 某触发是否到达过某工单：它开启了该工单、作为输入到达过它，或位于工单订阅的
+ * 线程上；`context` 为 false 时排除工单仅为上下文而跟进的线程，其 worker 在那里可以读但不能写。
  */
 export function reached(ticket: Ticket, trigger: Trigger, thread: (key: string) => Thread | undefined, context = true): boolean {
   if (ticket.origin.triggerId === trigger.id) return true
@@ -332,19 +332,19 @@ export function reached(ticket: Ticket, trigger: Trigger, thread: (key: string) 
   }) || (input && (context || !trigger.threads.every(ref => thread(threadKey(ref))?.context?.includes(ticket.id))))
 }
 export const latestAssignment = (ticket: Ticket): Assignment | undefined => ticket.assignments.at(-1)
-/** The latest report any of a ticket's Assignments made, which is what the ticket last said. */
+/** 工单各次派工中最新的一份报告，即工单最后一次表态的内容。 */
 export const latestReport = (ticket: Pick<Ticket, 'assignments'>): Assignment['report'] => ticket.assignments.findLast(assignment => assignment.report)?.report
 /**
- * Until when a ticket's worker had a turn to read what reached it: its latest report, but a progress report when `progress`
- * is false, or the end of its latest turn, whichever is later.
+ * 工单的 worker 到何时为止曾有一轮机会读取所到达的内容：其最新报告——`progress`
+ * 为 false 时不含进度报告——或其最近一轮对话的结束时间，取其中更晚者。
  */
 export function readUntil(ticket: Pick<Ticket, 'assignments'>, progress = true): string {
   const report = ticket.assignments.findLast(assignment => assignment.report && (progress || assignment.report.state !== 'progress'))?.report
   return [report?.at ?? '', ...ticket.assignments.map(assignment => assignment.idleAt ?? '')].reduce((a, b) => a > b ? a : b)
 }
 /**
- * Whether a ticket waits for a person: its latest Assignment reported blocked or failed, and no person's message reached it
- * since. A later report that is neither, a person's message, or a retry, which starts a new Assignment, lifts it.
+ * 工单是否在等待人：其最新派工报告为 blocked 或 failed，且此后没有人的消息到达。
+ * 之后一份两者皆非的报告、一条人的消息、或一次重试（会开启新的派工）都会解除等待。
  */
 export function waitsForPerson(ticket: Ticket): boolean {
   const report = latestAssignment(ticket)?.report

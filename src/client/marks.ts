@@ -1,4 +1,4 @@
-/** Pure mappers from domain states (Tickets, Threads, Sources, Decisions) to UI status indicators. */
+/** 纯映射函数，把领域状态（工单、线程、Source、决定）映射为 UI 状态指示。 */
 import type { DecisionRow, SourceStatusRow, ThreadRow, TicketStage, TicketSummary } from './api.ts'
 import type { DshSuperagentKey } from './locales.ts'
 import { valueLabel, type T } from './text.ts'
@@ -51,7 +51,7 @@ const DECISION_MARKS: Record<Outcome, Omit<Mark, 'label'>> = {
   stop: { dot: 'idle', icon: 'stop', tone: 'danger' }, ignore: { dot: 'idle', icon: 'dismiss', tone: 'neutral' },
   unavailable: { dot: 'warning', icon: 'alert', tone: 'warning' }, wouldAccept: { dot: 'idle', icon: 'dismiss', tone: 'warning' },
 }
-/** Maps a Decision outcome to its visual mark, distinguishing `wouldAccept` (an ignore that observe mode would have accepted). */
+/** 把决定（Decision）的 outcome 映射为对应的视觉标记，并区分 `wouldAccept`（观察模式下本会接受的一种 ignore）。 */
 export function decisionMark(t: T, outcome: Outcome): Mark {
   return { ...DECISION_MARKS[outcome], label: outcome === 'wouldAccept' ? t('wouldAccept') : valueLabel(t, 'decision', outcome) }
 }

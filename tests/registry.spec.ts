@@ -19,8 +19,8 @@ const probe: SourceKind<{ interval: number }> = {
   fields: [{ key: 'interval', type: 'number', min: 1, max: 60, label: { zh: '间隔', en: 'Interval' } }],
 }
 
-describe('Source registry', () => {
-  it('lists every installed kind with defaults, in id order, followed by stored instances whose kind is not installed', () => {
+describe('来源注册表', () => {
+  it('按 id 顺序列出每个已安装 kind 及其默认值，末尾是 kind 未安装的已存储实例', () => {
     const settings = SettingsSchema.parse({ sources: { probe: { enabled: false, config: { interval: 9 } }, retired: { enabled: true, config: { x: 1 } } } })
     const sources = new SourceRegistry(() => settings)
     sources.register(probe); sources.register(githubKind)
@@ -31,14 +31,14 @@ describe('Source registry', () => {
       { id: 'retired', kind: 'retired', enabled: true, config: { x: 1 }, installed: false },
     ])
   })
-  it('validates submitted instances with the kind schema and refuses kinds that are not installed', () => {
+  it('用 kind 的 schema 校验提交的实例，并拒绝未安装的 kind', () => {
     const sources = new SourceRegistry(() => SettingsSchema.parse({}))
     sources.register(probe)
     expect(sources.validate('probe', { enabled: true, config: {} })).toEqual({ enabled: true, config: { interval: 5 } })
     expect(() => sources.validate('probe', { enabled: true, config: { interval: 0 } })).toThrow()
     expect(() => sources.validate('missing', { enabled: true, config: {} })).toThrow('not installed')
   })
-  it('sends, links and reads a kind\'s Threads through its own channel and context, and nothing for a kind without them', async () => {
+  it('通过 kind 自己的渠道与上下文发送、链接和读取其线程，没有这些能力的 kind 则什么都不做', async () => {
     const sources = new SourceRegistry(() => SettingsSchema.parse({ sources: { probe: { enabled: true, config: { interval: 7 } } } }))
     const sent: OutboundMessage[] = []
     const read: unknown[] = []
@@ -55,7 +55,7 @@ describe('Source registry', () => {
       text: 'hi', kind: 'reply' })
     expect(await sources.send(message('probe'), commands)).toBe('sent')
     expect(sent).toEqual([message('probe')])
-    // A kind that is not installed keeps its replies waiting; links to it have no page.
+    // 未安装的 kind 让其回复继续等待；指向它的链接没有页面。
     expect(await sources.send(message('retired'), commands)).toBe('waiting')
     expect(sources.link(message('probe').channel, {})).toEqual({ url: 'https://probe/r', label: { zh: '探针', en: 'Probe' } })
     expect(sources.link(message('retired').channel, {})).toEqual({ url: '', label: { zh: 'retired', en: 'retired' } })
@@ -68,14 +68,14 @@ describe('Source registry', () => {
     expect(context.images('img_x')).toEqual([])
     await expect(context.image({} as Agent, commands, { id: 'm1', text: '' }, 'img_x', '',
       new AbortController().signal)).rejects.toThrow('no images')
-    // A kind without a channel or a context has neither.
+    // 没有渠道或上下文的 kind 两者皆无。
     sources.register({ ...probe, kind: 'quiet' })
     expect(await sources.send(message('quiet'), commands)).toBe('gone')
     expect(sources.threadContext({ ...trigger, source: 'quiet' })).toBeUndefined()
   })
-  it('refuses a kind that declares a health entry another kind or dsh-superagent itself reports, and gives up its entries at unregister', () => {
+  it('拒绝声明了其他 kind 或 dsh-superagent-cn 自身健康条目的 kind，注销时放弃其条目', () => {
     const board = new HealthBoard()
-    // Pre-claim built-in health entries; sync:* entries are reserved for settings sync.
+    // 预先占用内置健康条目；sync:* 条目保留给设置同步。
     for (const name of ['runtime', 'reply']) board.claim(name)
     const sources = new SourceRegistry(() => SettingsSchema.parse({}), board)
     const unregister = sources.register(githubKind)
@@ -88,7 +88,7 @@ describe('Source registry', () => {
     first.report('github', { state: 'ready', detail: 'ok' })
     expect(board.all.github).toEqual({ state: 'ready', detail: 'ok' })
     expect(() => first.report('probe', { state: 'ready', detail: '' })).toThrow('has no health entry probe')
-    // A report sent after its kind unregisters (such as from an exiting CLI listener) is ignored and does not affect a later registration.
+    // kind 注销后发来的报告（例如来自正在退出的 CLI 监听器）会被忽略，不影响之后的注册。
     unregister()
     expect(() => first.report('github', { state: 'error', detail: 'WARN exiting' })).not.toThrow()
     expect(board.all.github).toBeUndefined()
@@ -98,7 +98,7 @@ describe('Source registry', () => {
     context(githubKind).report('github', { state: 'ready', detail: 'again' })
     expect(board.all.github).toEqual({ state: 'ready', detail: 'again' })
   })
-  it('names the Trigger whose message a Trigger\'s message answers, where its kind can', () => {
+  it('在 kind 支持时指出某条触发的消息所回复的触发', () => {
     const sources = new SourceRegistry(() => SettingsSchema.parse({}))
     sources.register(feishuKind); sources.register(githubKind)
     const reply = feishuTrigger({ message_id: 'om_2', chat_id: 'oc_1', chat_type: 'group', sender_id: 'ou_alice', sender_type: 'user',
@@ -107,7 +107,7 @@ describe('Source registry', () => {
     expect(sources.repliesTo({ ...reply, meta: { ...reply.meta, parentId: undefined } })).toBeUndefined()
     expect(sources.repliesTo({ ...reply, source: 'github' })).toBeUndefined()
   })
-  it('finds what a search query names in each kind\'s terms', () => {
+  it('按各 kind 的表达方式找到搜索查询所指的对象', () => {
     const sources = new SourceRegistry(() => SettingsSchema.parse({}))
     sources.register(feishuKind); sources.register(githubKind)
     expect(sources.find('#12')).toEqual({ threads: ['github:12'], terms: [] })
@@ -116,14 +116,14 @@ describe('Source registry', () => {
     expect(sources.find('login fails')).toEqual({ threads: [], terms: [] })
     expect(feishuKind.policy!.unnamed).toEqual({ person: { zh: '飞书用户', en: 'Feishu user' }, bot: { zh: '飞书机器人', en: 'Feishu bot' } })
   })
-  it('refuses a second registration of one kind and forgets a kind after its disposer runs', () => {
+  it('拒绝同一 kind 的重复注册，并在其清理函数运行后忘记该 kind', () => {
     const sources = new SourceRegistry(() => SettingsSchema.parse({}))
     const dispose = sources.register(probe)
     expect(() => sources.register(probe)).toThrow('already registered')
     dispose()
     expect(sources.instance('probe')).toBeUndefined()
   })
-  it('validates each Source\'s part of the Policy with its kind, keeping parts of kinds that are not installed as stored', () => {
+  it('用各来源的 kind 校验策略中的来源部分，未安装 kind 的部分按存储原样保留', () => {
     const sources = new SourceRegistry(() => SettingsSchema.parse({ policy: { sources: { feishu: { allowed: [{ id: 'ou_alice' }] } } } }))
     sources.register(feishuKind); sources.register(githubKind)
     expect(sources.validatePolicy({ feishu: { allowed: [{ id: 'ou_alice', name: 'Alice' }] }, retired: { allowed: [], x: 1 } }))
@@ -134,18 +134,18 @@ describe('Source registry', () => {
     sources.register(probe)
     expect(sources.policyPart('probe')).toBeUndefined()
   })
-  it('allows a reply only on a Channel whose Source still listens to its chat', () => {
+  it('只允许在其来源仍监听对应群的渠道上回复', () => {
     const settings = SettingsSchema.parse({ sources: { feishu: { enabled: true, config: { chats: [{ chatId: 'oc_team', listen: 'mentions' }], directMessages: false } } } })
     const sources = new SourceRegistry(() => settings)
     expect(sources.channelAllowed({ source: 'feishu', address: { chatId: 'oc_team' } })).toBe(false)
     sources.register(feishuKind); sources.register(githubKind)
     expect(sources.channelAllowed({ source: 'feishu', address: { chatId: 'oc_team' } })).toBe(true)
     expect(sources.channelAllowed({ source: 'feishu', address: { chatId: 'oc_other' } })).toBe(false)
-    // A direct chat's id starts with oc_ too; the address says it is direct, and with direct messages off it gets no reply.
+    // 私聊群的 id 同样以 oc_ 开头；地址标记了它是私聊，私聊关闭时不予回复。
     expect(sources.channelAllowed(feishuChannel('oc_dm', 'om_1', true))).toBe(false)
     expect(sources.channelAllowed({ source: 'github', address: { number: '7' } })).toBe(true)
   })
-  it('delivers a reply to a direct message under the default settings', async () => {
+  it('在默认设置下把回复投递到私聊', async () => {
     const sources = new SourceRegistry(() => SettingsSchema.parse({}))
     sources.register(feishuKind)
     const trigger = feishuTrigger({ message_id: 'om_dm', chat_id: 'oc_dm', chat_type: 'p2p', sender_id: 'ou_alice', sender_type: 'user',

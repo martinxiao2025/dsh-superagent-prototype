@@ -9,11 +9,11 @@ function fixture(ready = false) {
   const pending = Promise.withResolvers<void>()
   const state = { phase: ready ? 'ready' : 'pending', byId: ready ? { [id]: {} } : {} as Record<string, object> }
   const refresh = vi.fn(async () => { await pending.promise })
-  // Navigation reads only catalog readiness and membership, not summary fields.
+  // 导航只读取目录的就绪状态与成员关系，不读取摘要字段。
   const sessions = { list: { getSnapshot: () => state }, refresh } as unknown as Pick<ISessions, 'list' | 'refresh'>
   return { sessions, pending, state, refresh }
 }
-it('waits for initial catalog hydration before opening the linked master', async () => {
+it('等待目录完成初始加载后再打开链接的主 Session', async () => {
   const { sessions, pending, state } = fixture(); const open = vi.fn()
   const navigation = openKnownSession(sessions, id, open, new AbortController().signal)
   expect(open).not.toHaveBeenCalled()
@@ -21,36 +21,36 @@ it('waits for initial catalog hydration before opening the linked master', async
   await expect(navigation).resolves.toBe(true)
   expect(open).toHaveBeenCalledExactlyOnceWith(id)
 })
-it('opens known Sessions without another network refresh', async () => {
+it('打开已知 Session 时不额外发起网络刷新', async () => {
   const { sessions, refresh } = fixture(true); const open = vi.fn()
   await expect(openKnownSession(sessions, id, open, new AbortController().signal)).resolves.toBe(true)
   expect(open).toHaveBeenCalledExactlyOnceWith(id); expect(refresh).not.toHaveBeenCalled()
 })
-it('reports unavailable targets without calling the throwing Session selector', async () => {
+it('对不可用的目标直接报错，而不调用会抛错的 Session 选择器', async () => {
   const { sessions, pending, state } = fixture(); const open = vi.fn()
   const navigation = openKnownSession(sessions, id, open, new AbortController().signal)
   state.phase = 'ready'; pending.resolve()
   await expect(navigation).rejects.toMatchObject({ code: 'not-listed' })
   expect(open).not.toHaveBeenCalled()
 })
-it('does not navigate after the panel unmounts or a newer request supersedes it', async () => {
+it('管理面板卸载或被更新的请求取代后不再导航', async () => {
   const { sessions, pending, state } = fixture(); const open = vi.fn(); const controller = new AbortController()
   const navigation = openKnownSession(sessions, id, open, controller.signal)
   controller.abort(); state.phase = 'ready'; state.byId[id] = {}; pending.resolve()
   await expect(navigation).resolves.toBe(false); expect(open).not.toHaveBeenCalled()
 })
-it('reopens the page this tab showed last, and the overview for a route that no longer exists', () => {
+it('重新打开本标签页上次显示的页面，对已不存在的路由回退到总览页', () => {
   remember({ route: { page: 'eval', query: { filter: 'stop' } }, stack: [{ page: 'overview' }] })
   expect(initialLocation()).toEqual({ route: { page: 'eval', query: { filter: 'stop' } }, stack: [{ page: 'overview' }] })
-  // The Eval tab was previously named Policy; a route saved under the old name falls back to overview.
-  sessionStorage.setItem('dsh-superagent/route', JSON.stringify({ route: { page: 'policy' }, stack: [] }))
+  // 评估页曾名为 Policy；以旧名保存的路由回退到总览页。
+  sessionStorage.setItem('dsh-superagent-cn/route', JSON.stringify({ route: { page: 'policy' }, stack: [] }))
   expect(initialLocation()).toEqual({ route: { page: 'overview' }, stack: [] })
-  sessionStorage.setItem('dsh-superagent/route', JSON.stringify({ route: { page: 'trigger', id: 'github:1' }, stack: [{ page: 'policy' }, { page: 'trigger' }] }))
+  sessionStorage.setItem('dsh-superagent-cn/route', JSON.stringify({ route: { page: 'trigger', id: 'github:1' }, stack: [{ page: 'policy' }, { page: 'trigger' }] }))
   expect(initialLocation().stack).toEqual([{ page: 'trigger' }])
-  sessionStorage.setItem('dsh-superagent/route', '{')
+  sessionStorage.setItem('dsh-superagent-cn/route', '{')
   expect(initialLocation().route).toEqual({ page: 'overview' })
 })
-it('reads each page a tab remembered with the parameters it takes, and leaves out what it does not know', () => {
+it('按各页面接受的参数读取标签页记住的路由，并丢弃它不认识的参数', () => {
   expect(parseRoute({ page: 'trigger', query: { filter: 'nope', trigger: 'e1' } })).toEqual({ page: 'trigger' })
   expect(parseRoute({ page: 'trigger', id: 'github:1', query: { trigger: 'e1', filter: 'recent' } }))
     .toEqual({ page: 'trigger', id: 'github:1', query: { trigger: 'e1' } })
@@ -60,7 +60,7 @@ it('reads each page a tab remembered with the parameters it takes, and leaves ou
     .toEqual({ page: 'settings', query: { group: 'source', source: 'feishu' } })
   expect([parseRoute('overview'), parseRoute(null)]).toEqual([undefined, undefined])
 })
-it('opens the settings that fix each setup problem: the Deployment group, or the card of the Source it names', () => {
+it('打开能解决各部署问题的设置页：Deployment 分组，或其指名的 Source 卡片', () => {
   expect(setupPage('deployment')).toEqual({ page: 'settings', query: { group: 'deployment' } })
   for (const place of ['github', 'feishu'] as const) expect(setupPage(place)).toEqual({ page: 'settings', query: { group: 'source', source: place } })
 })

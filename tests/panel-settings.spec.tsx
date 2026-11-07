@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// The Settings groups, drafts, save bars and history.
+// 设置页的分组、草稿、保存栏与历史。
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Fields } from '../src/client/settings-kit.tsx'
@@ -9,7 +9,7 @@ import { usePanel, mount, remount, settle, all, find, tab, click, type, text, fi
 import { server } from './fixtures/panel-server.ts'
 
 usePanel()
-it('keeps a person\'s own value where another save changed the same setting, and says so', async () => {
+it('当另一次保存改动了同一设置时保留本端填写的值，并明确提示冲突', async () => {
   await mount()
   await click(zh['tab.execution'])
   await click(find(zh['tab.settings'], '.dt-status-head button'))
@@ -23,7 +23,7 @@ it('keeps a person\'s own value where another save changed the same setting, and
   expect(server.settings.executor.maxWorkers).toBe(6)
 })
 
-it('saves the Eval block on the Policy settings and the Executor with its execution environment on the Execution settings, each against its own revision', async () => {
+it('在策略设置保存评估块，在执行设置连同执行环境保存执行器，各自校验自己的版本号', async () => {
   await mount()
   await click(zh['tab.eval'])
   await click(find(zh['tab.settings'], '.dt-status-head button'))
@@ -35,10 +35,10 @@ it('saves the Eval block on the Policy settings and the Executor with its execut
   expect(server.settings.eval).toEqual({ mode: 'auto', timeoutSeconds: 180, model: { provider: 'worker-provider', model: 'worker-model' } })
   await click(find(zh['promptPart.runtime/work'], '.dt-settings-link'))
   await type(field<HTMLInputElement>(zh.maxWorkers), '5')
-  // An empty root uses the default directory, which the field names instead of looking set.
-  expect(field<HTMLInputElement>(zh.executionDirectory).closest('.dt-field')!.querySelector('small')?.textContent).toBe('留空时用 /srv/dsh-superagent/work')
+  // 根目录留空时使用默认目录，输入框以提示文案说明它，而不是显示为已填写。
+  expect(field<HTMLInputElement>(zh.executionDirectory).closest('.dt-field')!.querySelector('small')?.textContent).toBe('留空时用 /srv/dsh-superagent-cn/work')
   await type(field<HTMLInputElement>(zh.executionDirectory), '/srv/work')
-  // A variable picked from the list goes where the caret is in the prepare command.
+  // 从列表中选中的变量会插入到准备命令中光标所在位置。
   const prepare = field<HTMLTextAreaElement>(zh.prepareCommand)
   await type(prepare, 'git worktree add ')
   prepare.setSelectionRange(17, 17)
@@ -60,7 +60,7 @@ it('saves the Eval block on the Policy settings and the Executor with its execut
     'settings/executor'])
 })
 
-it('loads configuration history on demand with localized changes, Source field labels and notified Tickets', async () => {
+it('按需加载配置历史，含本地化的变更、Source 字段标签与被通知的工单', async () => {
   server.history = { current: 3, policyVersion: 'abcdef1234567890', items: [{ revision: 3, savedAt: '2026-09-22T00:00:00Z',
     source: 'sync', policyVersion: 'abcdef1234567890', policyChanged: true, notified: [{ id: 't1', title: '修复回归' }], block: 'policy',
     changes: [{ code: 'mode', from: 'off', to: 'observe' }, { code: 'sourceRowsAdded', source: 'feishu', field: 'allowed', items: ['Bob'],
@@ -74,7 +74,7 @@ it('loads configuration history on demand with localized changes, Source field l
     '因策略变更通知了 1 个进行中的工单：修复回归']) expect(text()).toContain(expected)
 })
 
-it('shows save and discard only while a settings block has edits, at the end of that block', async () => {
+it('仅当设置块有未保存改动时才在该块末尾显示保存与放弃', async () => {
   await mount()
   await click(zh['tab.execution'])
   await click(find(zh['tab.settings'], '.dt-status-head button'))
@@ -86,7 +86,7 @@ it('shows save and discard only while a settings block has edits, at the end of 
   await type(field<HTMLInputElement>(zh.maxWorkers), '6')
   await click(zh.discard)
   expect(all('.dt-savebar')).toHaveLength(0)
-  // A save submitted from a field keeps the focus there; one from the bar hands it to the block when the bar closes.
+  // 从输入框内提交的保存保留焦点在原处；从保存栏提交的则在保存栏关闭后把焦点交还给该块。
   const workers = field<HTMLInputElement>(zh.maxWorkers)
   await type(workers, '5')
   workers.focus()
@@ -104,11 +104,11 @@ it('shows save and discard only while a settings block has edits, at the end of 
   const github = all('.dt-card').find(card => card.querySelector('.dt-card-title')?.textContent === 'GitHub')!
   await type(field<HTMLInputElement>('智能体的 GitHub CLI'), 'gh-other')
   expect(github.lastElementChild!.classList.contains('dt-savebar')).toBe(true)
-  // The agent CLI is read by setup, so the bar warns that saving restarts dsh-superagent and interrupts running work.
+  // 智能体 CLI 在启动时读取，因此保存栏会提示保存会重启 dsh-superagent-cn 并中断进行中的工作。
   expect(github.lastElementChild!.textContent).toContain('2 个进行中的派工会中断')
 })
 
-it('gives the focus back to the field that had it once a block\'s save ends', async () => {
+it('块内保存结束后把焦点还给原先持有的输入框', async () => {
   const container = document.createElement('div'); document.body.append(container)
   const root = createRoot(container)
   onTestFinished(() => { act(() => { root.unmount() }); container.remove() })
@@ -117,14 +117,14 @@ it('gives the focus back to the field that had it once a block\'s save ends', as
   const input = container.querySelector('input')!
   input.focus()
   await render(true)
-  // jsdom does not blur a control when it becomes disabled; move focus away manually.
+  // jsdom 不会在控件被禁用时移开焦点；需手动把焦点移到别处。
   const elsewhere = document.createElement('button'); document.body.append(elsewhere); elsewhere.focus(); elsewhere.remove()
   expect(document.activeElement).toBe(document.body)
   await render(false)
   expect(document.activeElement).toBe(input)
 })
 
-it('lists the settings groups stages first, opens each stage\'s group from its status, and returns to the last group opened',
+it('设置分组按阶段优先排列，从各阶段状态打开其分组，并回到上次打开的分组',
   async () => {
   await mount()
   await click(tab(zh['tab.settings']))
@@ -135,7 +135,7 @@ it('lists the settings groups stages first, opens each stage\'s group from its s
     await click(find(zh['tab.settings'], '.dt-status-head button'))
     expect(document.querySelector('.dt-settings-link[aria-current="page"]')?.textContent).toBe(group)
   }
-  // The Trigger stage has no settings, so its status offers none.
+  // 触发阶段没有设置，其状态区不提供设置入口。
   await click(tab(zh['tab.trigger']))
   expect(all('.dt-status-head button').map(button => button.textContent)).not.toContain(zh['tab.settings'])
   await click(tab(zh['tab.settings']))

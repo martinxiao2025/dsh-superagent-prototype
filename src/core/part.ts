@@ -1,4 +1,4 @@
-/** Shared base class and configuration for Engine domain parts. */
+/** 引擎各领域部件共享的基类与配置。 */
 import { UserError } from './errors.ts'
 import { followupOwners, reached, threadKey } from './model.ts'
 import type { Thread, ThreadRef, Ticket, Trigger } from './model.ts'
@@ -7,7 +7,7 @@ import type { Assessor, AssessmentOutcome, DomainEvent, DomainEvents, Executor, 
 export interface EngineOptions {
   repo: Repositories
   policy: () => Policy
-  /** Decides whether a Source listens to a trigger; one it does not listen to is stored with a `filtered` disposition. */
+  /** 决定 Source 是否监听某个触发；不被监听的触发会以 `filtered` 处置记录存储。 */
   scope: SourceScope
   assessor: Assessor
   executor: Executor
@@ -18,26 +18,26 @@ export interface EngineOptions {
 }
 
 /**
- * Base class for Intake, Evals, Tickets, Assignments, and Replies providing shared access to repositories, policy, clock, and event emission.
- * Each subclass mutates its own domain aggregates and delegates cross-aggregate changes to sibling parts within the transaction opened by Engine.
+ * Intake、Evals、Tickets、Assignments 与 Replies 的基类，提供对仓库、策略、时钟和事件发布的共享访问。
+ * 每个子类只修改自己的领域聚合，并把跨聚合的变更委托给同级部件，全部处于引擎开启的事务之内。
  */
 export abstract class EnginePart {
   protected readonly repo: Repositories
   constructor(protected readonly options: EngineOptions) { this.repo = options.repo }
   protected now(): string { return this.options.now?.() ?? new Date().toISOString() }
   protected policy(): Policy { return this.options.policy() }
-  /** The tickets whose worker decides a person's follow-up: see `followupOwners`. */
+  /** 其 worker 决定一个人的跟进消息的工单：见 `followupOwners`。 */
   protected owners(trigger: Trigger): string[] { return followupOwners(trigger, this.repo) }
-  /** Refuse a main-Session routing of a follow-up a ticket's worker still decides. */
+  /** 拒绝主 Session 对一条工单 worker 仍在决定的跟进消息的路由。 */
   protected leftToWorkers(trigger: Trigger): void {
     const owners = this.owners(trigger)
     if (owners.length) throw new UserError('workerDecides', { tickets: owners.join(', ') })
   }
   /**
-   * Record that a ticket's worker hands back a Trigger that reached the ticket, with why, and queue it for Eval when the
-   * ticket decided it and no other ticket still does. One the ticket did not decide, such as a bot's, one a person sent to
-   * Eval or one on a Thread it follows for context, went to Eval without it.
-   * @returns whether it was queued.
+   * 记录工单的 worker 把一个到达该工单的触发交回，并附原因，且在该工单决定过它、也没有其他
+   * 工单仍在决定时把它排队等待评估。工单未曾决定的一个——例如 bot 的、被人送去
+   * 评估的、或位于其仅为上下文而跟进的线程上的——本就不带它进了评估。
+   * @returns 它是否已被排队。
    */
   protected handBack(ticketId: string, trigger: Trigger, reason: string): boolean {
     const decided = this.owners(trigger).includes(ticketId)
@@ -46,14 +46,14 @@ export abstract class EnginePart {
     this.repo.triggers.saveDisposition(trigger.id, { ...disposition, handbacks })
     return decided && !this.owners(trigger).length && this.queueForEval(trigger)
   }
-  /** Record that a ticket's worker took a person's message up as within the ticket, by acknowledging or answering it. */
+  /** 记录工单的 worker 通过确认或答复，把一条人的消息接手为工单范围内的事。 */
   protected takeUp(ticketId: string, triggerId: string): void {
     const disposition = this.repo.triggers.disposition(triggerId)
     if (disposition && !disposition.acked?.includes(ticketId)) {
       this.repo.triggers.saveDisposition(triggerId, { ...disposition, acked: [...disposition.acked ?? [], ticketId] })
     }
   }
-  /** Queue a Trigger on its primary Thread for the next Eval, unless it waits there already or an Eval holds it. */
+  /** 把一个触发在其主线程上排队等待下一次评估，除非它已在等待、或某个评估正持有它。 */
   protected queueForEval(trigger: Trigger): boolean {
     const primary = this.thread(trigger.threads[0]!)
     if (primary.pending.includes(trigger.id) || primary.evaluating?.triggerIds.includes(trigger.id)) return false
@@ -65,7 +65,7 @@ export abstract class EnginePart {
     this.options.emit?.({ type, at: this.now(), data } as DomainEvent)
   }
   protected require(ticketId: string): Ticket { const ticket = this.repo.tickets.get(ticketId); if (!ticket) throw new UserError('unknownTicket'); return ticket }
-  /** Returns the stored Thread or an unsaved empty Thread aggregate. */
+  /** 返回已存储的线程，或一个尚未保存的空线程聚合。 */
   protected thread(ref: ThreadRef): Thread {
     const k = threadKey(ref)
     return this.repo.threads.get(k) ?? { key: k, ref: { source: ref.source, id: ref.id }, createdAt: this.now(), subscriptions: [], correlated: [], pending: [], meta: {} }

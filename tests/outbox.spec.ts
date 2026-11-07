@@ -1,4 +1,4 @@
-/** Outbox delivery when processing is paused or a Source kind registers late. */
+/** 处理暂停或 Source kind 延迟注册时的发件箱投递。 */
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import type { OutboundMessage } from '../src/core/index.ts'
@@ -14,7 +14,7 @@ async function at(ms: number) {
   try { await h.runtime.pump(); await h.runtime.sendReplies() } finally { vi.useRealTimers() }
 }
 
-it('holds every message while processing is paused, and sends it once processing resumes', async () => {
+it('处理暂停期间扣留所有消息，恢复处理后再发送', async () => {
   const lark = vi.mocked(Commands.prototype.lark)
   await h.runtime.settings.pause(true, 'panel')
   lark.mockClear()
@@ -27,7 +27,7 @@ it('holds every message while processing is paused, and sends it once processing
   expect(JSON.stringify(lark.mock.calls)).toContain('已合并。')
 })
 
-it('keeps a message for a Source that is not installed waiting, and sends it once the Source\'s kind registers', async () => {
+it('为尚未安装的 Source 保留消息等待，待其 kind 注册后再发送', async () => {
   const sent: OutboundMessage[] = []
   const probe: SourceKind<Record<string, never>> = { kind: 'probe', title: { zh: '探针', en: 'Probe' }, description: { zh: '', en: '' }, health: [],
     schema: z.object({}).strict(), fields: [],
@@ -36,7 +36,7 @@ it('keeps a message for a Source that is not installed waiting, and sends it onc
   await h.runtime.sendReplies()
   expect([h.runtime.outbox.status('waiting'), h.runtime.health.reply?.state]).toEqual(['pending', 'ready'])
   h.runtime.sources.register(probe)
-  // A message whose Source was not installed is tried again after 5 seconds.
+  // Source 未安装的消息会在 5 秒后重试。
   await at(5000)
   expect([h.runtime.outbox.status('waiting'), sent.map(message => message.id)]).toEqual(['sent', ['waiting']])
 })

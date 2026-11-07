@@ -1,4 +1,4 @@
-/** The Engine's messages to Channels, each by the rule that allows it. */
+/** 引擎发往渠道的消息，每条都按允许它的规则发送。 */
 import { key } from './ids.ts'
 import { UserError } from './errors.ts'
 import { latestAssignment, liveTicket, ticketOutcome } from './model.ts'
@@ -7,56 +7,56 @@ import type { ReplyStatus } from './ports.ts'
 import { EnginePart } from './part.ts'
 
 /**
- * A message for a Channel, by purpose: an Executor's acknowledgement of a person's request it works on, the answer to a
- * person's question once the worker reported it, the result of a ticket that is `ready`, `completed`, `merged`, or `dropped`,
- * or the ticket's current `question` for a person (`attention`). When `ticketId` is omitted, the ticket that `triggerId` reached is used.
+ * 发往渠道的一条消息，按用途区分：执行器对它正在处理的人的请求的确认，worker 报告之后对
+ * 人的问题的答复，处于 `ready`、`completed`、`merged` 或 `dropped` 状态工单的结果，
+ * 或工单当前向人提出的问题（`attention`）。省略 `ticketId` 时，使用 `triggerId` 所到达的工单。
  */
 export type ReplyRequest =
   | { purpose: 'acknowledgement'; ticketId: string; triggerId: string; text: string }
   | { purpose: 'answer' | 'result' | 'attention'; ticketId?: string; triggerId?: string; question?: string; text: string }
-/** A queued message: its id, whether it went out, and whether an earlier request had queued it already. */
+/** 一条已排队的消息：其 id、是否已发出，以及更早的请求是否已把它排队。 */
 export interface Reply { id: string; status: ReplyStatus; reused: boolean }
 
 /**
- * Replies writes the Engine's messages to Channels through the Outbox port: an acknowledgement, the answer to a person's
- * question, a ticket's result, and its question for a person, each only when its rule allows it, under a deterministic id
- * that keeps it from going out twice (idempotent). The Engine routes `reply` here; Tickets asks it for the acknowledgement
- * an accept carries, and Assignments asks it to withdraw a question a report replaced.
+ * Replies 通过发件箱端口把引擎的消息写入渠道：一条确认、对人的问题的答复、工单的结果，
+ * 以及工单向人提出的问题，每条只在其规则允许时发出，并使用一个确定性的 id
+ * 防止它发出两次（幂等）。引擎把 `reply` 路由到这里；Tickets 向它索要 accept
+ * 所附带的确认，Assignments 则请它撤回被报告取代的问题。
  */
 export class Replies extends EnginePart {
   /**
-   * Queue a message for the Channel its purpose names: an acknowledgement or an answer goes where that person's message was
-   * written, attention where the message that raised the question was (or to the ticket's starting conversation), and a
-   * result to the conversation where the ticket started (`result` is allowed only for a ticket in `ready`, `completed`,
-   * `merged`, or `dropped`). Each message is queued at most once (idempotent). An acknowledgement, even one already queued,
-   * records that the ticket's worker took the message up.
-   * @throws UserError when the ticket or trigger is unknown or the purpose's rule refuses it, such as a result of a ticket
-   * that is not ready, completed, merged, or dropped.
+   * 按用途指定的渠道排队一条消息：确认或答复发到那个人当初写消息的
+   * 地方，attention 发到引发问题的消息所在处（或工单开启时的会话），而
+   * 结果发到工单开启时的会话（`result` 只允许用于处于 `ready`、`completed`、
+   * `merged` 或 `dropped` 状态的工单）。每条消息至多排队一次（幂等）。确认消息——即便是已排队的那条——
+   * 会记录工单的 worker 接手了这条消息。
+   * @throws UserError，当工单或触发未知，或该用途的规则拒绝它时抛出，例如工单
+   * 并非 ready、completed、merged 或 dropped 的结果。
    */
   reply(request: ReplyRequest): Reply {
     return request.purpose === 'acknowledgement' ? this.acknowledge(request) : this.answer(request)
   }
   /**
-   * Queue the acknowledgement an accept carries where the message that started the ticket was written, if it has a Channel
-   * and a person wrote it.
+   * 把 accept 所附带的确认排队到开启工单的消息被写下的地方，前提是它有渠道
+   * 且由人写下。
    */
   acknowledgeAccepted(ticketId: string, trigger: Trigger, text: string): void {
     if (trigger.channel && trigger.human) this.options.outbox.send({ id: key('ack', trigger.id), channel: trigger.channel, text, kind: 'acknowledgement', ticketId })
   }
-  /** Withdraw a ticket's question for a person from the outbox, unless it went out already. */
+  /** 从发件箱撤回工单向人提出的问题，除非它已发出。 */
   withdrawAttention(attentionId: string): void { this.options.outbox.withdraw(key('attention-reply', attentionId)) }
   private acknowledge(request: Extract<ReplyRequest, { purpose: 'acknowledgement' }>): Reply {
     const ticket = this.require(request.ticketId)
     if (!liveTicket(ticket)) throw new UserError('ackEnded')
     const trigger = this.repo.triggers.get(request.triggerId)
     if (!trigger) throw new UserError('unknownTrigger')
-    // Context-only threads are read-only and cannot receive acknowledgements.
+    // 仅作上下文的线程是只读的，不能接收确认。
     if (!this.reaches(ticket, trigger, false)) throw new UserError('notReached')
     if (!trigger.channel) throw new UserError('ackNoChannel')
     const id = key('ack', trigger.id)
     const existing = this.options.outbox.status(id)
     if (!existing && !trigger.human) throw new UserError('ackNotPerson')
-    // Preserve the automatic or first queued acknowledgement.
+    // 保留自动的或最先排队的确认。
     if (!existing) this.options.outbox.send({ id, channel: trigger.channel, text: request.text, kind: 'acknowledgement', ticketId: ticket.id })
     this.takeUp(ticket.id, trigger.id)
     return { id, status: this.options.outbox.status(id) ?? 'pending', reused: existing !== undefined }
@@ -73,7 +73,7 @@ export class Replies extends EnginePart {
       if (!ticket || !ready) throw new UserError('notReady')
     }
     const attention = request.purpose === 'attention' ? ticket?.attention : undefined
-    // Attention replies must match the ticket's currently open question text.
+    // attention 回复必须与工单当前打开的问题文本一致。
     if (request.purpose === 'attention' && (!attention || attention.question !== request.question)) throw new UserError('notAttention')
     if (request.purpose === 'answer' && !trigger?.human) throw new UserError('notQuestion')
     const id = attention ? key('attention-reply', attention.id) : key('reply', trigger?.id ?? ticket?.id ?? '', request.text)
@@ -90,6 +90,6 @@ export class Replies extends EnginePart {
     }
     return { id, status: this.options.outbox.status(id) ?? 'pending', reused: existing !== undefined }
   }
-  /** The conversation a ticket started in: its origin Trigger's Channel, else its first Channel. */
+  /** 工单开启时所在的会话：其源头触发的渠道，否则为其第一个渠道。 */
   private sourceChannel(ticket: Ticket): ChannelRef | undefined { return this.source(ticket)?.channel ?? ticket.channels[0] }
 }

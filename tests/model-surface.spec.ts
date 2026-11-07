@@ -1,6 +1,6 @@
 /**
- * Model surface contract tests: verify registered tools, system prompts, skills, and session inputs for the
- * orchestrator and worker roles against tool schemas, environment variables, glossary rules (`docs/001`), and size budgets.
+ * 模型表面契约测试：针对工具 schema、环境变量、术语规则（`docs/001`）与大小预算，验证 orchestrator 与 worker
+ * 两个角色已注册的工具、系统 prompt、skills 与会话输入。
  */
 import { Context } from '@deepseek-ai/cordis'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -34,29 +34,29 @@ type Section = (context: { signal?: AbortSignal }) => string
 interface Skill { name: string; description: string; content: string }
 
 /**
- * Maximum combined character count of system prompt and tool definitions per role (~5% above baseline).
- * Lower this limit when shrinking model-facing text; raise it only intentionally and explain why in the commit message.
+ * 每个角色的系统 prompt 与工具定义合计字符数上限（约比基线高 5%）。
+ * 缩减面向模型的文本时下调此上限；上调只可有意识地为之，并在提交信息中说明原因。
  */
 const BUDGET: Record<Role, number> = { orchestrator: 59_000, worker: 40_500 }
 const PROMPTS = 'prompts/, skills/', TOOLS = 'src/app/tools/', SESSIONS = 'src/app/sessions.ts'
 const NOTICES = 'src/app/notices.ts', LINKS = 'src/app/links.ts', ASSESSMENT = 'src/app/assessment.ts'
 const EXECUTOR = 'src/executor/dsh.ts', ERRORS = 'src/core/errors.ts'
 const TICKETS = 'src/core/tickets.ts', ASSIGNMENTS = 'src/core/assignments.ts'
-/** Regex patterns compiled from `orchestrator_read` resource templates (`<…>` matches one path segment; `…` matches the rest). */
+/** 由 `orchestrator_read` 资源模板编译的正则（`<…>` 匹配一个路径段；`…` 匹配其余部分）。 */
 const RESOURCE_NAMES = RESOURCES.map(({ name }) => new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/<[^>]+>/g, '[^/\\s]+').replace('…', '.+')}$`))
-/** Report and assignment states, which text names as such; a ticket or a worker is in one of the card states (TICKET_STATES). */
+/** 报告与派工状态，文本以这些名称指称；工单或 worker 处于某个卡片状态（TICKET_STATES）之一。 */
 const REPORT_WORDS = /^(ready|waiting|blocked|failed|progress|running|queued)$/
-/** Retired terminology superseded by `docs/001`. */
+/** 被 `docs/001` 取代的已废弃术语。 */
 const LEGACY: [word: string, pattern: RegExp][] = [['reopen', /reopen/i], ['event/', /(?<![\w-])event\//], ['task/', /(?<![\w-])task\//],
   ['member', /\bmembers?\b/i], ['topic', /\btopics?\b/i], ['admission_', /\badmission_/], ['guide/', /\bguide\//]]
-/** Disallowed phrases in generated or static model-facing text. */
+/** 生成或静态的面向模型文本中不允许出现的短语。 */
 const BANNED: [rule: string, where: RegExp, phrase: RegExp][] = [
   ['An out-of-scope proactive ticket ends as dropped', /^worker (prompt from the runtime|input assignment \(inferred\))$/, /report blocked/i],
   ['A question goes back where the person who raised it wrote', /./, /always returns to the original|ask(?: promptly)? in the original ticket conversation/i],
   ['The main Session has no tool that messages a worker', /./, /request the answer through the worker/i],
   ['A stop goes through orchestrator_route, not through an assessment', /^assessment instructions$/, /decision=stop/i],
 ]
-/** Known failures tolerated for now, by the file that owns the text; keep empty. */
+/** 目前暂时容忍的已知失败，按拥有该文本的文件归类；保持为空。 */
 const KNOWN_FAILURES: [owner: string, failure: string][] = []
 
 const MEMBER = 'ou_alice', CHAT = 'oc_team'
@@ -66,7 +66,7 @@ const feishu = (id: string, text: string, overrides: Record<string, unknown> = {
 const sentences = (text: string) => text.split(/(?<=[.!?])\s+|\n+/)
 const words = (count: number) => Array.from({ length: count }, () => 'word').join(' ')
 
-/** Start a configured Runtime on a fake DSH host (as in tests/runtime.spec.ts) that records registered tools, prompts, skills, and delivered messages per session. */
+/** 在假的 DSH host 上（如 tests/runtime.spec.ts）启动配置好的 Runtime，按会话记录注册的工具、prompt、skills 与送达的消息。 */
 async function start() {
   const directory = mkdtempSync(join(tmpdir(), 'model-surface-'))
   const AGENT = join(directory, 'agent-gh'), BOT = join(directory, 'lark-bot')
@@ -111,7 +111,7 @@ async function start() {
     const section = (spec: { text: Section }) => { sections.set(sessionId, spec.text); return () => {} }
     agentCtx.reflect.provide('systemPrompt', { section })
     const inbox = { nextTurn: [] as UserMessage[], nextStep: [] as UserMessage[],
-      // A pending message taken out, as DSH's inbox does by its id.
+      // 按 id 取出一条待处理消息，就像 DSH 的 inbox 所做的那样。
       remove: (id: string) => [inbox.nextTurn, inbox.nextStep].some(list => {
         const at = list.findIndex(message => message.id === id)
         if (at >= 0) list.splice(at, 1)
@@ -155,12 +155,12 @@ async function start() {
 }
 type Host = Awaited<ReturnType<typeof start>>
 
-/** Exercise the orchestrator and worker workflows so all runtime-generated prompt sections, cards, notices, and errors are emitted. */
+/** 走一遍 orchestrator 与 worker 的工作流，使所有运行时生成的 prompt 小节、卡片、通知与错误都被触发。 */
 async function drive(host: Host) {
   const { runtime, run } = host
   const master = runtime.masterId
-  // Candidates wait, which the main Session decides in one call: a request it accepts, thanks it ignores, and plain chat in the
-  // channel, a proactive candidate whose card shows it touches no rule, which it ignores from its card.
+  // 候选等待主 Session 一次调用决定：它接受的请求、它忽略的致谢、渠道里的普通闲聊，
+  // 以及一张卡片表明不触及任何规则的主动候选——它根据卡片直接忽略。
   const request = feishu('1', '@bot 修一下回归'), thanks = feishu('3', '@bot 谢谢'), chat = feishu('4', '中午吃什么', { mentions: [] })
   await runtime.receive(request); await runtime.receive(thanks); await runtime.receive(chat)
   const routed = await run(master, 'orchestrator_route', { decisions: [
@@ -205,16 +205,16 @@ async function drive(host: Host) {
     expect(runtime.store.tickets.get(a)!.inputs.some(input => input.kind === 'resumed')).toBe(true)
   })
   const policy = runtime.store.settings().policy
-  // The rule ticket b was accepted under changes, so its worker is told how; the one it was not is disabled, which tells no one.
+  // 工单 b 依据的规则发生了变化，其 worker 会被告知如何做；它未依据的那条被禁用，不通知任何人。
   const rules = policy.rules.map(rule => rule.id === 'visual' ? { ...rule, enabled: false }
     : rule.id === 'copy' ? { ...rule, instruction: `${rule.instruction} Keep the wording short.` } : rule)
   await runtime.settings.save('policy', { ...policy, rules }, runtime.store.blockRevision('policy'), 'panel')
-  // Worker b's turn ends: it is idle, as DSH says when it emits the event.
+  // worker b 的 turn 结束：它转为空闲，DSH 发出事件时也会如此表示。
   host.agents.get(workerB)!.status = 'idle'
   host.ctx.emit('agent/status', { agent: host.agents.get(workerB), status: 'idle' } as never)
   await vi.waitFor(() => expect(latestAssignment(runtime.store.tickets.get(b)!)?.report?.state).toBe('waiting'))
   runtime.engine.requestStatus(b)
-  // Resume runs once the status request reached the worker (whose Assignment is then busy rather than settled), so it gets the recovery note.
+  // 状态请求到达 worker（其派工此时为 busy 而非已结束）后恢复即运行，因此它会收到恢复说明。
   await runtime.idle()
   expect(runtime.store.tickets.get(b)!.undelivered).toEqual([])
   runtime.executor.resume()
@@ -235,7 +235,7 @@ function walk(node: unknown, visit: (node: Record<string, unknown>, property?: s
   }
 }
 
-/** Collect all model-visible text surfaces (prompt sections, tool schemas, skills, errors, and session inputs) with their owning module. */
+/** 收集所有模型可见的文本表面（prompt 小节、工具 schema、skills、错误与会话输入），并带上其所属模块。 */
 function collect(host: Host, { a, b, workerA, workerB, refusal }: Awaited<ReturnType<typeof drive>>): Surface[] {
   const { runtime } = host
   const surfaces: Surface[] = []
@@ -246,7 +246,7 @@ function collect(host: Host, { a, b, workerA, workerB, refusal }: Awaited<Return
     for (const { name, text } of parts) {
       surfaces.push({ where: `${role} prompt ${name}`, owner: PROMPTS, role: shared.has(name) ? 'both' : role, text })
     }
-    // The revision line, the execution environment and the note on a proactive ticket come from the runtime.
+    // 版本行、执行环境与主动工单上的备注来自运行时。
     const generated = parts.reduce((text, part) => text.replace(part.text, ''), host.sections.get(sessionId)!({}))
     surfaces.push({ where: `${role} prompt from the runtime`, owner: SESSIONS, role, text: generated })
   }
@@ -276,7 +276,7 @@ function collect(host: Host, { a, b, workerA, workerB, refusal }: Awaited<Return
       const input = ticket.inputs.find(item => item.kind === 'trigger' ? card(text)?.trigger_id === item.triggerId
         : inputMessage(item) === text)
       if (!input) continue
-      // Text inputs are named by their id prefix; the restart note's id is a content hash, so it is named by its text.
+      // 文本输入按其 id 前缀命名；重启备注的 id 是内容哈希，因此按其文本命名。
       const kind = input.kind === 'trigger' ? input.context ? 'trigger (context)' : 'trigger' : input.kind !== 'text' ? input.kind
         : input.id.includes(':') ? input.id.split(':')[0]! : /host restarted/i.test(input.text) ? 'recovery' : 'text'
       const owner = kind === 'status' ? TICKETS : kind === 'recovery' ? ASSIGNMENTS : EXECUTOR
@@ -297,7 +297,7 @@ beforeAll(async () => {
 afterAll(async () => { await host?.stop() })
 const toolsOf = (role: Role) => host.tools.get(role === 'orchestrator' ? host.runtime.masterId : sessions.workerA)!
 
-/** Check collected surfaces for unregistered tools, invalid enum options, legacy terms, banned phrases, and cross-role tool references. */
+/** 检查收集到的表面：未注册的工具、无效的枚举选项、遗留术语、被禁短语与跨角色的工具引用。 */
 function failures(): Map<string, string> {
   const found = new Map<string, string>()
   const options = new Map<string, Set<string>>()
@@ -320,17 +320,18 @@ function failures(): Map<string, string> {
     for (const [word, pattern] of LEGACY) if (pattern.test(text)) fail(`legacy word "${word}"`)
     for (const [rule, scope, phrase] of BANNED) if (scope.test(where) && phrase.test(text)) fail(`breaks "${rule}"`)
     for (const [name] of text.matchAll(/\bDSH_SUPERAGENT_[A-Z][A-Z_]*[A-Z]\b/g)) if (!variables.has(name)) fail(`${name} is not a variable`)
-    // A ticket's or worker's state is a card state; a report state is named with the word report.
+    // 工单或 worker 的状态是卡片状态；报告状态须带 report 一词指称。
     const states = [...text.matchAll(/\b([a-z]+(?:\/[a-z]+)*) (?:tickets?|workers?)\b/g), ...text.matchAll(/\b(?:tickets?|workers?) (?:is|are)(?: still)? ([a-z]+)\b/g)]
     for (const [phrase, word] of states) {
       if (word!.split('/').some(part => REPORT_WORDS.test(part)) && !(TICKET_STATES as readonly string[]).includes(word!)) fail(`"${phrase}" is not a card state`)
     }
     for (const [phrase] of text.matchAll(/\bwait(?:ing)? for (?:ready|waiting|blocked|failed)\b(?! report)/g)) fail(`"${phrase}" names a report state without report`)
-    for (const [found] of text.matchAll(/\b(?:ticket|trigger|decision|prompts|prompt-preview|models|feishu|github)\/[^\s"'`,;)\]]*/g)) {
+    // `、` 与 `，` 在中文面向模型的文本中分隔条目，如同英文中的 `,` 与 `;`。
+    for (const [found] of text.matchAll(/\b(?:ticket|trigger|decision|prompts|prompt-preview|models|feishu|github)\/[^\s"'`,;)\]、，]*/g)) {
       const name = found.replace(/[.:]+$/, '')
       if (!RESOURCE_NAMES.some(pattern => pattern.test(name))) fail(`${name} is not a resource orchestrator_read reads`)
     }
-    // Text only one role reads names the other role's tools only in a sentence that says the other role uses them.
+    // 只有一个角色阅读的文本，只有在说明另一角色使用它们的句子里才能指名另一角色的工具。
     const other = role === 'orchestrator' ? 'worker' : role === 'worker' ? 'orchestrator' : undefined
     const names = other === 'worker' ? /\b(workers?|executors?)\b/i : /\b(orchestrator|main session)\b/i
     for (const sentence of sentences(text)) {
@@ -347,17 +348,17 @@ function failures(): Map<string, string> {
   return found
 }
 
-it('collects both roles\' tools, prompts, skills and inputs', () => {
+it('收集两个角色的工具、prompt、skills 与输入', () => {
   expect([...toolsOf('worker').keys()].sort()).toEqual(['orchestrator_ack', 'orchestrator_read', 'orchestrator_report',
     'orchestrator_thread_follow',
     'orchestrator_thread_unrelated', 'orchestrator_trigger_handback'])
   expect([...toolsOf('orchestrator').keys()]).toEqual(expect.arrayContaining(['orchestrator_route', 'orchestrator_eval_decide', 'orchestrator_reply']))
-  // The one routing tool takes the place of four.
+  // 一个路由工具取代了四个。
   for (const name of ['orchestrator_ticket_accept', 'orchestrator_ticket_attach', 'orchestrator_ticket_stop', 'orchestrator_trigger_ignore']) {
     expect(toolsOf('orchestrator').has(name)).toBe(false)
   }
   const wheres = new Set(surfaces.map(surface => surface.where))
-  for (const where of ['orchestrator prompt runtime/dispatch', 'worker prompt runtime/work', 'skill dsh-superagent-github', 'skill dsh-superagent-feishu',
+  for (const where of ['orchestrator prompt runtime/dispatch', 'worker prompt runtime/work', 'skill dsh-superagent-cn-github', 'skill dsh-superagent-cn-feishu',
     'orchestrator prompt runtime/admission', 'orchestrator input candidate', 'orchestrator input worker_attention', 'orchestrator input worker_report',
     'orchestrator input thread_unrelated', 'orchestrator input ticket_ended', 'orchestrator input settings_saved', 'worker input assignment (explicit)',
     'worker input assignment (inferred)', 'worker input policy-changed', 'worker input resumed', 'worker input status',
@@ -366,7 +367,7 @@ it('collects both roles\' tools, prompts, skills and inputs', () => {
   expect(sessions.refusal).not.toBe('')
 })
 
-it('names only registered tools, schema options, environment variables and glossary words, with the enforced word limits', () => {
+it('只指名已注册的工具、schema 选项、环境变量与术语表词汇，并执行字数上限', () => {
   const found = failures(), known = new Map(KNOWN_FAILURES.map(([owner, failure]) => [failure, owner]))
   const drift = [...found].filter(([failure]) => !known.has(failure)).map(([failure, owner]) => `${owner}: ${failure}`)
   const fixed = [...known].filter(([failure]) => !found.has(failure))
@@ -374,21 +375,21 @@ it('names only registered tools, schema options, environment variables and gloss
   expect([...drift, ...fixed], 'model-facing text differs from KNOWN_FAILURES; each line starts with the owner of the text').toEqual([])
 })
 
-it('enforces the word limits the text states', async () => {
+it('执行文本所陈述的字数上限', async () => {
   expect(checkedImText(words(IM_WORDS))).toBe(words(IM_WORDS))
   expect(() => checkedImText(words(IM_WORDS + 1))).toThrow(`maximum is ${IM_WORDS}`)
   const attach = (note: string) =>
     host.run(host.runtime.masterId, 'orchestrator_route', { decisions: [{ kind: 'attach', ticket_id: 'unknown', trigger_id: 'unknown', note }] })
-  // A note over the limit refuses its item alone; one at the limit goes on to the Engine, which knows no such ticket.
+  // 超限的备注只拒绝其对应条目；恰好达到上限的备注会交给引擎，而引擎并不知道这样的工单。
   expect(await attach(words(NOTE_WORDS + 1))).toEqual({ results: [expect.objectContaining({ refused: expect.stringContaining(`${NOTE_WORDS} words`) })] })
   expect(await attach(words(NOTE_WORDS))).toEqual({ results: [expect.objectContaining({ refused: expect.stringMatching(/Unknown (ticket|trigger)/) })] })
 })
 
-/** The enabled rules' lines of the main Session's Policy section, as the settings hold them now. */
+/** 主 Session 策略小节中已启用规则的行，按设置当前保存的样子。 */
 const ruleLines = () => host.runtime.store.settings().policy.rules.filter(rule => rule.enabled).map(rule => `- ${rule.name} (${rule.id}): ${rule.instruction}`)
-it.each(['orchestrator', 'worker'] as const)('keeps the %s within its character budget', role => {
+it.each(['orchestrator', 'worker'] as const)('把 %s 保持在字符预算之内', role => {
   const ids = role === 'orchestrator' ? [host.runtime.masterId] : [sessions.workerA, sessions.workerB]
-  // Strip machine-dependent variable values (such as directory paths), and the team's rules, before measuring prompt length.
+  // 在测量 prompt 长度之前，剥离与机器相关的变量值（如目录路径）以及团队的规则。
   const builtIn = (text: string) => ruleLines().reduce((rest, line) => rest.replace(line, ''), text).replace(/ = "[^"\n]*"/g, ' = ""')
   const prompt = Math.max(...ids.map(id => builtIn(host.sections.get(id)!({})).length))
   const definitions = [...toolsOf(role).values()].map(({ name, description, parameters }) => ({ name, description, parameters }))
@@ -396,18 +397,18 @@ it.each(['orchestrator', 'worker'] as const)('keeps the %s within its character 
   expect(prompt + tools, `${prompt} characters of prompt and ${tools} of tools`).toBeLessThanOrEqual(BUDGET[role])
 })
 
-it('keeps the routing rules in dispatch, which says the main Session may accept the rest of a stop message as new work', () => {
+it('把路由规则保留在 dispatch 中，它说明主 Session 可以把停止消息的其余部分作为新工作接受', () => {
   const route = toolsOf('orchestrator').get('orchestrator_route')!.description
   const dispatch = surfaces.find(surface => surface.where === 'orchestrator prompt runtime/dispatch')!.text
-  expect(dispatch).toContain('you may accept the rest of the message as new work')
-  expect(dispatch).toContain('decide those whose card already settles them in one orchestrator_route call')
+  expect(dispatch).toContain('你可以把消息的其余部分作为新工作接受')
+  expect(dispatch).toContain('一次 orchestrator_route 调用中逐项决定')
   expect(route).not.toMatch(/needs a new ticket on another explicit instruction/)
 })
 
-it('lists in the main Session\'s Policy section exactly the enabled rules, as the drive\'s save left them', () => {
-  const text = host.sections.get(host.runtime.masterId)!({}), at = text.indexOf('## Policy')
+it('主 Session 的策略小节恰好列出已启用的规则，即 drive 保存后的状态', () => {
+  const text = host.sections.get(host.runtime.masterId)!({}), at = text.indexOf('## 策略')
   const listed = text.slice(at, text.indexOf('\n\n', at)).split('\n').filter(line => line.startsWith('- '))
   expect(listed).toEqual(ruleLines())
-  // The drive disabled the visual rule and changed the copy rule's instruction.
+  // drive 禁用了 visual 规则并修改了 copy 规则的指令。
   expect(listed).toEqual([expect.stringMatching(/^- .* \(copy\): .*Keep the wording short\.$/)])
 })

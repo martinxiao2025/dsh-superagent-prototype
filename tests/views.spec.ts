@@ -24,7 +24,7 @@ import { followupOwners, type ChannelRef } from '../src/core/index.ts'
 let directory: string
 let store: Store
 beforeEach(() => {
-  directory = mkdtempSync(join(tmpdir(), 'dsh-superagent-views-'))
+  directory = mkdtempSync(join(tmpdir(), 'dsh-superagent-cn-views-'))
   store = new Store(join(directory, 'orchestrator.sqlite'))
 })
 afterEach(() => { store.close(); rmSync(directory, { recursive: true, force: true }) })
@@ -35,15 +35,15 @@ const drop = (id: string, channel: ChannelRef, ticketId?: string) => {
   store.receipts.settle(message, 'channelGone')
 }
 
-it('names the Thread of each dropped message: the one of the Trigger its Channel answers, or the Channel\'s own', () => {
-  // A Feishu Channel names its chat; the message it answers belongs to the Thread of the topic's root message.
+it('为每条未送达的消息指名其线程：其渠道所回复触发的线程，或渠道自己的线程', () => {
+  // 飞书渠道指名其群；它回复的消息属于话题根消息的线程。
   store.triggers.save({ id: feishuTriggerId('om_reply'), source: 'feishu', threads: [{ source: 'feishu', id: 'oc_1:om_root' }],
     actor: { source: 'feishu', id: 'ou_a' }, human: true, at: new Date().toISOString(), text: 'please', meta: {} })
   store.threads.save({ key: 'github:42', ref: { source: 'github', id: '42' }, createdAt: '', subscriptions: [], correlated: [], pending: [],
     meta: {} })
   drop('a', feishuChannel('oc_1', 'om_reply'))
   drop('b', githubChannel(42))
-  // A message whose Trigger and Thread the store no longer has links nowhere.
+  // 存储中已没有其触发与线程的消息链接到任何地方。
   drop('c', feishuChannel('oc_2', 'om_gone'))
   expect(Object.fromEntries(droppedReplies({ store, links }).map(item => [item.id, item.thread])))
     .toEqual({ a: 'feishu:oc_1:om_root', b: 'github:42', c: undefined })
@@ -58,7 +58,7 @@ function views() {
   return { store, sources, links }
 }
 const at = new Date().toISOString()
-/** A live ticket with no Assignment, as a follow-up's owner needs one. */
+/** 一个没有派工的进行中工单，后续消息的归属需要它。 */
 const live = (id: string) => store.tickets.save({ id, title: id, decisionId: 'd', channels: [], undelivered: [], createdAt: at,
   updatedAt: at,
   mandate: { strength: 'explicit', policyVersion: 'v', basis: { via: 'listed' }, actor: { source: 'feishu', id: 'ou_alice' }, scope: '' },
@@ -66,7 +66,7 @@ const live = (id: string) => store.tickets.save({ id, title: id, decisionId: 'd'
 const message = (id: string, actor: { source: string; id: string }, human = true) => ({ id, source: actor.source,
   threads: [{ source: 'feishu', id: 'oc_1:om_root' }], actor, human, at, text: `message ${id}`, meta: {} })
 
-it('names each sender as the Policy lists it, by its id where the id is readable, and as its kind names one it does not list', () => {
+it('按策略名单指名每个发送者，id 可读时用 id，未列入名单的按其 kind 的称谓', () => {
   const view = snapshot(views())
   expect([view.actor({ source: 'feishu', id: 'OU_ALICE' }), view.actor({ source: 'github', id: 'alice' }), view.actor({ source: 'github',
     id: 'bob' }),
@@ -81,7 +81,7 @@ it('names each sender as the Policy lists it, by its id where the id is readable
   expect(view.rule('gone')).toEqual({ id: 'gone', name: 'gone' })
 })
 
-it('classifies a Thread by what it is doing, and offers a filtered Trigger of a person to Eval again', () => {
+it('按线程正在做的事情对其分类，并把被过滤的用户触发再次送评估', () => {
   const host = views()
   store.threads.save({ key: 'feishu:oc_1:om_root', ref: { source: 'feishu', id: 'oc_1:om_root' }, createdAt: at, subscriptions: [],
     correlated: [],
@@ -93,12 +93,12 @@ it('classifies a Thread by what it is doing, and offers a filtered Trigger of a 
   const view = snapshot(host)
   expect(threadSummary(view, store.threads.get('feishu:oc_1:om_root')!).stage).toBe('queued')
   const rows = ['e1', 'e2', 'e3'].map(id => triggerView(view, store.triggers.get(id)!))
-  // A queued Trigger waits for Eval already, and an automated one is not offered.
+  // 排队中的触发已经在等待评估，自动消息不提供该操作。
   expect(rows.map(row => row.actions.requeue)).toEqual([true, false, false])
   expect(rows[0]!.actor.name).toEqual({ zh: 'Alice', en: 'Alice' })
 })
 
-it('states each Source by the first state that holds', () => {
+it('按第一个成立的状态表述每个来源', () => {
   const host = views()
   const states = (setup: Parameters<typeof sourcesStatus>[2], health: Parameters<typeof sourcesStatus>[1] = {}) =>
     Object.fromEntries(sourcesStatus(host, health, setup).map(source => [source.id, source.state]))
@@ -112,7 +112,7 @@ it('states each Source by the first state that holds', () => {
     .toEqual({ feishu: 'setup', github: 'setup' })
 })
 
-it('follows the Ticket\'s stage: a blocked Ticket a person answered since is working, with no retry, note or turn end', () => {
+it('跟随工单阶段：用户回答过的阻塞工单回到进行中，没有重试、备注或回合结束', () => {
   const host = views()
   const blocked = { state: 'blocked' as const, summary: 'Needs the design file', at: '2026-09-22T00:01:00Z' }
   const ticket = { id: 't1', title: 'Fix', decisionId: 'd', channels: [], undelivered: [], createdAt: at, updatedAt: at,
@@ -133,7 +133,7 @@ it('follows the Ticket\'s stage: a blocked Ticket a person answered since is wor
   expect(ticketDetail(host, 't1')!.assignments[0]).not.toHaveProperty('turnEndedAt')
 })
 
-it('does not show a follow-up that reached a ticket as waiting for an Eval, though an older version queued it', () => {
+it('不把已到达工单的后续消息显示为等待评估，即使旧版本将其排队', () => {
   const host = views()
   live('t1')
   store.triggers.save(message('f1', { source: 'feishu', id: 'ou_alice' }))
@@ -146,7 +146,7 @@ it('does not show a follow-up that reached a ticket as waiting for an Eval, thou
   const view = snapshot(host)
   expect(threadSummary(view, store.threads.get('feishu:oc_1:om_root')!)).toMatchObject({ stage: 'subscribed', pending: 0 })
   expect(triggerView(view, store.triggers.get('f1')!).disposition.queued).toBe(false)
-  // One a person sent to Eval again waits for it.
+  // 用户重新送评估的消息在等待评估。
   store.threads.save({ ...store.threads.get('feishu:oc_1:om_root')!, pending: ['f1', 'f2'] })
   expect(threadSummary(snapshot(host), store.threads.get('feishu:oc_1:om_root')!)).toMatchObject({ stage: 'queued', pending: 1 })
 })
@@ -155,7 +155,7 @@ const load = { running: 0, queued: 0 }
 const problems = (host: ReturnType<typeof views>, health: Parameters<typeof overview>[1] = {}) =>
   overview(host, health, 'v1', load).problems
 
-it('lists an Eval past its deadline, and as dsh-superagent\'s own errors only parts no Source or Policy sync reports', () => {
+it('列出超过截止时间的评估；作为 dsh-superagent-cn 自身错误只列出来源与策略同步都不报告的部分', () => {
   const host = views()
   const evaluating = { id: 'e1', threadKey: 'github:1', triggerIds: ['t1'], strength: 'explicit' as const, actor: { source: 'github',
     id: 'alice' },
@@ -169,13 +169,13 @@ it('lists an Eval past its deadline, and as dsh-superagent\'s own errors only pa
     'sync:feishu': error('sync failed'), evals: error('unavailable'), launch: { state: 'ready' as const, detail: '' } }
   const found = problems(host, health)
   expect(found).toContainEqual({ kind: 'eval-overdue', thread: expect.objectContaining({ key: 'github:1', stage: 'evaluating' }) })
-  // Effects are dsh-superagent's own; a Source shows its parts and its Policy sync, and the Evals are listed one by one.
+  // effects 属于 dsh-superagent-cn 自身；来源展示其部分与策略同步，评估则逐条列出。
   expect(found.filter(item => item.kind === 'runtime-error')).toEqual([{ kind: 'runtime-error', name: 'relay', detail: 'relay failing' },
     { kind: 'runtime-error', name: 'reply', detail: 'reply failing' }])
   expect(found.filter(item => item.kind === 'source-error').map(item => item.source.health.name)).toEqual(['feishu', 'history'])
 })
 
-it('says no Source runs when every Source is off, and states a Source missing or off', () => {
+it('所有来源都停用时提示没有来源在运行，并区分来源缺失与停用', () => {
   const host = views()
   expect(problems(host).map(item => item.kind)).not.toContain('no-source')
   const settings = store.settings()
@@ -186,14 +186,14 @@ it('says no Source runs when every Source is off, and states a Source missing or
     .toEqual({ feishu: ['off', true], github: ['off', true], jira: ['missing', false] })
 })
 
-it('sends text without HTML, entity-encoded tags included, and with images named', () => {
+it('输出不带 HTML 的文本（含实体编码的标签），并把图片按名称标注', () => {
   const text = '<div>Hello <b>there</b></div> &lt;script&gt;alert(1)&lt;/script&gt; <!-- note --> ![shot](https://x/y.png) [Image: diagram]'
   expect(plain(text)).toBe('Hello there alert(1) [image] [image]')
   expect(markdown(`**Fix** ${text}\n\n- one`)).toBe('**Fix** Hello there alert(1)  [image] [image]\n\n- one')
   expect(plain('[the docs](https://example.com) and `code` &amp; more')).toBe('the docs and code & more')
 })
 
-it('words each settings save by what it changed from the one before, and nothing after a gap in the history', () => {
+it('按与上一次保存的差异表述每次设置保存；历史出现缺口后无可表述', () => {
   const host = views()
   const first = store.settings()
   const allowed = (entries: { id: string; name?: string }[]) => ({ ...first.policy, sources: { ...first.policy.sources,
@@ -214,13 +214,13 @@ it('words each settings save by what it changed from the one before, and nothing
     { code: 'blockedCommands', from: '', to: 'rm curl' }, { code: 'sourceDisabled', source: 'feishu' }])
   expect(changes(revision)).toEqual([{ code: 'sourceRowsRemoved', source: 'feishu', part: true, field: 'allowed', items: ['Bob'] },
     { code: 'resumed' }, { code: 'sourceEnabled', source: 'feishu' }])
-  // A save whose predecessor is missing from the history has nothing to compare with.
+  // 前一个版本不在历史中的保存无从比较。
   store.delete(KV.settings.version(revision))
   store.saveSettings({ ...store.settings(), paused: true })
   expect(changes(revision + 1)).toBeNull()
 })
 
-it('names a listed bot as the Policy lists it, and gives a bot\'s Mandate a basis fact of its own', () => {
+it('按策略名单指名列出的机器人，并给机器人的授权一个专属的依据事实', () => {
   store.saveSettings(SettingsSchema.parse({ policy: { sources: { feishu: { allowed: [], bots: [{ id: 'cli_review', name: '评审机器人' }] } } } }))
   const sources = new SourceRegistry(() => store.settings())
   sources.register(feishuKind)
@@ -230,7 +230,7 @@ it('names a listed bot as the Policy lists it, and gives a bot\'s Mandate a basi
     .toEqual([{ name: 'sender', value: '评审机器人' }, { name: 'bot' }, { name: 'addressed', value: 'mention' }, { name: 'mode', value: 'auto' }])
 })
 
-it('shows a follow-up that reached a ticket as delivered, the tickets that handed a Trigger back with why, and the Threads a ticket follows for context', () => {
+it('把到达工单的后续消息显示为已送达，说明交回触发的工单及原因，并展示工单作上下文跟随的线程', () => {
   const host = views()
   live('t1')
   store.threads.save({ key: 'feishu:oc_1:om_root', ref: { source: 'feishu', id: 'oc_1:om_root' }, createdAt: at, subscriptions: ['t1'],
@@ -242,7 +242,7 @@ it('shows a follow-up that reached a ticket as delivered, the tickets that hande
   store.triggers.saveDisposition('f2', { fanout: ['t1'], requeued: true, handbacks: [{ ticketId: 't1', reason: 'Asks for a new feature', at }], at })
   const view = snapshot(host)
   expect(triggerView(view, store.triggers.get('f1')!).disposition).toMatchObject({ delivered: true, queued: false, handbacks: [] })
-  // A Trigger handed back goes to Eval as any message on its Thread; the Ticket that handed it back is named by its title once it has one.
+  // 被交回的触发与其线程上的其他消息一样进入评估；交回它的工单一旦有标题就按标题指名。
   expect(triggerView(view, store.triggers.get('f2')!).disposition).toMatchObject({ delivered: false,
     handbacks: [{ ticketId: 't1', title: 't1', reason: 'Asks for a new feature' }] })
   store.threads.save({ key: 'github:7', ref: { source: 'github', id: '7' }, createdAt: at, subscriptions: ['t1'], context: ['t1'],
@@ -260,7 +260,7 @@ it('shows a follow-up that reached a ticket as delivered, the tickets that hande
   expect(triggerView(snapshot(host), store.triggers.get('f2')!).disposition.handbacks[0]?.title).toBe('Fix')
 })
 
-it('names a bot\'s Mandate as a bot once the Policy no longer lists it', () => {
+it('策略不再列出的机器人，其授权按机器人称谓显示', () => {
   const host = views()
   const mandate = { strength: 'inferred' as const, policyVersion: 'v', basis: { via: 'bot' as const,
     observation: { mode: 'auto' as const } },
@@ -270,7 +270,7 @@ it('names a bot\'s Mandate as a bot once the Policy no longer lists it', () => {
   expect(ticketDetail(host, 't1')!.mandate.actor).toEqual({ source: 'feishu', id: 'cli_removed', name: feishuKind.policy!.unnamed!.bot })
 })
 
-it('offers a person to send a follow-up to Eval while a ticket decides it, or once nothing did', () => {
+it('在工单处理后续消息期间或无人处理时，允许用户把它送评估', () => {
   const host = views()
   live('t1')
   store.threads.save({ key: 'feishu:oc_1:om_root', ref: { source: 'feishu', id: 'oc_1:om_root' }, createdAt: at, subscriptions: ['t1'],
@@ -280,26 +280,26 @@ it('offers a person to send a follow-up to Eval while a ticket decides it, or on
   store.triggers.saveDisposition('f1', { fanout: ['t1'], at })
   const row = () => triggerView(snapshot(host), store.triggers.get('f1')!)
   expect(row()).toMatchObject({ actions: { requeue: true }, disposition: { delivered: true } })
-  // A ticket that ended after its worker had it leaves it to nobody: a person may still send it to Eval.
+  // 执行器 Session 拿到之后才结束的工单把它留给无人处理：用户仍可送评估。
   store.tickets.save({ ...store.tickets.get('t1')!, ended: { at, by: 'executor', reason: 'done', outcome: 'completed' } })
   expect(row()).toMatchObject({ actions: { requeue: true }, disposition: { delivered: false } })
-  // Not once its worker acknowledged it, which took it up; a stop on it decided only the ticket's work.
+  // 执行器 Session 确认接收后就不行了：它已接手；针对它的停止只决定该工单的工作。
   store.triggers.saveDisposition('f1', { fanout: ['t1'], acked: ['t1'], at })
   expect(row().actions.requeue).toBe(false)
   store.decisions.save({ id: 'stop', evalId: 'e', threadKey: 'feishu:oc_1:om_root', triggerIds: ['f1'], policyVersion: 'v', at, kind: 'stop',
     reason: [{ code: 'humanStop' }], strength: 'explicit', ticketId: 't1' })
   store.triggers.saveDisposition('f1', { fanout: ['t1'], decisionId: 'stop', at })
   expect(row().actions.requeue).toBe(true)
-  // So once the stop ended the ticket, which let go of the message, as the Engine records it.
+  // 如此一来，停止结束工单（Engine 如实记录）后，消息便被释放。
   store.triggers.saveDisposition('f1', { fanout: [], decisionId: 'stop', at })
   expect(row().actions.requeue).toBe(true)
-  // Once sent, it waits for the Eval.
+  // 送出之后即等待评估。
   store.threads.save({ ...store.threads.get('feishu:oc_1:om_root')!, pending: ['f1'] })
   store.triggers.saveDisposition('f1', { fanout: ['t1'], requeued: true, at })
   expect(row()).toMatchObject({ actions: { requeue: false }, disposition: { queued: true } })
 })
 
-it('reads each ticket a page\'s follow-ups reached once, and nothing for a message no ticket can decide', () => {
+it('页面后续消息到达的每个工单只读一次，无工单可处理的消息不做任何读取', () => {
   const host = views()
   live('t1')
   store.threads.save({ key: 'feishu:oc_1:om_root', ref: { source: 'feishu', id: 'oc_1:om_root' }, createdAt: at, subscriptions: ['t1'],
@@ -313,7 +313,7 @@ it('reads each ticket a page\'s follow-ups reached once, and nothing for a messa
   expect(['f1', 'f2', 'f3'].map(id => triggerView(view, store.triggers.get(id)!).disposition.delivered)).toEqual([true, true, true])
   expect(tickets).toHaveBeenCalledOnce()
   tickets.mockRestore()
-  // A message the ticket handed back is decided by no ticket, which needs no read.
+  // 被工单交回的消息不再属于任何工单，因此无需读取。
   store.triggers.saveDisposition('f3', { fanout: ['t1'], handbacks: [{ ticketId: 't1', reason: 'Another change', at }], at })
   const records = { tickets: { get: vi.fn() }, threads: { get: vi.fn() }, triggers: store.triggers }
   expect(followupOwners(store.triggers.get('f3')!, records)).toEqual([])

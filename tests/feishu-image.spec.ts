@@ -36,21 +36,21 @@ beforeEach(() => {
   })
 })
 afterEach(() => { vi.restoreAllMocks(); rmSync(directory, { recursive: true, force: true }) })
-it('retains the source-message pairing, commits an image reference and removes temporary files', async () => {
+it('保留来源消息配对，提交图片引用并删除临时文件', async () => {
   expect(admissionImageKeys('![Image](img_source) {"image_key":"img_second"} img_source')).toEqual(['img_source', 'img_second'])
   expect(await readAdmissionImage(agent, commands, source, text, 'img_source', directory, signal())).toEqual({ source_message_id: 'om_source', image_key: 'img_source', image: ref })
   expect(resolveModelInfo).toHaveBeenCalledWith('chosen-provider', 'chosen-model', expect.any(AbortSignal))
   expect(saveImage).toHaveBeenCalledWith({ data: Buffer.from('data'), mediaType: 'image/png', name: 'img_source.png' })
   expect(await readdir(directory)).toEqual([])
 })
-it('rejects arbitrary keys and non-visual models before downloading', async () => {
+it('下载之前拒绝任意键与不支持视觉的模型', async () => {
   await expect(readAdmissionImage(agent, commands, source, text, '../img_other', directory, signal())).rejects.toThrow('source message')
   resolveModelInfo.mockResolvedValue({ inputModalities: ['text'] })
   await expect(readAdmissionImage(agent, commands, source, text, 'img_source', directory, signal())).rejects.toThrow('does not support image')
   expect(lark).not.toHaveBeenCalled()
   expect(saveImage).not.toHaveBeenCalled()
 })
-it('cleans up refused attachments and failed downloads without returning an image', async () => {
+it('清理被拒绝的附件与失败的下载，且不返回图片', async () => {
   saveImage.mockRejectedValueOnce(new Error('Invalid image bytes'))
   await expect(readAdmissionImage(agent, commands, source, text, 'img_source', directory, signal())).rejects.toThrow('Invalid image')
   expect(await readdir(directory)).toEqual([])
@@ -58,7 +58,7 @@ it('cleans up refused attachments and failed downloads without returning an imag
   await expect(readAdmissionImage(agent, commands, source, text, 'img_source', directory, signal())).rejects.toThrow('permission denied')
   expect(await readdir(directory)).toEqual([])
 })
-it('refuses escaped output paths, oversize files and unsupported types', async () => {
+it('拒绝逃逸的输出路径、超大文件与不支持的类型', async () => {
   const outside = join(directory, 'outside.png'); await writeFile(outside, 'data')
   lark.mockResolvedValueOnce({ saved_path: outside })
   await expect(readAdmissionImage(agent, commands, source, text, 'img_source', directory, signal())).rejects.toThrow('outside')

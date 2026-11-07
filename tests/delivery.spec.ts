@@ -11,7 +11,7 @@ function fixture(history: UserMessage[] = []) {
   const steer = vi.fn((message: UserMessage) => { inbox.nextStep.push(message) })
   const followup = vi.fn((message: UserMessage) => { inbox.nextTurn.push(message) })
   const injected = vi.fn((_message: UserMessage) => {})
-  // Only the delivery-facing Agent methods participate in this fixture.
+  // 这个夹具只接入面向投递的 Agent 方法。
   const agent = { id: SessionId('delivery-test'), session: {}, inbox, steer, followup, inject: injected } as unknown as Agent
   const event = (message: UserMessage): SessionEvent => ({ type: 'user/message', seq: SessionSeq(0), time: 0, surfaceOp: 'append', data: message })
   const read = vi.fn(async (offset: number, length: number) => ({ events: history.slice(offset, offset + length).map(event) }))
@@ -33,14 +33,14 @@ function fixture(history: UserMessage[] = []) {
   return { agent, agents, inbox, steer, followup, injected, open, read, close, flush, send, inject, holds, consume, signal }
 }
 
-it.each(['queue', 'steer'] as const)('delivers %s as an orchestrator relay, deduplicating pending and consumed messages', async mode => {
+it.each(['queue', 'steer'] as const)('以 orchestrator 中继的形式投递 %s，对未决与已消费的消息去重', async mode => {
   const f = fixture()
   await f.send('request', mode)
   const target = mode === 'queue' ? f.followup : f.steer
   expect(target).toHaveBeenCalledOnce()
   const message = target.mock.calls[0]![0]
   expect(message.role).toBe('user')
-  expect(message.source).toEqual({ kind: 'dsh-superagent', form: 'relay' })
+  expect(message.source).toEqual({ kind: 'dsh-superagent-cn', form: 'relay' })
   expect(Object.isFrozen(message)).toBe(true)
   await f.send('request', mode)
   f.consume(message)
@@ -54,9 +54,9 @@ it.each(['queue', 'steer'] as const)('delivers %s as an orchestrator relay, dedu
   expect(restored.followup).not.toHaveBeenCalled()
 })
 
-it.each(['pending', 'consumed', 'live'] as const)('recognizes legacy plugin identity in %s input without rewriting it', async location => {
-  // Bypass TypeScript's current source union to construct the retired serialized shape.
-  const old: UserMessage = JSON.parse(JSON.stringify({ id: 'dsh-superagent:request', role: 'user', content: [], source: { kind: 'plugin', plugin: 'dsh-superagent', form: 'relay' } }))
+it.each(['pending', 'consumed', 'live'] as const)('在 %s 输入中识别旧版 plugin 身份而不改写它', async location => {
+  // 绕过 TypeScript 当前的 source 联合类型，构造已废弃的序列化形状。
+  const old: UserMessage = JSON.parse(JSON.stringify({ id: 'dsh-superagent-cn:request', role: 'user', content: [], source: { kind: 'plugin', plugin: 'dsh-superagent-cn', form: 'relay' } }))
   const before = JSON.stringify(old)
   const f = fixture(location === 'consumed' ? [old] : [])
   if (location === 'pending') f.inbox.nextTurn.push(old)
@@ -68,14 +68,14 @@ it.each(['pending', 'consumed', 'live'] as const)('recognizes legacy plugin iden
   expect(f.steer).toHaveBeenCalledOnce()
 })
 
-it.each(['another-plugin', undefined])('does not treat a legacy plugin source %s as this producer', async plugin => {
-  const old: UserMessage = JSON.parse(JSON.stringify({ id: 'dsh-superagent:request', role: 'user', content: [], source: { kind: 'plugin', plugin, form: 'relay' } }))
+it.each(['another-plugin', undefined])('不把旧版 plugin 来源 %s 当作本生产者', async plugin => {
+  const old: UserMessage = JSON.parse(JSON.stringify({ id: 'dsh-superagent-cn:request', role: 'user', content: [], source: { kind: 'plugin', plugin, form: 'relay' } }))
   const f = fixture([old])
   await f.send()
   expect(f.steer).toHaveBeenCalledOnce()
 })
 
-it.each(['pending', 'consumed'] as const)('recognizes legacy user RPC identity in %s input', async location => {
+it.each(['pending', 'consumed'] as const)('在 %s 输入中识别旧版 user RPC 身份', async location => {
   const old = createUserMessage({ content: [{ type: 'text', text: 'old relay' }], source: { kind: 'user', rpcId: 'request' } })
   const f = fixture(location === 'consumed' ? [old] : [])
   if (location === 'pending') f.inbox.nextTurn.push(old)
@@ -86,7 +86,7 @@ it.each(['pending', 'consumed'] as const)('recognizes legacy user RPC identity i
   expect(f.steer).toHaveBeenCalledOnce()
 })
 
-it('retries a failed durability barrier without another delivery and permits concurrent retries', async () => {
+it('重试失败的持久化屏障时不再投递一次，并允许并发重试', async () => {
   const f = fixture()
   f.flush.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('disk busy'))
   await expect(f.send()).rejects.toThrow('disk busy')
@@ -96,7 +96,7 @@ it('retries a failed durability barrier without another delivery and permits con
   expect(f.flush).toHaveBeenCalledTimes(4)
 })
 
-it('retries history failures and reads past the first page', async () => {
+it('重试历史读取失败并越过第一页继续读取', async () => {
   const old = createUserMessage({ content: [], source: { kind: 'user', rpcId: 'request' } })
   const f = fixture([...Array.from({ length: 512 }, () => createUserMessage({ content: [], source: { kind: 'user' } })), old])
   f.read.mockRejectedValueOnce(new Error('read failed'))
@@ -106,7 +106,7 @@ it('retries history failures and reads past the first page', async () => {
   expect(f.close).toHaveBeenCalledTimes(2)
 })
 
-it('keeps consumption that happens during the initial history read', async () => {
+it('保留初始历史读取期间发生的消费', async () => {
   const f = fixture()
   const old = createUserMessage({ content: [], source: { kind: 'user', rpcId: 'request' } })
   f.read.mockImplementationOnce(async () => { f.consume(old); return { events: [] } })
@@ -114,7 +114,7 @@ it('keeps consumption that happens during the initial history read', async () =>
   expect(f.steer).not.toHaveBeenCalled()
 })
 
-it('does not dispatch when cancelled or disposed during history loading', async () => {
+it('历史加载期间被取消或销毁时不进行投递', async () => {
   const cancelled = fixture()
   cancelled.read.mockImplementationOnce(async () => { cancelled.signal.abort(); return { events: [] } })
   await expect(cancelled.send()).rejects.toThrow()
@@ -125,16 +125,16 @@ it('does not dispatch when cancelled or disposed during history loading', async 
   expect(disposed.steer).not.toHaveBeenCalled()
 })
 
-it('injects a notice once, as dsh-superagent\'s notice with its summary, without waking the agent', async () => {
+it('以 dsh-superagent-cn 带 summary 的通知形式只注入一次通知，且不唤醒 agent', async () => {
   const f = fixture()
   await f.inject('notice:settings', 'Settings saved')
   await f.inject('notice:settings', 'Settings saved')
   expect(f.injected).toHaveBeenCalledOnce()
-  expect(f.injected.mock.calls[0]![0]).toMatchObject({ role: 'user', source: { kind: 'dsh-superagent', form: 'notice', summary: 'Settings saved' } })
+  expect(f.injected.mock.calls[0]![0]).toMatchObject({ role: 'user', source: { kind: 'dsh-superagent-cn', form: 'notice', summary: 'Settings saved' } })
   expect([f.steer, f.followup].map(spy => spy.mock.calls.length)).toEqual([0, 0])
 })
 
-it('tells whether the Session holds a message: one waiting in its inbox, one it took, and one in its stored history', async () => {
+it('判断 Session 是否持有某条消息：在 inbox 中等待的、已取走的，以及已存历史中的', async () => {
   const f = fixture()
   expect(await f.holds('request')).toBe(false)
   await f.send('request')

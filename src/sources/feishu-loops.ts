@@ -1,4 +1,4 @@
-/** Feishu background loops: live event stream consumer, chat/topic history backfill, chat name refresh, and subscribed thread polling. */
+/** 飞书后台循环：实时事件流消费者、会话/话题历史回填、会话名称刷新，以及已订阅线程的轮询。 */
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -39,10 +39,10 @@ function available(ctx: SourceContext): boolean {
   return false
 }
 
-/** Runs the live event consumer only while the Source is enabled; disabling it stops the consumer within five seconds. */
+/** 仅在 Source 启用期间运行实时事件消费者；将其停用后，消费者会在五秒内停止。 */
 async function watch(ctx: SourceContext, signal: AbortSignal): Promise<void> {
   await ctx.ready
-  // Setup restarts dsh-superagent once it resolves the bot; until then nothing runs.
+  // Setup 在解析出 bot 后会重启 dsh-superagent-cn；在此之前什么都不运行。
   if (!available(ctx)) return
   let retry: number | undefined
   while (!signal.aborted) {
@@ -64,7 +64,7 @@ async function watch(ctx: SourceContext, signal: AbortSignal): Promise<void> {
     await delay(retry, undefined, { signal }).catch(() => {})
   }
 }
-/** Wait before restarting the event consumer: 1s after a run that stayed up for a minute, otherwise exponential backoff up to 60s. */
+/** 重启事件消费者前的等待时间：若上一次运行持续了一分钟，则等待 1 秒，否则按指数退避，最长 60 秒。 */
 export const consumerRetry = (previous: number | undefined, ranMs: number): number =>
   previous === undefined || ranMs >= 60_000 ? 1000 : Math.min(previous * 2, 60_000)
 async function consume(ctx: SourceContext, signal: AbortSignal): Promise<void> {
@@ -87,7 +87,7 @@ async function consume(ctx: SourceContext, signal: AbortSignal): Promise<void> {
     chain = chain.then(async () => {
       if (line.length > 1_048_576) throw new Error('Feishu event exceeds 1 MiB')
       const trigger = feishuTrigger(JSON.parse(line), bot(ctx).botId, bot(ctx).appId)
-      // Events already read when the Source is disabled are dropped; the consumer stops shortly after.
+      // Source 被停用后已读取的事件会被丢弃；消费者随后会很快停止。
       if (!trigger || !enabled(ctx)) return
       const chats = ctx.state.get(KV.feishu.chats) ?? {}
       chats[String(trigger.meta.chatId)] = trigger.meta.direct === true
@@ -104,7 +104,7 @@ async function consume(ctx: SourceContext, signal: AbortSignal): Promise<void> {
   } finally { clearTimeout(timeout); signal.removeEventListener('abort', stop); stdout.close(); stderr.close(); await chain }
 }
 
-/** Refreshes the map of joined chats (`chat_id -> name`); throws on failure so the previously stored list remains intact. */
+/** 刷新已加入会话的映射（`chat_id -> name`）；失败时抛出异常，使先前存储的列表保持不变。 */
 export async function refreshChatNames(ctx: SourceContext, signal?: AbortSignal): Promise<Record<string, string>> {
   const commands = ctx.commands.withSignal(signal)
   const result = z.looseObject({ chats: z.array(z.looseObject({ chat_id: z.string(), name: z.string().nullish() })).optional() })
@@ -113,14 +113,14 @@ export async function refreshChatNames(ctx: SourceContext, signal?: AbortSignal)
   ctx.state.set(KV.sources.labels(SOURCE), names)
   return names
 }
-/** Rereads the chat list every minute independently of history backfill (whose rounds can take much longer), so newly joined chats appear within a minute. */
+/** 每分钟独立于历史回填（其一轮可能耗时更长）重新读取会话列表，因此新加入的会话会在一分钟内出现。 */
 async function chatNamesLoop(ctx: SourceContext, signal: AbortSignal): Promise<void> {
   await ctx.ready
   if (!available(ctx)) return
   while (!signal.aborted) {
     if (enabled(ctx)) {
       try { await refreshChatNames(ctx, signal) }
-      catch { /* Names are a display aid; the stored list stays until a later read succeeds. */ }
+      catch { /* 名称仅用于展示；在后续读取成功之前，保留已存储的列表。 */ }
     }
     await delay(60_000, undefined, { signal }).catch(() => {})
   }
@@ -160,8 +160,8 @@ async function backfillLoop(ctx: SourceContext, signal: AbortSignal): Promise<vo
   }
 }
 /**
- * Backfills chat messages and active topic replies between `since` and `until` before the caller advances the chat cursor.
- * Topics are stored as `{ id: lastSeenAt }`, and unsubscribed topics older than the polling horizon are pruned.
+ * 在调用方推进会话游标之前，回填 `since` 与 `until` 之间的会话消息和活跃话题回复。
+ * 话题以 `{ id: lastSeenAt }` 形式存储，超过轮询时限的未订阅话题会被清理。
  */
 export async function backfillChat(ctx: SourceContext, chatId: string, direct: boolean, since: string, until: string,
   signal: AbortSignal, tally: Tally = { skipped: 0 }): Promise<void> {
@@ -194,7 +194,7 @@ export async function backfillChat(ctx: SourceContext, chatId: string, direct: b
     } while (page)
   }
   await scan('chat', chatId)
-  // A quiet topic is forgotten unless a subscribed Thread that is still polled follows it.
+  // 除非仍有轮询中的已订阅 Thread 跟随某个话题，否则沉默的话题会被遗忘。
   const followed = new Set(ctx.threads.subscribed(SOURCE).filter(thread => polled(ctx, thread))
     .map(thread => String(thread.meta.threadId ?? ctx.triggers.latest(thread.key)?.meta.threadId ?? '')))
   for (const [id, seen] of Object.entries(topics)) {
@@ -205,7 +205,7 @@ export async function backfillChat(ctx: SourceContext, chatId: string, direct: b
   ctx.state.set(topicsKey, topics)
 }
 
-/** Resolves the retained source message reference for polling a subscribed thread. */
+/** 解析用于轮询已订阅线程的保留来源消息引用。 */
 export function threadRef(ctx: SourceContext, thread: Thread): FeishuRef | undefined {
   const meta = thread.meta as { sourceTriggerId?: string; chatId?: string; messageId?: string }
   if (meta.chatId && meta.messageId && meta.sourceTriggerId) {
@@ -214,7 +214,7 @@ export function threadRef(ctx: SourceContext, thread: Thread): FeishuRef | undef
   const trigger = ctx.triggers.latest(thread.key)
   return trigger ? feishuRef(trigger) : undefined
 }
-/** Polls subscribed Feishu threads within the polling horizon so replies missed by the live stream become triggers. */
+/** 在轮询时限内轮询已订阅的飞书线程，使实时事件流漏掉的回复也能成为触发。 */
 export async function pollThreads(ctx: SourceContext, signal?: AbortSignal, tally?: Tally): Promise<void> {
   await pollEach(ctx, SOURCE, () => !!signal?.aborted, thread => pollThread(ctx, thread, signal, tally))
 }
@@ -222,7 +222,7 @@ async function pollThread(ctx: SourceContext, thread: Thread, signal?: AbortSign
   const ref = threadRef(ctx, thread)
   if (!ref) throw new Error('Subscribed thread has no retained source message')
   const config = enabled(ctx)
-  // The Source was turned off; the next round polls again.
+  // Source 已被关闭；下一轮会再次轮询。
   if (!config) return
   const commands = ctx.commands.withSignal(signal)
   const pageSize = config.readPageSize
@@ -230,7 +230,7 @@ async function pollThread(ctx: SourceContext, thread: Thread, signal?: AbortSign
   const known = new Set(ctx.state.get(checkpoint) ?? [])
   const initialized = ctx.state.get(KV.feishu.initialized(thread.key))
   if (!initialized) {
-    // Mark root and parent messages as seen on first poll so historical context is not ingested as new triggers.
+    // 首次轮询时把 root 与 parent 消息标记为已读，避免历史上下文被当作新触发摄入。
     for (const section of ['root', 'parent']) {
       const result = await readFeishu(commands, ref, `feishu/${ref.triggerId}/${section}`, pageSize)
       if ('message' in result && result.message) known.add(result.message.message_id)
@@ -254,7 +254,7 @@ async function pollThread(ctx: SourceContext, thread: Thread, signal?: AbortSign
     for (const message of result.messages.filter(item => !known.has(item.message_id) && !item.deleted).reverse()) {
       if (signal?.aborted) return
       const trigger = feishuTrigger(topicEvent(message, ref.chatId, direct, root), botId, appId)
-      // Ignore messages older than the thread subscription on initial poll.
+      // 首次轮询时忽略早于线程订阅时间的消息。
       if (!trigger || (!initialized && Date.parse(trigger.at) < since)) continue
       await receive(ctx, trigger)
     }

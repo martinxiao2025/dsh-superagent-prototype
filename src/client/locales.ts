@@ -1,20 +1,20 @@
 /**
- * Bilingual UI dictionaries (`[zh, en]`) and glossary groupings, following the domain terms in `docs/001-domain.md`.
+ * 双语 UI 词典（`[zh, en]`）与术语表分组，遵循 `docs/001-domain.md` 中的领域术语。
  */
 import { USER_ERRORS } from '../core/errors.ts'
 import { SETUP_PROBLEMS } from '../setup.ts'
 import { HEALTH_TEXT } from '../sources/host.ts'
 
 const TEXT = {
-  // Shared
+  // 通用
   title: ['Superagent', 'Superagent'],
   close: ['关闭', 'Close'],
   cancel: ['取消', 'Cancel'],
   confirm: ['确定', 'Confirm'],
   loading: ['正在读取…', 'Loading…'],
   loadMore: ['加载更多', 'Load more'],
-  offline: ['无法连接到 dsh-superagent 服务。请确认它正在运行（dsh-superagent status），然后重试。', 'Cannot reach the dsh-superagent service. Check that it is running (dsh-superagent status), then retry.'],
-  serverError: ['dsh-superagent 服务内部错误（{status}），请查看运行日志后重试。', 'dsh-superagent service error ({status}). Check the log, then retry.'],
+  offline: ['无法连接到 dsh-superagent-cn 服务。请确认它正在运行（dsh-superagent-cn status），然后重试。', 'Cannot reach the dsh-superagent-cn service. Check that it is running (dsh-superagent-cn status), then retry.'],
+  serverError: ['dsh-superagent-cn 服务内部错误（{status}），请查看运行日志后重试。', 'dsh-superagent-cn service error ({status}). Check the log, then retry.'],
   requestFailed: ['请求失败（{status}）。', 'Request failed ({status}).'],
   empty: ['—', '—'],
   yes: ['是', 'Yes'],
@@ -35,7 +35,7 @@ const TEXT = {
   'health.github': ['GitHub 来源', 'GitHub Source'],
   'health.feishu': ['飞书来源', 'Feishu Source'],
   'health.history': ['飞书补收', 'Feishu recovery'],
-  'health.runtime': ['dsh-superagent', 'dsh-superagent'],
+  'health.runtime': ['dsh-superagent-cn', 'dsh-superagent-cn'],
   'health.models': ['模型服务', 'Model service'],
   'health.assessment': ['发给主 Session 的评估', 'Evals sent to the main Session'],
   'health.launch': ['派工启动', 'Assignment launches'],
@@ -82,8 +82,8 @@ const TEXT = {
   expand: ['展开全文', 'Show all'],
   cardMarker: ['[卡片消息]', '[card message]'],
   setupProblem: ['部署检查未通过：{detail}', 'Deployment check failed: {detail}'],
-  hostNotRunning: ['dsh-superagent 没有响应：它可能正在重启；持续如此时，DSH 的日志写明原因，常见的是配置有误。', 'dsh-superagent is not answering: it may be restarting; if this persists, the DSH log names the cause, often a configuration error.'],
-  savedRestarting: ['已保存，dsh-superagent 正在重启', 'Saved; dsh-superagent is restarting'],
+  hostNotRunning: ['dsh-superagent-cn 没有响应：它可能正在重启；持续如此时，DSH 的日志写明原因，常见的是配置有误。', 'dsh-superagent-cn is not answering: it may be restarting; if this persists, the DSH log names the cause, often a configuration error.'],
+  savedRestarting: ['已保存，dsh-superagent-cn 正在重启', 'Saved; dsh-superagent-cn is restarting'],
   problems: ['系统问题', 'System problems'],
   dismiss: ['不再提示', 'Dismiss'],
   saved: ['已保存', 'Saved'],
@@ -93,13 +93,13 @@ const TEXT = {
   queuedLabel: ['排队', 'Queued'],
   resumeProcessing: ['恢复处理', 'Resume processing'],
   resumeProcessingConfirm: ['恢复后继续评估、派工和发送回复。', 'Resuming starts Evals, Assignments and replies again.'],
-  restartInterrupts: ['保存会重启 dsh-superagent：{count} 个进行中的派工会中断，并带恢复说明重新开始。', 'Saving restarts dsh-superagent: {count} running Assignments stop and start again with a recovery note.'],
+  restartInterrupts: ['保存会重启 dsh-superagent-cn：{count} 个进行中的派工会中断，并带恢复说明重新开始。', 'Saving restarts dsh-superagent-cn: {count} running Assignments stop and start again with a recovery note.'],
   sourceOff: ['已关闭', 'Off'],
   executorWaitingSetup: ['执行器等待部署检查', 'Executor waiting for the deployment check'],
-  // Header, search, and tabs
+  // 头部、搜索与标签页
   panel: ['Superagent', 'Superagent'],
   openMaster: ['打开主 Session', 'Open main Session'],
-  pagesLabel: ['dsh-superagent 页面', 'dsh-superagent pages'],
+  pagesLabel: ['dsh-superagent-cn 页面', 'dsh-superagent-cn pages'],
   searchPlaceholder: ['搜索工单、线程、触发或链接', 'Search Tickets, Threads, Triggers or links'],
   searchLabel: ['搜索', 'Search'],
   searchFound: ['找到 {tickets} 个工单、{threads} 个线程、{items} 条触发', 'Found {tickets} Tickets, {threads} Threads and {items} Triggers'],
@@ -116,12 +116,12 @@ const TEXT = {
   'tab.trigger': ['触发', 'Trigger'],
   'tab.eval': ['评估', 'Eval'],
   'tab.execution': ['执行', 'Execution'],
-  // Overview
+  // 概览
   sourceError: ['{source} 来源异常', '{source} Source failing'],
   needsYouNone: ['没有待处理的工单。', 'No pending Tickets.'],
   pendingTickets: ['待处理工单', 'Pending Tickets'],
   problemEvalOverdue: ['评估超时未决定：{thread}', 'Eval overdue: {thread}'],
-  problemSetup: ['部署检查未通过，dsh-superagent 暂不接单', 'Deployment check failed; dsh-superagent takes no work'],
+  problemSetup: ['部署检查未通过，dsh-superagent-cn 暂不接单', 'Deployment check failed; dsh-superagent-cn takes no work'],
   problemNoSource: ['没有运行中的来源，不会收到任何触发', 'No Source is running; no Triggers arrive'],
   actionOpenSources: ['去打开来源', 'Turn on a Source'],
   problemPaused: ['处理已暂停：不开始新的评估，不派工，不发送回复', 'Processing paused: no new Evals, Assignments or replies'],
@@ -139,9 +139,9 @@ const TEXT = {
   idleLabel: ['等待新触发', 'Waiting for a Trigger'],
   problemNoAllowed: ['没有人能发起工作：各来源上的名单都为空，任何请求都不会成为工单', 'No one may originate work: the lists on every Source are empty, so no request can become a Ticket'],
   actionAddAllowed: ['去添加', 'Add senders'],
-  'problemSetupFix.github': ['在设置 › 来源的 GitHub 卡片修正后保存，会重新检查；在 dsh-superagent 之外修复的（例如登录 CLI），点“重新检查”。', 'Fix it on the GitHub card of the Source settings and save to check again; after a fix outside dsh-superagent, such as signing a CLI in, choose Check again.'],
-  'problemSetupFix.feishu': ['在设置 › 来源的飞书卡片修正后保存，会重新检查；在 dsh-superagent 之外修复的（例如配置机器人），点“重新检查”。', 'Fix it on the Feishu card of the Source settings and save to check again; after a fix outside dsh-superagent, such as configuring the bot, choose Check again.'],
-  'problemSetupFix.deployment': ['在部署设置里修正后保存，会重新检查；在 dsh-superagent 之外修复的（例如升级 git），点“重新检查”。', 'Fix it in the Deployment settings and save to check again; after a fix outside dsh-superagent, such as upgrading git, choose Check again.'],
+  'problemSetupFix.github': ['在设置 › 来源的 GitHub 卡片修正后保存，会重新检查；在 dsh-superagent-cn 之外修复的（例如登录 CLI），点“重新检查”。', 'Fix it on the GitHub card of the Source settings and save to check again; after a fix outside dsh-superagent-cn, such as signing a CLI in, choose Check again.'],
+  'problemSetupFix.feishu': ['在设置 › 来源的飞书卡片修正后保存，会重新检查；在 dsh-superagent-cn 之外修复的（例如配置机器人），点“重新检查”。', 'Fix it on the Feishu card of the Source settings and save to check again; after a fix outside dsh-superagent-cn, such as configuring the bot, choose Check again.'],
+  'problemSetupFix.deployment': ['在部署设置里修正后保存，会重新检查；在 dsh-superagent-cn 之外修复的（例如升级 git），点“重新检查”。', 'Fix it in the Deployment settings and save to check again; after a fix outside dsh-superagent-cn, such as upgrading git, choose Check again.'],
   problemSetupFeishu: ['飞书机器人检查未通过，飞书来源暂停', 'Feishu bot check failed; the Feishu Source is paused'],
   // Source
   labelsAdded: ['列表已更新，新增：{names}', 'List updated, added: {names}'],
@@ -168,7 +168,7 @@ const TEXT = {
   'sourceState.setup': ['等待部署检查', 'Waiting for the deployment check'],
   setupFixLink: ['去修正', 'Fix it'],
   'openSettingsOf.deployment': ['去部署页修改', 'Change it on Deployment'],
-  // Trigger
+  // 触发
   loadEarlier: ['加载更早的触发', 'Load earlier Triggers'],
   subscribedTickets: ['订阅此线程的工单', 'Tickets subscribed to this Thread'],
   threadNotFound: ['找不到这个线程。', 'Thread not found.'],
@@ -211,7 +211,7 @@ const TEXT = {
   'threadFilter.all': ['全部线程', 'All Threads'],
   triggerIntro: ['触发按线程归组；线程决定它们扇出给哪些工单、由哪次评估处理。', 'Triggers grouped by Thread; the Thread decides which Tickets they fan out to and which Eval handles them.'],
   threadDecisions: ['这个线程的决定 · {count}', 'Decisions in this Thread · {count}'],
-  // Eval
+  // 评估
   policyVersionHint: ['策略版本由接单规则、各来源上的策略和评估的接单模式决定；修改任何一项都会生成新版本，并通知进行中的工单。每个工单记下接单时的版本。', 'The rules, the Policy on each Source and the accept mode of Eval make up the Policy version; any change makes a new version and notifies open Tickets. Each Ticket records the version it was accepted under.'],
   syncNeedsSave: ['请先保存或放弃修改，再同步。', 'Save or discard your changes before syncing.'],
   acceptMode: ['接单模式', 'Accept mode'],
@@ -265,7 +265,7 @@ const TEXT = {
   syncDone: ['上次同步', 'Last synced'],
   evalRecordsPaused: ['处理已暂停：新的触发会被记录，但不会被评估。', 'Processing is paused: new Triggers are recorded but not evaluated.'],
   resumeWhere: ['在执行状态中恢复', 'Resume in the Execution status'],
-  // Execution
+  // 执行
   'outcome.completed': ['已完成', 'Completed'],
   'outcome.merged': ['PR 已合并', 'Pull request merged'],
   'outcome.closed': ['PR 已关闭（未合并）', 'Pull request closed unmerged'],
@@ -291,7 +291,7 @@ const TEXT = {
   'input.policy-changed': ['策略变更', 'Policy change'],
   'input.reopen': ['续做', 'Reopened'],
   'input.resumed': ['恢复：线程上有人发了新消息', 'Resumed by a new message on its thread'],
-  'input.text': ['dsh-superagent 说明', 'dsh-superagent note'],
+  'input.text': ['dsh-superagent-cn 说明', 'dsh-superagent-cn note'],
   'input.note': ['主 Session 的备注', 'Orchestrator note'],
   attentionPrefix: ['待人工决定：', 'Attention: '],
   stopConfirmTitle: ['停止工单', 'Stop Ticket'],
@@ -393,7 +393,7 @@ const TEXT = {
   'ticketFilter.working': ['执行中', 'Working'],
   'ticketFilter.idle': ['等待新触发', 'Waiting for a Trigger'],
   'ticketFilter.ended': ['已结束', 'Ended'],
-  // Settings, drafts, and configuration history
+  // 设置、草稿与配置历史
   policyVersionUnrecorded: ['最近的保存记录里没有策略版本 {version}：它来自更早的保存、首次启动时的设置或更早的数据。', 'The recent saves do not include Policy version {version}: an older save, the settings at the first start, or older data made it.'],
   defaultModel: ['DSH 当前默认：{model}', 'DSH default: {model}'],
   defaultModelUnavailable: ['DSH 默认模型暂不可用', 'DSH default model unavailable'],
@@ -449,7 +449,7 @@ const TEXT = {
   'settingsGroup.prompts': ['提示词', 'Prompts'],
   'settingsGroup.deployment': ['部署', 'Deployment'],
   unsetValue: ['未设置', 'not set'],
-  // Prompts
+  // 提示词
   promptChanges: ['{count} 处修改', '{count} changes'],
   unsaved: ['未保存', 'Unsaved'],
   promptsDraftVersion: ['未保存 · 基于版本 {revision}', 'Unsaved · based on version {revision}'],
@@ -539,16 +539,16 @@ const TEXT = {
   promptNoSessions: ['暂无模型请求', 'No model requests yet'],
   'promptRole.orchestrator': ['主 Session', 'Main Session'],
   'promptRole.worker': ['执行器 Session', 'Executor Session'],
-  // Deployment
-  deploymentIntro: ['这台机器上的 dsh-superagent 设置，存放在 DSH 配置文件的 dsh-superagent 条目里；保存后立即生效，不会重启 dsh-superagent。', 'dsh-superagent\'s settings on this machine, kept in the dsh-superagent entry of the DSH configuration; a saved change applies at once, without restarting dsh-superagent.'],
-  deploymentUnavailable: ['dsh-superagent 启动完成后才能修改这些值。', 'These values can be changed once dsh-superagent has started.'],
+  // 部署
+  deploymentIntro: ['这台机器上的 dsh-superagent-cn 设置，存放在 DSH 配置文件的 dsh-superagent-cn 条目里；保存后立即生效，不会重启 dsh-superagent-cn。', 'dsh-superagent-cn\'s settings on this machine, kept in the dsh-superagent-cn entry of the DSH configuration; a saved change applies at once, without restarting dsh-superagent-cn.'],
+  deploymentUnavailable: ['dsh-superagent-cn 启动完成后才能修改这些值。', 'These values can be changed once dsh-superagent-cn has started.'],
   deploymentDerived: ['仓库与账号', 'Repository and accounts'],
   deploymentDerivedHint: ['由来源设置里的仓库和 CLI 得出。', 'Derived from the repository and the CLIs in the Source settings.'],
   deploymentRepository: ['仓库', 'Repository'],
   deploymentAgent: ['智能体账号', 'Agent account'],
   deploymentFeishu: ['飞书机器人', 'Feishu bot'],
   deploymentFeishuNone: ['未设置', 'Not set'],
-  deploymentAccountsWhere: ['账号在 dsh-superagent 面板的来源设置里修改。', 'Accounts are changed in the Source settings of the dsh-superagent panel.'],
+  deploymentAccountsWhere: ['账号在 dsh-superagent-cn 面板的来源设置里修改。', 'Accounts are changed in the Source settings of the dsh-superagent-cn panel.'],
   deploymentMachine: ['本机设置', 'This machine'],
   deploymentStateDir: ['状态目录', 'State directory'],
   deploymentStateDirHint: ['数据库、锁、执行器的命令和智能体的 git 配置所在目录，只能在 DSH 配置文件里修改。', 'Holds the database, locks, the Executor\'s commands and the agent\'s git configuration; change it only in the DSH configuration file.'],
@@ -558,12 +558,12 @@ const TEXT = {
   deploymentContextPages: ['一次研判可读的线程页数', 'Thread pages one Assessment may read'],
   deploymentContextTimeout: ['一次上下文读取的时限 / 毫秒', 'Time limit of one context read / ms'],
   deploymentRefused: ['DSH 拒绝了这次修改：设置可能已在别处修改。放弃修改后可看到当前值。', 'DSH refused the change; the settings may have changed elsewhere. Discard to see the current values.'],
-  deploymentNoForms: ['这个 DSH 版本不提供配置表单，这些值只能在 DSH 配置文件的 dsh-superagent 条目里修改。', 'This DSH version has no configuration forms; change these values in the dsh-superagent entry of the DSH configuration file.'],
+  deploymentNoForms: ['这个 DSH 版本不提供配置表单，这些值只能在 DSH 配置文件的 dsh-superagent-cn 条目里修改。', 'This DSH version has no configuration forms; change these values in the dsh-superagent-cn entry of the DSH configuration file.'],
   deploymentReadOnly: ['只有本机上的浏览器可以修改这些值。', 'Only a browser on this machine can change these values.'],
   setupCheck: ['重新检查', 'Check again'],
-  setupChecking: ['正在重新检查，dsh-superagent 正在重启', 'Checking again; dsh-superagent is restarting'],
-  setupCheckInterrupts: ['重新检查会重启 dsh-superagent：{count} 个进行中的派工会中断，并带恢复说明重新开始。', 'Checking again restarts dsh-superagent: {count} running Assignments stop and start again with a recovery note.'],
-  // Reason codes; legacy English sentence reasons map to these in text.ts
+  setupChecking: ['正在重新检查，dsh-superagent-cn 正在重启', 'Checking again; dsh-superagent-cn is restarting'],
+  setupCheckInterrupts: ['重新检查会重启 dsh-superagent-cn：{count} 个进行中的派工会中断，并带恢复说明重新开始。', 'Checking again restarts dsh-superagent-cn: {count} running Assignments stop and start again with a recovery note.'],
+  // 原因码；旧版英文句子形式的原因在 text.ts 中映射到这些
   'reason.not_human': ['自动消息', 'Automated message'],
   'reason.not_a_member': ['发送者不在这个来源的名单里', 'Sender is not on this Source\'s list'],
   'reason.no_mention': ['没有点名智能体，且这个来源不接收其余消息', 'Does not address the agent, and this Source does not receive the rest'],
@@ -597,7 +597,7 @@ const TEXT = {
   'reason.legacyImport': ['从旧版工单记录导入', 'Imported from a legacy Ticket record'],
   'reason.channelGone': ['对话已无法接收消息', 'The conversation can no longer receive messages'],
   'reason.channelIgnored': ['来源已不再监听这个对话', 'The Source no longer listens to this conversation'],
-  'reason.hostRestarted': ['dsh-superagent 重启', 'dsh-superagent restarted'],
+  'reason.hostRestarted': ['dsh-superagent-cn 重启', 'dsh-superagent-cn restarted'],
   'reason.retried': ['人工重试', 'Retried by a person'],
   'reason.completed': ['已完成', 'Completed'],
   'reason.dropped': ['无需处理，已关闭', 'No action needed; closed'],
@@ -612,7 +612,7 @@ const TEXT = {
   'reason.issue_sender_or_admission_disabled': ['Issue 发起人不在名单或主动接单已关闭', 'Issue sender not on the list, or proactive accept off'],
   'reason.source_not_installed': ['来源插件未加载', 'Source plugin not loaded'],
   'reason.issue_unclaimed_less_than_wait': ['Issue 无人认领未满等待时长', 'Issue unclaimed for less than the wait'],
-  // Glossary
+  // 术语表
   glossary: ['术语表', 'Glossary'],
   glossaryIntro: ['界面只显示一种语言；文档、代码和工具使用英文术语。', 'The interface shows one language; documents, code and tools use the English terms.'],
   glossaryChinese: ['中文', '中文'],
@@ -644,7 +644,7 @@ const TEXT = {
   'term.mainSession': ['主 Session', 'Main Session'],
   'term.executorSession': ['执行器 Session', 'Executor Session'],
   'term.policyVersion': ['策略版本', 'Policy version'],
-  'meaning.agent': ['以 dsh-superagent 身份工作的虚拟同事：通过 GitHub 账号、飞书机器人等身份在来源上行动', 'The virtual colleague dsh-superagent runs: it acts on the Sources through its identities, such as a GitHub account or a Feishu bot'],
+  'meaning.agent': ['以 dsh-superagent-cn 身份工作的虚拟同事：通过 GitHub 账号、飞书机器人等身份在来源上行动', 'The virtual colleague dsh-superagent-cn runs: it acts on the Sources through its identities, such as a GitHub account or a Feishu bot'],
   'meaning.mainSession': ['评估触发、接单派工并回复的 DSH Session；提示词里称 orchestrator', 'The DSH Session that evaluates Triggers, accepts and dispatches work, and replies; prompts call it the orchestrator'],
   'meaning.executorSession': ['执行器为一个工单运行的 DSH Session；提示词里称 worker', 'The DSH Session the Executor runs for one Ticket; prompts call it the worker'],
   'meaning.policyVersion': ['接单规则、各来源上的策略和接单模式的一个组合的标识；每个工单记下接单时的版本', 'The identifier of one combination of rules, the Policy on each Source and accept mode; each Ticket records the version it was accepted under'],
@@ -679,7 +679,7 @@ const TEXT = {
   'legend.idle': ['已结束、已停用或无后续', 'Ended, disabled or no follow-up'],
   'term.environment': ['执行环境', 'Execution environment'],
   'meaning.environment': ['每个工单的执行器 Session 和准备命令运行的环境：执行器和各来源登记的变量，每个有键、值和说明', 'Where a Ticket\'s Executor Session and prepare command run: the variables the Executor and the Sources register, each with a key, a value and a description'],
-  // User and agent error codes; English reuses the host's own text read by agents
+  // 用户与智能体错误码；英文复用宿主自身文案，供智能体读取
   'userError.unknownTicket': ['找不到这个工单。', USER_ERRORS.unknownTicket[1]],
   'userError.unknownProblem': ['找不到这个未完成的评估。', USER_ERRORS.unknownProblem[1]],
   'userError.unknownTrigger': ['找不到这个触发。', USER_ERRORS.unknownTrigger[1]],
@@ -724,10 +724,10 @@ const TEXT = {
   'userError.sourceNotInstalled': ['{source} 来源的插件没有安装。', USER_ERRORS.sourceNotInstalled[1]],
   'userError.noLabels': ['这个来源没有可以刷新的名称。', USER_ERRORS.noLabels[1]],
   'userError.nothingToSync': ['{source} 来源上的策略没有指定从哪里同步，或者这个来源已关闭或在等待部署检查。', USER_ERRORS.nothingToSync[1]],
-  // Setup problems and health codes; English reuses the host's own text read by the log and main Session
+  // 部署检查问题与健康码；英文复用宿主自身文案，供日志与主 Session 读取
   'setup.repositoryUnset': ['GitHub 来源没有设置监听的仓库。', SETUP_PROBLEMS.repositoryUnset[1]],
-  'setup.foreignFile': ['{file} 不是 dsh-superagent 写入的文件；移走它，或换一个状态目录。', SETUP_PROBLEMS.foreignFile[1]],
-  'setup.gitTooOld': ['git 没有读取 dsh-superagent 为 github.com 写的凭据配置；需要 git 2.32 或更新版本。', SETUP_PROBLEMS.gitTooOld[1]],
+  'setup.foreignFile': ['{file} 不是 dsh-superagent-cn 写入的文件；移走它，或换一个状态目录。', SETUP_PROBLEMS.foreignFile[1]],
+  'setup.gitTooOld': ['git 没有读取 dsh-superagent-cn 为 github.com 写的凭据配置；需要 git 2.32 或更新版本。', SETUP_PROBLEMS.gitTooOld[1]],
   'setup.environmentFailed': ['准备智能体的运行环境失败。', SETUP_PROBLEMS.environmentFailed[1]],
   'setup.agentCliUnset': ['没有设置智能体的 GitHub CLI。', SETUP_PROBLEMS.agentCliUnset[1]],
   'setup.agentCliMissing': ['找不到智能体的 GitHub CLI。', SETUP_PROBLEMS.agentCliMissing[1]],
@@ -751,7 +751,7 @@ export type DshSuperagentKey = keyof typeof TEXT
 const language = (index: 0 | 1) => Object.fromEntries(Object.entries(TEXT).map(([key, pair]) => [key, pair[index]])) as Record<DshSuperagentKey, string>
 export const zh = language(0), en = language(1)
 
-/** Glossary terms grouped by stage flow after the acting roles; each key maps to `term.<key>` and `meaning.<key>`. */
+/** 术语表条目按执行角色之后的阶段流程分组；每个键映射到 `term.<key>` 与 `meaning.<key>`。 */
 export const GLOSSARY = {
   roles: ['agent', 'mainSession', 'executorSession'],
   source: ['source', 'channel'],
@@ -766,5 +766,5 @@ export const GLOSSARY_VALUES = {
 } as const
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
-  interface LocaleNamespaceMap { dshSuperagent: DshSuperagentKey }
+  interface LocaleNamespaceMap { dshSuperagentCn: DshSuperagentKey }
 }

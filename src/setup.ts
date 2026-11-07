@@ -1,10 +1,10 @@
-/** Structured startup and configuration errors with the settings location where the operator can fix them. */
+/** 结构化的启动与配置错误，附带运维人员可以在哪里修改设置来修复它们的位置信息。 */
 import { fill } from './infra/text.ts'
 
 export type SetupPlace = 'deployment' | 'github' | 'feishu'
 export const SETUP_PROBLEMS = {
-  foreignFile: ['deployment', '{file} was not written by dsh-superagent; move it, or choose another state directory.'],
-  gitTooOld: ['deployment', 'git does not read the github.com credential configuration dsh-superagent writes; dsh-superagent needs git 2.32 or later.'],
+  foreignFile: ['deployment', '{file} was not written by dsh-superagent-cn; move it, or choose another state directory.'],
+  gitTooOld: ['deployment', 'git does not read the github.com credential configuration dsh-superagent-cn writes; dsh-superagent-cn needs git 2.32 or later.'],
   environmentFailed: ['deployment', 'Preparing the agent environment failed.'],
   repositoryUnset: ['github', 'The GitHub Source names no repository.'],
   agentCliUnset: ['github', 'The agent GitHub CLI is not set.'],
@@ -24,8 +24,8 @@ export type SetupCode = keyof typeof SETUP_PROBLEMS
 export interface SetupProblem { place: SetupPlace; code: SetupCode; values: Record<string, string>; detail: string }
 
 /**
- * Thrown by deployment and account verification checks when a required CLI, account, or repository check fails.
- * `Setup` records it for the management overview, and the HTTP layer returns `problem` so the panel can localize it.
+ * 当所需的 CLI、账户或仓库校验失败时，由部署与账户校验检查抛出。
+ * `Setup` 会将其记录下来供管理概览使用，HTTP 层则返回 `problem` 以便面板进行本地化。
  */
 export class SetupError extends Error {
   readonly place: SetupPlace

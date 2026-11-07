@@ -1,4 +1,4 @@
-/** Projects active model budget retry waits from session event streams without modifying retry policy or logs. */
+/** 从 Session 事件流中投影活跃的模型预算重试等待，不修改重试策略或日志。 */
 export interface RetryHealthEvent { readonly type: string; readonly seq: number; readonly time: number; readonly data: unknown }
 export interface BudgetRetryStatus { sessionId: string; provider: string; attempts: number; since: string; lastAt: string }
 type Chain = { id: string; provider: string; status: BudgetRetryStatus }
@@ -6,7 +6,7 @@ type State = { seq: number; turn: number; step: number; ended: boolean; settled:
 const record = (value: unknown): Record<string, unknown> | undefined => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined
 const ordinal = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
 
-/** Identify model budget exhaustion from structured failure metadata without inspecting assistant message content. */
+/** 从结构化的失败元数据识别模型预算耗尽，不检查 assistant 消息内容。 */
 function budgetFailure(value: unknown): boolean {
   const failure = record(value)
   if (!failure) return false
@@ -18,24 +18,24 @@ function budgetFailure(value: unknown): boolean {
     const body = record(JSON.parse(message.slice(message.indexOf('{'))))
     const error = record(body?.error) ?? body
     if (error?.type === 'budget_exceeded' || error?.code === 'budget_exceeded') return true
-  } catch { /* Some providers expose only the known plain-text budget error. */ }
+  } catch { /* 有些 provider 只暴露已知的纯文本预算错误。 */ }
   return /\bBudget has been exceeded(?:!|[.:]|$)/i.test(message)
 }
 
 /**
- * Tracks which managed sessions are currently blocked on model budget retries by observing session lifecycle and retry events.
- * `Sessions` feeds session events into it and mirrors the aggregated retry state into the `models` health entry, while `resources` and views attach per-session retry status to ticket cards.
+ * 通过观察 Session 生命周期与重试事件，跟踪哪些受管 session 当前被模型预算重试阻塞。
+ * `Sessions` 把 Session 事件喂给它，并把聚合后的重试状态镜像到 `models` 健康条目；`resources` 与视图则把每个 session 的重试状态附加到工单卡片上。
  */
 export class RetryHealth {
   private readonly sessions = new Map<string, State>()
 
-  /** Replay an ordered native event snapshot; the caller must clear idle or disposed agents afterwards. */
+  /** 回放一份有序的原生事件快照；调用方之后必须清除空闲或已销毁的代理。 */
   restore(sessionId: string, events: readonly RetryHealthEvent[]): void {
     this.sessions.delete(sessionId)
     for (const event of events) this.observe(sessionId, event)
   }
 
-  /** Clear active retry status while preserving the sequence watermark against out-of-order events. */
+  /** 清除活跃的重试状态，同时保留序号水位以应对乱序事件。 */
   clear(sessionId: string): void {
     const state = this.sessions.get(sessionId)
     if (state) { state.active = undefined; state.settled = true }
@@ -64,7 +64,7 @@ export class RetryHealth {
       if (event.type === 'turn/end') { state.active = undefined; state.ended = true }
       return
     }
-    if (event.type === 'llm/retry-started') return // A retry attempt starting does not mean the budget failure has recovered.
+    if (event.type === 'llm/retry-started') return // 某次重试尝试开始并不代表预算故障已恢复。
     if (!['step/start', 'llm/retry', 'assistant/message'].includes(event.type)) return
     if (!ordinal(data.turn) || !ordinal(data.step)) return
     if (data.turn < state.turn || data.turn === state.turn && (state.ended || data.step < state.step)) return

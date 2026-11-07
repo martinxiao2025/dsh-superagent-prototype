@@ -1,4 +1,4 @@
-/** Concurrency, retry, and validation tests for settings saves, pause toggling, and policy synchronization. */
+/** 设置保存、暂停切换与策略同步的并发、重试与校验测试。 */
 import { afterEach, expect, it, vi } from 'vitest'
 import { UserError } from '../src/core/index.ts'
 import { Commands } from '../src/infra/commands.ts'
@@ -15,7 +15,7 @@ function deferred<T>() {
 }
 const model = { provider: 'worker-provider', model: 'worker-model' }
 
-it('refuses a save of a block that another save changed during its model or account check, and saves nothing of it', async () => {
+it('拒绝保存一个在模型或账号检查期间被另一次保存改动的块，且不保存其任何内容', async () => {
   h = await startRuntime()
   const { settings, store } = h.runtime
   const llm = (h.ctx as unknown as { llm: { resolveCallConfig: ReturnType<typeof vi.fn> } }).llm
@@ -28,7 +28,7 @@ it('refuses a save of a block that another save changed during its model or acco
   check.resolve(model)
   await expect(slow).rejects.toThrow(SettingsConflict)
   expect(store.settings().executor).toMatchObject({ maxWorkers: 2, model: executor.model })
-  // An account check that a save of the same Source outruns is refused the same way.
+  // 同一来源的另一次保存抢先于账号检查完成时，同样按冲突拒绝。
   const accounts = deferred<void>()
   vi.spyOn(Setup.prototype, 'checkAccounts').mockImplementationOnce(() => accounts.promise)
   const github = settings.block('source:github')
@@ -41,7 +41,7 @@ it('refuses a save of a block that another save changed during its model or acco
   expect(store.settings().sources.github!.config).toMatchObject({ cli: value.config.cli, pollSeconds: 90 })
 })
 
-it('refuses a Policy sync that a Policy save outran, reports it on sync:feishu, and keeps the save', async () => {
+it('拒绝被策略保存抢先的策略同步，在 sync:feishu 上报错，并保留该保存', async () => {
   h = await startRuntime()
   const { settings, store } = h.runtime
   const members = deferred<unknown>()
@@ -57,10 +57,10 @@ it('refuses a Policy sync that a Policy save outran, reports it on sync:feishu, 
   expect(store.settings().policy).toMatchObject({ rules, sources: { feishu: { allowed: [{ id: 'ou_alice', name: 'Alice' }] } } })
 })
 
-it('syncs a Policy part again after a failed sync, a minute later and then after a wait that doubles, until it succeeds', async () => {
+it('同步失败后重试策略部分：先等一分钟，再按倍增的等待时间重试，直至成功', async () => {
   h = await startRuntime()
   const { settings } = h.runtime
-  // The syncs the Runtime runs as it starts finish first.
+  // Runtime 启动时执行的同步先完成。
   await vi.waitFor(() => expect(h!.runtime.health['sync:feishu']).toMatchObject({ state: 'ready' }))
   await h.runtime.idle()
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
@@ -72,7 +72,7 @@ it('syncs a Policy part again after a failed sync, a minute later and then after
     const calls = () => lark.mock.calls.filter(([args]) => args.includes('+chat-members-list')).length
     const before = calls()
     await vi.advanceTimersByTimeAsync(60_000)
-    // The first retry fails too, so the next waits two minutes.
+    // 第一次重试也失败，因此下一次等待两分钟。
     expect(calls()).toBe(before + 1)
     lark.mockResolvedValueOnce({ users: [{ member_id: 'ou_alice', name: 'Alice' }], has_more: false })
     await vi.advanceTimersByTimeAsync(60_000)
@@ -80,12 +80,12 @@ it('syncs a Policy part again after a failed sync, a minute later and then after
     await vi.advanceTimersByTimeAsync(60_000)
     await vi.waitFor(() => expect(h!.runtime.health['sync:feishu']).toMatchObject({ state: 'ready' }))
     expect(calls()).toBe(before + 2)
-    // A success ends the retries.
+    // 成功即终止重试。
     await vi.advanceTimersByTimeAsync(3_600_000)
     expect(calls()).toBe(before + 2)
   } finally { vi.useRealTimers() }
 })
-it('records nothing for a pause that changes nothing, refuses a sync while setup waits, and names an unknown block', async () => {
+it('对没有实际变化的暂停不做任何记录，部署检查未通过时拒绝同步，并对未知块指名报错', async () => {
   h = await startRuntime()
   const { settings, store } = h.runtime
   const revision = store.blockRevision('pause')

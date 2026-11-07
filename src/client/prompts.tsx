@@ -1,4 +1,4 @@
-/** Prompts settings group: section/skill editor, full composed prompt preview with diffing, and revision history. */
+/** 提示词设置组：section/技能编辑器、完整组装提示词预览（带差异对比）与版本历史。 */
 import { Fragment, useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import type { ApiResponse } from '../app/api.ts'
 import type { PromptConfig, PromptsView } from './api.ts'
@@ -29,7 +29,7 @@ export function PromptsPage() {
 function PromptsEditor({ view, reload }: { view: PromptsView; reload: () => Promise<void> }) {
   const { t, call, notify } = usePanel()
   const saved = withOverrides(view.current.config)
-  const draft = useDraft<PromptConfig, PromptNote>({ key: `dsh-superagent/prompts/${view.masterId}`, saved, revision: view.revision,
+  const draft = useDraft<PromptConfig, PromptNote>({ key: `dsh-superagent-cn/prompts/${view.masterId}`, saved, revision: view.revision,
     reload,
     save: async (config, baseRevision) => {
       const result = await call('PUT prompts', { body: { config, baseRevision } })
@@ -39,7 +39,7 @@ function PromptsEditor({ view, reload }: { view: PromptsView; reload: () => Prom
   const config = draft.value
   const [tab, setTab] = useState<Tab>('edit')
   const [selection, select] = useState(draft.meta?.selection ?? 'communication')
-  // Fall back to the first section when the selected section (e.g., a skill removed by discard) is no longer in the draft.
+  // 当所选 section（例如被放弃操作移除的技能）已不在草稿中时，回退到第一个 section。
   const exists = isPart(selection) ? view.parts.some(part => part.key === partKey(selection)) : sectionText(config, selection) !== undefined
   const selected = exists ? selection : 'communication'
   const changed = changedSections(config, saved)
@@ -111,7 +111,7 @@ function PromptSections({ config, view, changed, selected, onSelect, onEdit }: {
       : <TeamEditor config={config} view={view} selected={selected} onSelect={onSelect} onEdit={onEdit} />}
   </div>
 }
-/** Whether an override was edited from a built-in text that has changed since. */
+/** 该 override 的编辑起点内置文本，自那之后是否已发生变化。 */
 const updated = (config: PromptConfig, part: BuiltInPart): boolean => {
   const override = config.overrides?.[part.key]
   return !!override?.base && override.base !== part.base
@@ -138,8 +138,8 @@ function TeamEditor({ config, view, selected, onSelect, onEdit }: {
   </div>
 }
 /**
- * A built-in part: its text, the team's override or the built-in one, with a reset; a template says which placeholders it
- * keeps; an override whose built-in text changed since shows the change and offers to keep the team's text or take the new one.
+ * 内置 part：展示其文本（团队的 override 或内置文本）并提供重置；模板会说明保留哪些占位符；
+ * 若某 override 的内置文本此后发生了变化，则展示该变化，并提供保留团队文本或改用新文本的选择。
  */
 function BuiltInEditor({ config, view, part, onEdit }: {
   config: PromptConfig; view: PromptsView; part: BuiltInPart; onEdit: (next: PromptConfig, note?: PromptNote) => void
@@ -147,7 +147,7 @@ function BuiltInEditor({ config, view, part, onEdit }: {
   const { t } = usePanel()
   const name = `part/${part.key}`
   const reset = () => onEdit(withOverride(config, part, undefined), { from: { reset: name } })
-  // The built-in text the override was edited from, when this installation kept that one.
+  // override 的编辑起点内置文本（仅当本安装还保留着那份文本时才有）。
   const base = config.overrides?.[part.key]?.base
   const previous = view.defaultChanged.find(item => item.part === part.key && item.base === base)?.previous
   const readBy = part.key.startsWith('skill/') ? 'promptReadBy.skill' : part.roles.length > 1 ? 'promptReadBy.both'
@@ -183,7 +183,7 @@ function FullPrompt({ config, view, dirty, revision, onEdit }: {
   const { t, call, notify } = usePanel()
   const [target, setTarget] = useState<Target>('orchestrator')
   const [compare, setCompare] = useState<'saved' | 'default'>(dirty ? 'saved' : 'default')
-  // Keep the preview paired with the config it was composed from so diffs stay consistent until the next preview arrives.
+  // 让预览与组装它的配置成对保存，使差异对比在下一份预览到达前保持一致。
   const [preview, setPreview] = useState<{ config: PromptConfig; value: Preview }>()
   const [error, setError] = useState<Error>()
   useEffect(() => {
@@ -194,7 +194,7 @@ function FullPrompt({ config, view, dirty, revision, onEdit }: {
   }, [call, config])
   if (!preview || error) return <LoadState loading error={error} />
   const shown = dirty ? compare : 'default'
-  // A built-in skill is a built-in part, by its key.
+  // 内置技能按键名判断属于内置 part。
   const team = isSkill(target) && Object.hasOwn(preview.config.skills, target.slice(6))
   const parts: { name: string; kind: 'team' | 'fixed' | 'generated'; key?: string; heading?: string; text: string }[] = isSkill(target)
     ? [{ name: target, kind: team ? 'team' : 'fixed', ...team ? {} : { key: target }, text: preview.value.skills[target.slice(6)] ?? '' }]
@@ -222,14 +222,14 @@ function FullPrompt({ config, view, dirty, revision, onEdit }: {
       const { kind } = part
       const text = sectionText(preview.config, part.name) ?? ''
       const entry = part.key === undefined ? undefined : builtIn(part.key)
-      // The text a part is compared with: a team section's, or a built-in part's, override or built-in text, in the saved
-      // version or the defaults; a generated part holds data and is not compared.
+      // 与该 part 比较的文本：团队 section 的文本，或内置 part 的 override/内置文本，
+      // 取自已保存版本或默认值；generated part 存放数据，不参与比较。
       const from = (config: PromptConfig) => kind === 'team' ? partWith(part, sectionText(config, part.name) ?? '')
         : kind === 'fixed' && entry ? partText(config, entry) : undefined
       const base = from(shown === 'saved' ? view.current.config : view.defaults)
       const edited = kind === 'team' ? !isSkill(part.name) && text !== sectionText(view.defaults, part.name)
         : !!entry && !!preview.config.overrides?.[entry.key]
-      // A generated part's template the draft changed shows filled, as it is not compared.
+      // 草稿改动的 generated part 模板按已填充形态展示，因为它不参与比较。
       const template = kind === 'generated' && !!entry
         && preview.config.overrides?.[entry.key]?.text !== view.current.config.overrides?.[entry.key]?.text
       return <section key={part.name} className="dt-preview-part" data-editable={kind === 'team' || entry !== undefined || undefined}>
@@ -238,7 +238,7 @@ function FullPrompt({ config, view, dirty, revision, onEdit }: {
           {(kind === 'team' || entry) && <button type="button" className="dt-textlink"
             onClick={() => onEdit(entry ? `part/${entry.key}` : part.name)}>{t('promptEditSource')}</button>}
         </div>
-        {/* When comparing against saved, show only changes from this draft and fold the parts it leaves as they were. */}
+        {/* 与已保存版本比较时，只展示本草稿的改动，并折叠草稿未动过的部分。 */}
         {base !== undefined && base !== part.text ? <Diff lines={lineDiff(base, part.text)} />
           : shown === 'saved' && !template ? <Hint>{t(kind === 'generated' ? 'promptBuiltInFolded' : 'promptSameAsSaved')}</Hint>
           : <pre className="dt-pre">{part.text}</pre>}

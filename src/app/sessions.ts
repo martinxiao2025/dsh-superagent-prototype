@@ -1,4 +1,4 @@
-/** Lifecycle, prompt/tool/skill decoration, message delivery, and budget retry tracking for orchestrator and worker DSH sessions. */
+/** orchestrator 与 worker DSH session 的生命周期、提示词/工具/技能装饰、消息投递与预算重试跟踪。 */
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { MessageId } from '@deepseek-ai/dsh-llm'
@@ -20,59 +20,57 @@ import type { Store } from './store.ts'
 import { KV } from '../kv.ts'
 import type { RegisterTool, Tool } from './tools/tool.ts'
 
-/** Host dependencies used by `Sessions`. */
+/** `Sessions` 使用的宿主依赖。 */
 export interface SessionsHost {
-  /** DSH Cordis context: sessions, agents, persistence, and their events. */
+  /** DSH Cordis 上下文：session、代理、持久化及其事件。 */
   readonly context: Context
   readonly store: Pick<Store, 'tickets' | 'settings' | 'get' | 'set' | 'keys'>
   readonly prompts: Pick<Prompts, 'current' | 'version' | 'compose' | 'skills'>
   readonly effects: Pick<Effects, 'enqueue' | 'handle' | 'idle' | 'pending'>
-  /** The `models` health entry, which reports managed sessions waiting on a model-budget retry. */
+  /** `models` 健康条目，上报正在等待模型预算重试的受管 session。 */
   readonly health: HealthEntry
   readonly masterId: string
   readonly lifetime: AbortSignal
   closing(): boolean
-  /** Execution environment variables for `ticket`, rendered into its worker's system prompt. */
+  /** `ticket` 的执行环境变量，渲染进其执行器的系统提示词。 */
   environment(ticket: Ticket): Variable[]
-  /** Tools to register on the main Session (`ticket === undefined`) or on `ticket`'s worker Session. */
+  /** 要注册到主 Session（`ticket === undefined`）或 `ticket` 的执行器 Session 上的工具。 */
   tools(agent: Agent, ticket?: Ticket): Tool[]
 }
 
 /**
- * What Sessions registered for an agent it decorated: the releases of its prompt section, tools and skill scope, the scope
- * its skills are registered in, and the skills of one prompt revision; for a worker's subagent, only its tool limits.
+ * Sessions 为其装饰的代理注册的内容：其提示词段落、工具与技能 scope 的释放函数，技能注册所在的 scope，
+ * 以及一个提示词修订的技能；对执行器的子代理，只有其工具限制。
  */
 interface SessionBinding { disposers: (() => void)[]; scope?: Context; skills?: { revision: number; dispose: () => void }; subagent?: true }
 
-/** The agent presets Executor Sessions and the main Session are created with, which the bundle's patch defines. */
-export const WORKER_PRESET = 'dsh-superagent-worker', ROUTER_PRESET = 'dsh-superagent-router'
+/** 执行器 Session 与主 Session 创建时使用的代理预设，由 bundle 的补丁定义。 */
+export const WORKER_PRESET = 'dsh-superagent-cn-worker', ROUTER_PRESET = 'dsh-superagent-cn-router'
 declare module '@deepseek-ai/cordis' {
   interface Events {
-    /** DSH's agent preset registry selected `agentPreset` for a Session. */
+    /** DSH 的代理预设注册表为一个 Session 选择了 `agentPreset`。 */
     'agent-preset/selected'(sessionId: string, agentPreset: string): void
   }
 }
 /**
- * The DSH tools an Executor Session works with: files, search, the shell and its jobs, the web, skills, its todo list and
- * subagents. It gets no other tool the profile has, whenever it was registered: none that asks or shows a person something,
- * changes the profile, schedules work or starts goals outside the worker slots, the pause and a person's hold, starts or
- * messages other Sessions, or edits documents.
+ * 执行器 Session 使用的 DSH 工具：文件、搜索、shell 及其作业、web、技能、todo 列表与子代理。
+ * 无论如何注册，它都不会得到 profile 拥有的其他工具：凡是向人询问或展示内容、改变 profile、在执行器
+ * 槽位之外安排工作或启动目标、暂停与人工保留、启动其他 Session 或向其发消息、或编辑文档的工具都没有。
  */
 const WORK_TOOLS = ['read', 'write', 'edit', 'read_image', 'glob', 'grep', 'bash', 'pwsh', 'job_output', 'job_list', 'job_kill', 'web_search',
   'web_fetch', 'skill', 'todo_write', 'subagent', 'list_subagent_models', 'send_message', 'list_agents', 'interrupt_agent']
-/** What the main Session is told when it would wait: what it waits for comes to it, and a waiting step holds back the next. */
+/** 主 Session 想等待时被告知的内容：它等待的东西会自己送达，而等待中的步骤会挡住后续。 */
 const NO_WAIT = 'Reports, follow_up notices, new candidates and a background job\'s end with its output arrive by themselves as messages; '
   + 'end the turn instead of waiting for them.'
-/** What a main Session under `standard` is told when its command would wait the shell's default. */
+/** 运行 `standard` 预设的主 Session 在其命令将按 shell 默认等待时被告知的内容。 */
 const DEFAULT_WAIT = 'This shell waits up to 60 seconds by default: pass timeoutMs of at most 30000, or run_in_background, '
   + 'as a waiting step holds back new candidates.'
-/** `sleep` at a command position: the start, after ; & | ( { ! ` or a newline, or after a keyword or a command that runs it. */
+/** 处于命令位置的 `sleep`：在开头、`; & | ( { ! ` 或换行之后，或在会运行它的关键字或命令之后。 */
 const SLEEP = /(?:^|[;&|({!`\n]|\b(?:do|then|else|elif|if|while|until|time|exec|nohup|command|env)\s)\s*(?:\S*\/)?sleep\b/
 /**
- * The main Session's guard: it refuses a bash command that runs sleep or asks to hold the step longer than 30 seconds, and a
- * job wait longer than 5 seconds. Under `standard`, as a main Session created before the router preset runs, the shell holds
- * a command 60 seconds and a job wait lasts 30 seconds by default, so a command needs a timeout or the background, and a
- * job wait its timeout; the router preset ends both after 5 seconds.
+ * 主 Session 的守卫：拒绝运行 sleep 的 bash 命令或要求把步骤保持超过 30 秒的命令，以及超过 5 秒的作业等待。
+ * 在 `standard` 之下——即在 router 预设出现之前创建的主 Session 运行的配置——shell 默认把命令保持 60 秒、
+ * 作业等待默认持续 30 秒，因此命令需要设置超时或转为后台，作业等待也需要其超时；router 预设把两者都在 5 秒后结束。
  */
 function noWait({ name, arguments: input }: { name: string; arguments: unknown }, routed: () => boolean): string | undefined {
   const args = (input ?? {}) as { command?: unknown; timeoutMs?: unknown; run_in_background?: unknown; wait?: unknown; timeout_ms?: unknown }
@@ -86,25 +84,25 @@ function noWait({ name, arguments: input }: { name: string; arguments: unknown }
 }
 
 /**
- * Creates and decorates orchestrator and worker DSH `Agent` sessions with role models, system prompt sections from `Prompts`, runtime skills, and restricted tool sets.
- * `Runtime`, `DshExecutor`, `MasterAssessor`, `Settings`, and management routes/tools use it to ensure sessions, deliver deduplicated messages via `AgentDelivery`, and process ordered `relay` and `notice` effects.
- * Feeds session events into `RetryHealth` to report model budget waits on the `models` `HealthEntry`, and durably records which prompt revisions each session has worked under in `Store` (`KV.sessions.prompts`) to authorize prompt version reads.
+ * 创建并装饰 orchestrator 与 worker 的 DSH `Agent` session，为其配置角色模型、来自 `Prompts` 的系统提示词段落、运行时技能与受限的工具集。
+ * `Runtime`、`DshExecutor`、`MasterAssessor`、`Settings` 和管理路由/工具用它确保 session、经 `AgentDelivery` 投递去重消息，并处理有序的 `relay` 与 `notice` effect。
+ * 把 Session 事件喂给 `RetryHealth`，在 `models` `HealthEntry` 上报告模型预算等待，并把每个 session 运行用过的提示词修订持久记录在 `Store`（`KV.sessions.prompts`）中以授权提示词版本读取。
  */
 export class Sessions {
   private readonly agentDelivery: AgentDelivery
-  /** Decorated agents mapped to their registered disposers and skill scope until the agent is disposed or `Sessions.dispose()` runs. */
+  /** 已装饰的代理到其已注册释放函数与技能 scope 的映射，直到代理被销毁或 `Sessions.dispose()` 运行。 */
   private readonly bindings = new Map<Agent, SessionBinding>()
   private readonly retryHealth = new RetryHealth()
   private readonly ctx: Context
-  /** Registers ordered `relay` and `notice` effect handlers that deliver to the main Session. */
+  /** 注册按序投递给主 Session 的 `relay` 与 `notice` effect 处理器。 */
   constructor(private readonly host: SessionsHost) {
     this.ctx = host.context
     this.agentDelivery = new AgentDelivery(host.context)
-    // Deliver relays and notices to the main Session in the order they were queued.
+    // 按入队顺序把中继与通知投递给主 Session。
     host.effects.handle('relay', ({ text }, requestId) => this.prompt(host.masterId, requestId, text, 'steer'), { ordered: true })
     host.effects.handle('notice', ({ value, summary }, name) => this.inject(name, value, summary), { ordered: true })
   }
-  /** Subscribes to host agent and session events so newly created sessions are decorated and model-budget retries are reflected in health. Call once at startup. */
+  /** 订阅宿主的代理与 session 事件，使新建 session 得到装饰、模型预算重试反映到健康状态。启动时调用一次。 */
   install(): void {
     const ctx = this.ctx
     ctx.on('agent/disposed', ({ agent }) => {
@@ -119,8 +117,8 @@ export class Sessions {
       this.updateModelHealth()
     })
     ctx.on('agent/created', async ({ agent }) => { await this.decorate(agent); return undefined })
-    // Opening a Session in DSH's Web UI before its first turn may select the default preset for it: select ours again. After
-    // its first turn DSH refuses any selection, which leaves it as it is.
+    // 在首轮之前于 DSH 的 Web UI 中打开 Session 可能为其选择默认预设：需再次选择我们的预设。
+    // 首轮之后 DSH 拒绝任何选择，于是保持原样。
     ctx.inject(['agentPresets'], child => {
       child.on('agent-preset/selected', (sessionId, preset) => {
         const ticketId = ticketOfSession(sessionId), agent = ctx.agents.get(sessionId as SessionId)
@@ -134,13 +132,13 @@ export class Sessions {
       if (status === 'idle' && !this.host.closing()) { this.retryHealth.clear(agent.id); this.updateModelHealth() }
     })
   }
-  /** Resolves or creates session `id` in workspace `cwd`, initializes its role model, decorates it with prompts/skills/tools, sets `danger-full-access` permissions, and renames it to `title`. */
+  /** 在工作区 `cwd` 中解析或创建 session `id`，初始化其角色模型，用提示词/技能/工具装饰它，设置 `danger-full-access` 权限，并把它重命名为 `title`。 */
   async ensure(id: string, cwd: string, title: string, role: 'orchestrator' | 'worker'): Promise<Agent> {
     const ctx = this.ctx
     let result = await ctx.sessionController.resolveAgent(id as SessionId)
     if ('error' in result && result.error.code === 'session/not-found') {
       const workspace = await ctx.workspaceRegistry.create(cwd)
-      // A Session keeps the preset it was created with, one of the bundle's own (cordis.patch.yml).
+      // Session 保留创建时所用的预设，即 bundle 自带的预设之一（cordis.patch.yml）。
       await ctx.sessionController.create({ sessionId: id as SessionId, workspaceId: workspace.id,
         agentPreset: role === 'worker' ? WORKER_PRESET : ROUTER_PRESET })
       result = await ctx.sessionController.resolveAgent(id as SessionId)
@@ -153,38 +151,38 @@ export class Sessions {
     await ctx.sessionController.rename({ sessionId: id as SessionId, title })
     return result.agent
   }
-  /** Returns whether `sessionId` already holds the message delivered under `requestId`, or `false` if the session does not exist. */
+  /** 返回 `sessionId` 是否已持有在 `requestId` 下投递的消息；session 不存在时返回 false。 */
   async holds(sessionId: string, requestId: string): Promise<boolean> {
     const result = await this.ctx.sessionController.resolveAgent(sessionId as SessionId)
     return !('error' in result) && await this.agentDelivery.holds(result.agent, key(requestId))
   }
-  /** Deliver a message once per request id: to the next turn, the current one, or `inject`ed with its label without waking the agent. */
+  /** 按请求 ID 至多投递一次消息：进入下一回合、当前回合，或带标签 `inject` 注入而不唤醒代理。 */
   async prompt(sessionId: string, requestId: string, text: string, mode: 'queue' | 'steer' | { inject: string }, authorize?: () => void,
     accepted?: () => void): Promise<void> {
     const result = await this.ctx.sessionController.resolveAgent(sessionId as SessionId)
     if ('error' in result) throw result.error
     await this.agentDelivery.send(result.agent, key(requestId), text, mode, this.host.lifetime, authorize, accepted)
   }
-  /** The id of the message `prompt` delivers under `requestId`, which DSH's inbox events name it by. */
+  /** `prompt` 在 `requestId` 下投递的消息 id，DSH 的收件箱事件以它称呼该消息。 */
   promptedId(requestId: string): MessageId { return messageId(key(requestId)) }
-  /** Enqueues a steering relay to the main Session; relays are durable and retried by `Effects` until delivered, at most once per `requestId`. */
+  /** 为发往主 Session 的转向中继入队；中继是持久的，由 `Effects` 重试直到送达，每个 `requestId` 至多一次。 */
   relay(requestId: string, text: string): void { this.host.effects.enqueue('relay', requestId, { text }) }
-  /** Enqueues a durable background notice for injection into the main Session; a new notice with the same `name` replaces a still-waiting notice of that `name`. */
+  /** 为注入主 Session 的持久后台通知入队；同名 `name` 的新通知会替换仍在等待的同名通知。 */
   notify(name: string, value: Record<string, unknown>, summary: string): void { this.host.effects.enqueue('notice', name, { value, summary }) }
-  /** Waits for currently runnable `notice` effects to settle and returns `'injected'` if notice `name` has reached the main Session or `'pending'` if it is still queued. */
+  /** 等待当前可运行的 `notice` effect 结算，若通知 `name` 已到达主 Session 则返回 `'injected'`，仍在排队则返回 `'pending'`。 */
   async delivery(name: string): Promise<'injected' | 'pending'> {
     await this.host.effects.idle('notice')
     return this.host.effects.pending('notice', name) ? 'pending' : 'injected'
   }
-  /** Injects a notice into the main Session without waking it; no-op if the main Session does not exist yet. */
+  /** 向主 Session 注入通知而不唤醒它；主 Session 尚不存在时为空操作。 */
   private async inject(name: string, value: Record<string, unknown>, summary: string): Promise<void> {
     const resolved = await this.ctx.sessionController.resolveAgent(this.host.masterId as SessionId)
     if ('error' in resolved) return
-    // Deduplicate by notice name and payload hash so retries are idempotent while updated payloads still deliver.
+    // 按通知名与负载哈希去重，使重试幂等，同时更新后的负载仍能送达。
     const text = JSON.stringify(value)
     await this.agentDelivery.send(resolved.agent, `notice:${name}:${key(text)}`, text, { inject: summary }, this.host.lifetime)
   }
-  /** Returns the current prompt revision, the active prompt revision of each loaded Session, and whether the main Session still has a pending `'prompts'` notice. */
+  /** 返回当前提示词修订、每个已加载 Session 的活跃提示词修订，以及主 Session 是否还有待处理的 `'prompts'` 通知。 */
   status() {
     const { store, prompts, effects } = this.host
     const sessions = store.keys(KV.sessions.prompts).flatMap(name => {
@@ -193,16 +191,16 @@ export class Sessions {
     })
     return { revision: prompts.current().revision, sessions, notificationPending: effects.pending('notice', 'prompts') }
   }
-  /** Returns the prompt version a Session runs under (the one bound on its latest model request, or the current version). */
+  /** 返回 Session 当前运行的提示词版本（其最近一次模型请求绑定的版本，或当前版本）。 */
   promptVersion(sessionId: string): PromptVersion {
     const revision = this.host.store.get(KV.sessions.prompts(sessionId))?.at(-1)
     return revision === undefined ? this.host.prompts.current() : this.host.prompts.version(revision)
   }
-  /** Whether a Session is authorized to read `revision` (its active revision or any revision it previously ran under). */
+  /** Session 是否被授权读取 `revision`（其活跃修订或它以前运行用过的任何修订）。 */
   mayRead(sessionId: string, revision: number): boolean {
     return revision === this.promptVersion(sessionId).revision || (this.host.store.get(KV.sessions.prompts(sessionId)) ?? []).includes(revision)
   }
-  /** Returns a tool registrar for `agent` that renders tool output as JSON text and attaches `output.image` as an image when present. */
+  /** 为 `agent` 返回一个工具注册器，把工具输出渲染为 JSON 文本，并在存在 `output.image` 时作为图片附加。 */
   private registerTool(agent: Agent, binding: SessionBinding): RegisterTool {
     return (name, description, schema, execute) => {
       binding.disposers.push(agent.ctx.tools.register({ name, description, parameters: z.toJSONSchema(schema),
@@ -214,7 +212,7 @@ export class Sessions {
         execute: (args, execution) => execute(schema.parse(args), execution.signal) }))
     }
   }
-  /** Returns `sessionId`'s active model-budget retry state (`{ model_retry }`) for status listings, or `{}` when not waiting on one. */
+  /** 返回 `sessionId` 的活跃模型预算重试状态（`{ model_retry }`）供状态列表使用；未在等待时为 `{}`。 */
   modelRetry(sessionId: string | undefined) {
     const retry = sessionId ? this.retryHealth.get(sessionId) : undefined
     return retry ? { model_retry: retry } : {}
@@ -240,22 +238,22 @@ export class Sessions {
     this.retryHealth.restore(agent.id, agent.session.snapshotEvents())
     if (agent.status === 'idle') this.retryHealth.clear(agent.id)
     this.updateModelHealth()
-    // Disable variable interpolation so literal ${{ ... }} expressions in team prompts are preserved.
-    binding.disposers.push(agent.ctx.systemPrompt.section({ name: 'dsh-superagent-policy', order: 9999, interpolate: false, text: context => {
+    // 禁用变量插值，使团队提示词中的字面 ${{ ... }} 表达式得以保留。
+    binding.disposers.push(agent.ctx.systemPrompt.section({ name: 'dsh-superagent-cn-policy', order: 9999, interpolate: false, text: context => {
       const version = this.promptFor(agent, context.signal !== undefined)
       const current = ticket && host.store.tickets.get(ticket.id)
       const composed = host.prompts.compose(version.config, master ? 'orchestrator' : 'worker', current ? host.environment(current) : undefined)
-      return `[dsh-superagent prompt revision ${version.revision}]\n${composed}\n${current ? mandateInstructions(current.mandate) : ''}`
+      return `[dsh-superagent-cn prompt revision ${version.revision}]\n${composed}\n${current ? mandateInstructions(current.mandate) : ''}`
     }, ...(master ? { complete: true } : {}) }))
-    // A recreated skill scope (e.g. after the skills service restarts) starts empty, so reset `binding.skills` before rebinding.
+    // 重建的技能 scope（如技能服务重启后）从空开始，因此重新绑定前先重置 `binding.skills`。
     const skillScope = agent.ctx.inject(['skills'], scope => {
       binding.scope = scope
       binding.skills = undefined
       this.bindSkills(binding, host.prompts.current())
     })
-    binding.disposers.push(() => { skillScope.dispose().catch((error: unknown) => { this.ctx.logger.warn('dsh-superagent could not release a skill scope: %s', String(error)) }) })
+    binding.disposers.push(() => { skillScope.dispose().catch((error: unknown) => { this.ctx.logger.warn('dsh-superagent-cn could not release a skill scope: %s', String(error)) }) })
     await skillScope
-    // Bail out if the agent was disposed while awaiting the skill scope.
+    // 若在等待技能 scope 期间代理已被销毁，则直接返回。
     if (this.bindings.get(agent) !== binding) return
     const register = this.registerTool(agent, binding)
     for (const tool of host.tools(agent, ticket)) register(tool.name, tool.description, tool.schema, tool.execute)
@@ -263,13 +261,13 @@ export class Sessions {
       binding.disposers.push(agent.ctx.tools.restrict({ allow: ['skill', 'bash', 'read', 'read_image', 'job_output', 'job_list', 'job_kill'] }),
         agent.ctx.tools.guard(execution => noWait(execution, () => this.routed(agent))))
     } else {
-      // An Executor Session keeps the profile's work tools it has, which DSH requires to be known; its own tools are not masked.
+      // 执行器 Session 保留它拥有的 profile 工作工具（DSH 要求它们是已知的）；其自有工具不被遮蔽。
       binding.disposers.push(...this.workOnly(agent, ticket!.id))
     }
   }
   /**
-   * Whether a Session runs the router preset: as DSH's preset registry last selected it, read through the session projection
-   * on a DSH whose registry has no `presetForSession`, else as it was created; `standard`, the safer caps, when unreadable.
+   * Session 是否运行 router 预设：若 DSH 的预设注册表没有 `presetForSession`，则经 session 投影读取注册表
+   * 最后一次为它选择的预设，否则按其创建时的预设；读不到时取 `standard`（更保守的上限）。
    */
   private routed(agent: Agent): boolean {
     try {
@@ -281,10 +279,10 @@ export class Sessions {
     } catch { return false }
   }
   /**
-   * An Executor Session's tools: only the profile's work tools, which DSH requires to be known, and none once its ticket
-   * ended. A failed or blocked worker keeps its tools, so a person may continue it in its Session; only automated input waits
-   * (see the executor). Read inherited tools through the parent scope, which includes the preset's tools. The global view
-   * misses preset tools; the agent's own view also includes local tools such as subagent, which restrict refuses to name.
+   * 执行器 Session 的工具：只有 profile 的工作工具（DSH 要求它们是已知的），且工单结束后一个也没有。
+   * 失败或阻塞的执行器保留其工具，人可以在其 Session 中继续；只有自动输入会等待（见执行器）。
+   * 经父 scope 读取继承的工具，其中包含预设的工具。全局视图会漏掉预设工具；
+   * 代理自己的视图还包含 subagent 之类的本地工具，而 restrict 拒绝指名它们。
    */
   private workOnly(agent: Agent, ticketId: string): (() => void)[] {
     const store = this.host.store
@@ -296,13 +294,12 @@ export class Sessions {
     })]
   }
   /**
-   * A subagent of an Executor Session, or of one of its subagents, which runs under DSH's `standard` preset with the worker's
-   * permissions, gets the same work tools as the worker, and none once the worker's ticket ended. Any other agent is left as
-   * it is.
+   * 执行器 Session 的子代理，或其子代理的子代理：它们运行在 DSH 的 `standard` 预设下、持有执行器的权限，
+   * 获得与执行器相同的工作工具，且执行器工单结束后一个也没有。其他代理保持原样。
    */
   private limitSubagent(agent: Agent): void {
     let parent = agent.session.header.parentSession
-    // Up the subagents' parents to the worker, which are loaded while their subagents run.
+    // 把子代理的父级向上追溯到执行器（worker），它们在其子代理运行期间是已加载的。
     for (let depth = 0; parent !== undefined && ticketOfSession(parent) === undefined && depth < 8; depth++) {
       parent = this.ctx.agents.get(parent)?.session.header.parentSession
     }
@@ -310,7 +307,7 @@ export class Sessions {
     if (ticketId === undefined || !this.host.store.tickets.get(ticketId)) return
     this.bindings.set(agent, { disposers: this.workOnly(agent, ticketId), subagent: true })
   }
-  /** Register the skills of a prompt version in the agent's skill scope, in place of an earlier version's. */
+  /** 在代理的技能 scope 中注册一个提示词版本的技能，替换较早版本的。 */
   private bindSkills(binding: SessionBinding, version: PromptVersion): void {
     const { scope, skills: previous } = binding
     if (!scope || previous?.revision === version.revision) return
@@ -319,13 +316,13 @@ export class Sessions {
     for (const [name, content] of this.host.prompts.skills(version.config)) {
       const bundled = name === 'feishu' || name === 'github' ? bundledSkills[name] : undefined
       const body = version.config.skills[name] ?? ''
-      const description = bundled?.description ?? (body.replace(/\s+/g, ' ').slice(0, 120) || 'Custom dsh-superagent operational skill.')
+      const description = bundled?.description ?? (body.replace(/\s+/g, ' ').slice(0, 120) || 'Custom dsh-superagent-cn operational skill.')
       disposers.push(scope.skills.register({ name: `${SKILL_PREFIX}${name}`, description, content, source: 'runtime',
         ...(bundled ? { resourceBase: { kind: 'directory' as const, path: dirname(bundled.path) } } : {}) }))
     }
     binding.skills = { revision: version.revision, dispose: () => { disposers.forEach(dispose => dispose()) } }
   }
-  /** Return the current prompt version, updating the agent's skills and recording the revision in Store when bound to a model request. */
+  /** 返回当前提示词版本；绑定到模型请求时更新代理的技能并把修订记录进 Store。 */
   private promptFor(agent: Agent, bind: boolean): PromptVersion {
     const version = this.host.prompts.current()
     if (!bind) return version
@@ -337,16 +334,16 @@ export class Sessions {
     if (revisions.at(-1) !== version.revision) store.set(KV.sessions.prompts(agent.id), bound)
     return version
   }
-  /** Releases registrations for `agent` in reverse order (LIFO); disposing its skill scope releases its skills as well. */
+  /** 以逆序（LIFO）释放为 `agent` 注册的内容；销毁其技能 scope 时也释放其技能。 */
   private release(agent: Agent): void {
     const binding = this.bindings.get(agent)
     if (!binding) return
     this.bindings.delete(agent)
     binding.skills?.dispose()
     for (const dispose of binding.disposers.splice(0).reverse()) {
-      try { dispose() } catch (error) { this.ctx.logger.warn('dsh-superagent could not release what it registered for a Session: %s', String(error)) }
+      try { dispose() } catch (error) { this.ctx.logger.warn('dsh-superagent-cn could not release what it registered for a Session: %s', String(error)) }
     }
   }
-  /** Releases prompt sections, skills, and tools registered by `Sessions` across all decorated agents. */
+  /** 释放 `Sessions` 在所有已装饰代理上注册的提示词段落、技能与工具。 */
   dispose(): void { for (const agent of [...this.bindings.keys()]) this.release(agent) }
 }

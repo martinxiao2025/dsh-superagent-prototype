@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -15,7 +15,7 @@ let directory: string
 beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'orchestrator-store-')) })
 afterEach(() => { rmSync(directory, { recursive: true, force: true }) })
 
-it('refuses databases newer than this build and rolls back failed atomic work', () => {
+it('拒绝比本构建更新的数据库，并回滚失败的原子操作', () => {
   const path = join(directory, 'orchestrator.sqlite')
   const store = new Store(path)
   expect(() => store.atomic(() => { store.set('a', 1); throw new Error('boom') })).toThrow('boom')
@@ -23,14 +23,14 @@ it('refuses databases newer than this build and rolls back failed atomic work', 
   store.set('schema', SCHEMA_VERSION + 1); store.close()
   expect(() => new Store(path)).toThrow('Unsupported')
 })
-it('finds triggers by thread', () => {
+it('按线程查找触发', () => {
   const store = new Store(join(directory, 'orchestrator.sqlite'))
   store.triggers.save({ id: 'a', source: 'feishu', threads: [{ source: 'feishu', id: 'oc_1:om_%_x' }], actor: { source: 'feishu', id: 'u' }, human: true, at: '2', text: 'later', meta: {} })
   store.triggers.save({ id: 'b', source: 'feishu', threads: [{ source: 'feishu', id: 'oc_1:om_%_x' }, { source: 'github', id: '3' }], actor: { source: 'feishu', id: 'u' }, human: true, at: '1', text: 'earlier', meta: {} })
   store.triggers.save({ id: 'c', source: 'feishu', threads: [{ source: 'feishu', id: 'oc_1:om_y_x' }], actor: { source: 'feishu', id: 'u' }, human: true, at: '3', text: 'other', meta: {} })
   expect(store.read.threadTriggers('feishu:oc_1:om_%_x').map(trigger => trigger.id)).toEqual(['b', 'a'])
   expect(store.read.threadTriggers('github:3').map(trigger => trigger.id)).toEqual(['b'])
-  // Saving a Trigger again replaces the Threads it is found on.
+  // 再次保存一条触发会替换它能被找到的线程。
   store.triggers.save({ ...store.triggers.get('b')!, threads: [{ source: 'github', id: '3' }] })
   expect(store.read.threadTriggers('feishu:oc_1:om_%_x').map(trigger => trigger.id)).toEqual(['a'])
   expect(store.read.threadTriggers('github:3').map(trigger => trigger.id)).toEqual(['b'])
@@ -45,13 +45,13 @@ const ticket = (id: string, state: 'open' | 'ended', assignments: Pick<Assignmen
 const thread = (id: string, source: string, fields: Partial<Thread> = {}): Thread =>
   ({ key: `${source}:${id}`, ref: { source, id }, createdAt: '', subscriptions: [], correlated: [], pending: [], meta: {}, ...fields })
 const ids = (items: { id?: string; key?: string }[]) => items.map(item => item.id ?? item.key).sort()
-it('reads the working sets alone, in SQLite as in memory, and follows each save', () => {
+it('单独读取工作集，SQLite 与内存实现一致，并跟随每次保存', () => {
   const store = new Store(join(directory, 'orchestrator.sqlite'))
   for (const repo of [store, new MemoryRepositories()] as Repositories[]) {
     repo.tickets.save(ticket('running', 'open', [{ state: 'running' }]))
-    // A retry or a resume adds a pending Assignment after the ones that ended.
+    // 重试或恢复会在已结束的派工之后追加一个 pending 派工。
     repo.tickets.save(ticket('queued', 'open', [{ state: 'ended' }, { state: 'pending' }]))
-    // An ended Ticket a person's message reached without resuming it, which versions before schema 11 left to their next pass.
+    // 用户消息到达但未恢复的已结束工单；schema 11 之前的版本把它留到下一次 pass 处理。
     repo.tickets.save(ticket('waking', 'ended', [{ state: 'ended' }], ['input']))
     repo.tickets.save(ticket('done', 'ended', [{ state: 'ended' }]))
     repo.threads.save(thread('1', 'github', { pending: ['a'] }))
@@ -72,7 +72,7 @@ it('reads the working sets alone, in SQLite as in memory, and follows each save'
   expect(ids(store.read.subscribedThreads('github'))).toEqual(['github:2'])
   store.close()
 })
-it('adds the working sets to a database that predates them, from the rows it holds', () => {
+it('根据已有行把工作集补充到尚无它们的数据库中', () => {
   const path = join(directory, 'orchestrator.sqlite')
   const db = new DatabaseSync(path)
   db.exec(`CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL); CREATE TABLE ticket (id TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -86,7 +86,7 @@ it('adds the working sets to a database that predates them, from the rows it hol
   expect([ids(store.threads.active()), ids(store.read.subscribedThreads('github'))]).toEqual([['github:1'], ['github:1']])
   store.close()
 })
-it('names a thread by its first human trigger', () => {
+it('用第一条人类触发为线程命名', () => {
   const store = new Store(join(directory, 'orchestrator.sqlite'))
   const base = { source: 'github', threads: [{ source: 'github', id: '5' }], actor: { source: 'github', id: 'x' }, meta: {} }
   store.triggers.save({ ...base, id: 'ci', human: false, at: '1', text: 'GitHub PR #5 CI: {}' })
@@ -96,7 +96,7 @@ it('names a thread by its first human trigger', () => {
   store.close()
 })
 
-it('counts triggers per Source and lists them newest first, optionally only the filtered ones', () => {
+it('按来源统计触发并从新到旧列出，可选只列被过滤的', () => {
   const store = new Store(join(directory, 'db.sqlite'))
   const trigger = (id: string, source: string, at: string) => ({ id, source, threads: [{ source, id: 'x' }], actor: { source, id: 'a' }, human: true, at, text: id, meta: {} })
   store.triggers.save(trigger('old', 'feishu', '2026-09-01T00:00:00Z'))
@@ -110,7 +110,7 @@ it('counts triggers per Source and lists them newest first, optionally only the 
   store.close()
 })
 
-it('links a Thread to the page its Source named, or else to the message that started it', () => {
+it('把线程链接到其来源指名的页面，否则链接到发起它的消息', () => {
   const store = new Store(join(directory, 'links.sqlite'))
   const thread = (keyValue: string, source: string, id: string, meta: Record<string, unknown> = {}) => store.threads.save({ key: keyValue, ref: { source, id }, createdAt: '', subscriptions: [], correlated: [], pending: [], meta })
   thread('github:7', 'github', '7', { url: 'https://github.com/acme/widgets/pull/7' })
@@ -121,7 +121,7 @@ it('links a Thread to the page its Source named, or else to the message that sta
   store.close()
 })
 
-it('sets and removes a Source\'s keys in a Thread\'s meta', () => {
+it('设置和移除线程 meta 中来源的键', () => {
   const store = new Store(join(directory, 'orchestrator.sqlite'))
   store.threads.save({ key: 'github:5', ref: { source: 'github', id: '5' }, createdAt: '', subscriptions: [], correlated: [], pending: [], meta: { isPr: true, gone: true } })
   store.threads.patchMeta('github:5', { gone: undefined, title: 'Fix' })
@@ -130,10 +130,10 @@ it('sets and removes a Source\'s keys in a Thread\'s meta', () => {
   expect(store.threads.get('github:6')).toBeUndefined()
   store.close()
 })
-it('spells every kv key in KV alone, so each record is named by its entry there', () => {
+it('kv 键只在 KV 中拼写一次，每条记录由其中的条目命名', () => {
   const src = join(dirname(fileURLToPath(import.meta.url)), '..', 'src')
   const entries = Object.values(KV).flatMap(group => Object.values(group) as (string | { prefix: string })[])
-  // Ignore single-word keys that collide with unrelated string literals.
+  // 忽略与无关字符串字面量撞名的单词键。
   const keys = entries.map(entry => typeof entry === 'string' ? entry : entry.prefix).filter(name => /[-:]/.test(name))
   const modules = readdirSync(src, { recursive: true, encoding: 'utf8' })
     .filter(path => /\.tsx?$/.test(path) && !['kv.ts', join('app', 'migration.ts')].includes(path))
@@ -144,14 +144,14 @@ it('spells every kv key in KV alone, so each record is named by its entry there'
   expect(spelled).toEqual([])
 })
 
-it('runs what waits for a commit once the outermost transaction commits, and never what a rolled back one queued', () => {
+it('最外层事务提交后运行等待提交的回调，绝不运行已回滚事务排队的回调', () => {
   const store = new Store(join(directory, 'orchestrator.sqlite'))
   const ran: string[] = []
   store.atomic(() => {
     store.afterCommit(() => { ran.push('outer') })
     store.atomic(() => { store.afterCommit(() => { ran.push('inner') }) })
     expect(() => store.atomic(() => { store.afterCommit(() => { ran.push('rolled back') }); throw new Error('boom') })).toThrow('boom')
-    // Nothing runs before the outermost transaction commits.
+    // 最外层事务提交之前什么都不运行。
     expect(ran).toEqual([])
   })
   expect(ran).toEqual(['outer', 'inner'])
@@ -161,7 +161,7 @@ it('runs what waits for a commit once the outermost transaction commits, and nev
   store.close()
 })
 
-it('reports an action that fails after a commit, runs the others, and keeps what committed', () => {
+it('上报提交后失败的回调，运行其余回调，并保留已提交的内容', () => {
   const reported: unknown[] = []
   const store = new Store(join(directory, 'orchestrator.sqlite'), error => { reported.push(error) })
   const ran: string[] = []
@@ -178,7 +178,7 @@ it('reports an action that fails after a commit, runs the others, and keeps what
   store.close()
 })
 
-it('closes a database it cannot open as this version\'s, so a later attempt can open it', () => {
+it('关闭无法按本版本打开的数据库，让之后的尝试可以再打开它', () => {
   const path = join(directory, 'orchestrator.sqlite')
   const store = new Store(path)
   store.set(KV.store.schema, SCHEMA_VERSION + 1)
@@ -189,7 +189,7 @@ it('closes a database it cannot open as this version\'s, so a later attempt can 
     expect(close).toHaveBeenCalledOnce()
   } finally { close.mockRestore() }
 })
-it('keeps the settings as versions: the current settings are the snapshot of the current revision, kept nowhere else', () => {
+it('把设置保存为版本：当前设置即当前修订的快照，不另存于别处', () => {
   const store = new Store(join(directory, 'orchestrator.sqlite'))
   expect(store.settings()).toEqual(SettingsSchema.parse({}))
   store.saveSettings({ ...store.settings(), paused: true }, { source: 'panel', block: 'pause', policyVersion: 'v', policyChanged: false, notified: [] })
@@ -200,7 +200,7 @@ it('keeps the settings as versions: the current settings are the snapshot of the
   store.close()
 })
 
-it('replaces a working-set column an earlier build defined otherwise, and drops one this version no longer has', () => {
+it('替换早期构建以其他方式定义的工作集列，并删除本版本已不存在的列', () => {
   const path = join(directory, 'orchestrator.sqlite')
   const db = new DatabaseSync(path)
   db.exec(`CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL); CREATE TABLE ticket (id TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -211,13 +211,13 @@ it('replaces a working-set column an earlier build defined otherwise, and drops 
   db.prepare('INSERT INTO ticket (id, value) VALUES (?,?)').run('t', JSON.stringify(ticket('t', 'open', [{ state: 'running' }])))
   db.close()
   const store = new Store(path)
-  // The open set reads the ticket's end now.
+  // open 集现在读取工单的结束状态。
   expect(ids(store.tickets.open())).toEqual(['t'])
   expect(store.db.prepare("SELECT name FROM pragma_table_xinfo('ticket') WHERE name = 'ref'").all()).toEqual([])
   store.close()
 })
 
-it('lists in the same order in SQLite and in memory, and undoes a failed nested transaction alone in both', () => {
+it('在 SQLite 与内存中以相同顺序列出，且两者的失败嵌套事务都只回滚自身', () => {
   const store = new Store(join(directory, 'orchestrator.sqlite'))
   const order = (items: { id?: string; key?: string }[]) => items.map(item => item.id ?? item.key)
   const decision = (id: string): Decision => ({ id, evalId: '', threadKey: 'github:1', triggerIds: [], policyVersion: '', at: id, kind: 'ignore', reason: [],
@@ -226,12 +226,12 @@ it('lists in the same order in SQLite and in memory, and undoes a failed nested 
     repo.tickets.save(ticket('first', 'open', [{ state: 'running' }]))
     repo.tickets.save(ticket('second', 'ended', [{ state: 'ended' }]))
     repo.tickets.save(ticket('third', 'open', [{ state: 'pending' }]))
-    // Saving a ticket again keeps its place.
+    // 再次保存工单保持其原有位置。
     repo.tickets.save({ ...repo.tickets.get('first')!, title: 'again' })
     repo.threads.save(thread('1', 'github', { pending: ['a'] })); repo.threads.save(thread('2', 'github')); repo.threads.save(thread('3', 'github', { pending: ['b'] }))
     repo.decisions.save(decision('d2'))
     repo.decisions.save(decision('d1'))
-    // A failed nested transaction undoes its own writes; the one around it goes on and keeps its own.
+    // 失败的嵌套事务回滚它自己的写入；包裹它的事务继续进行并保留自己的写入。
     repo.atomic(() => {
       repo.tickets.save(ticket('outer', 'open', []))
       expect(() => repo.atomic(() => { repo.tickets.save(ticket('inner', 'open', [])); throw new Error('boom') })).toThrow('boom')
@@ -246,13 +246,15 @@ it('lists in the same order in SQLite and in memory, and undoes a failed nested 
   store.close()
 })
 
-it('creates the state directory for its owner alone, and the database readable by its owner alone', () => {
+it('创建仅属主可访问的状态目录，以及仅属主可读的数据库', () => {
   const path = join(directory, 'state', 'orchestrator.sqlite')
   new Store(path).close()
-  expect([statSync(dirname(path)).mode & 0o777, statSync(path).mode & 0o777]).toEqual([0o700, 0o600])
+  // POSIX 权限位在 Windows 上无意义；在那里只检查 Store 创建了两者。
+  if (process.platform !== 'win32') expect([statSync(dirname(path)).mode & 0o777, statSync(path).mode & 0o777]).toEqual([0o700, 0o600])
+  expect(existsSync(path)).toBe(true)
 })
 
-it('reads `%` and `_` in a key prefix and a search query as written, not as patterns', () => {
+it('键前缀与搜索查询中的 `%` 和 `_` 按字面读取，不当作通配模式', () => {
   const store = new Store(join(directory, 'orchestrator.sqlite'))
   for (const name of ['a%b', 'axb', 'a_c', 'abc']) store.set(name, 1)
   expect([store.keys('a%').sort(), store.keys('a_').sort()]).toEqual([['a%b'], ['a_c']])

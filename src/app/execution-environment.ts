@@ -1,4 +1,4 @@
-/** Execution environment variables exposed to prepare commands and documented in worker Session instructions; never contains credentials. */
+/** 暴露给 prepare 命令、并在执行器（worker）Session 指令中说明的执行环境变量；绝不包含凭据。 */
 import { join } from 'node:path'
 import type { Ticket, Trigger } from '../core/index.ts'
 import type { Deployment } from '../deployment.ts'
@@ -6,7 +6,7 @@ import type { Settings } from '../policy.ts'
 import type { Localized, VariableSpec } from '../sources/kind.ts'
 import type { SourceRegistry } from '../sources/registry.ts'
 
-/** Variables registered by the Executor; `ticket` entries are populated only when a ticket is present. */
+/** 执行器（Executor）注册的变量；`ticket` 条目仅在有工单时填充。 */
 export const EXECUTOR_VARIABLES: readonly (VariableSpec & { ticket?: true })[] = [
   { key: 'DSH_SUPERAGENT_DIR', ticket: true, description: { zh: '这个工单的执行目录；执行器 Session 在其中工作', en: 'This ticket\'s directory; the executor Session works in it' } },
   { key: 'DSH_SUPERAGENT_NAME', ticket: true, description: { zh: '工单的短名，也是执行目录的名字', en: 'The ticket\'s short name, also its directory\'s name' } },
@@ -17,7 +17,7 @@ export interface Variable { key: string; value: string; description: Localized; 
 
 export const executionRoot = (settings: Settings, stateDir: string): string => settings.executor.directory || join(stateDir, 'work')
 
-/** Lists all declared variables grouped by owner; `enabled` is false for Sources that are currently switched off. */
+/** 按所有者列出所有声明的变量；当前关闭的 Source 其 `enabled` 为 false。 */
 export function declaredVariables(sources: SourceRegistry, settings?: Settings): { owner: string; enabled: boolean; variables: readonly VariableSpec[] }[] {
   const on = new Set(sources.environments(settings).map(item => item.kind.kind))
   return [{ owner: 'executor', enabled: true, variables: EXECUTOR_VARIABLES },
@@ -35,12 +35,12 @@ export function environmentOf(input: { deployment: Deployment; sources: SourceRe
   return result
 }
 
-/** Combines a ticket's fixed directory, name, and origin trigger with the deployment's current settings. */
+/** 把工单固定的目录、名称与来源触发（Trigger）同部署的当前设置组合起来。 */
 export function ticketEnvironment(input: { deployment: Deployment; sources: SourceRegistry; settings: Settings; ticket: Ticket; trigger?: Trigger }) {
   const { ticket, trigger, ...rest } = input
   const values = { id: ticket.id, name: ticket.execution?.name ?? '', directory: ticket.execution?.directory ?? '' }
   return environmentOf({ ...rest, ticket: values, ...trigger ? { trigger } : {} })
 }
 export function environmentLines(variables: Variable[]): string {
-  return variables.map(variable => `- ${variable.key} = ${JSON.stringify(variable.value)}: ${variable.description.en}.`).join('\n')
+  return variables.map(variable => `- ${variable.key} = ${JSON.stringify(variable.value)}: ${variable.description.zh}。`).join('\n')
 }

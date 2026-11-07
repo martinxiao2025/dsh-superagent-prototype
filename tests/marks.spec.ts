@@ -5,7 +5,7 @@ import { translator } from './fixtures/panel.tsx'
 
 const t = translator(zh)
 
-it('marks each Ticket stage by whom it waits for, and an ended Ticket by its outcome', () => {
+it('按等待对象标记每个工单阶段，已结束工单按其结果标记', () => {
   const marks = [{ stage: 'person', action: 'answer' }, { stage: 'person', action: 'review' }, { stage: 'person', action: 'blocked' },
     { stage: 'person', action: 'failed' }, { stage: 'person', action: 'delivery' }, { stage: 'working', action: 'queued' },
     { stage: 'working' }, { stage: 'idle' }] as const
@@ -22,7 +22,7 @@ it('marks each Ticket stage by whom it waits for, and an ended Ticket by its out
     'ongoing', 'ongoing'])
 })
 
-it('marks each Thread stage, Source state and Decision outcome', () => {
+it('标记每个线程阶段、source 状态与决定结果', () => {
   const threads = (['error', 'evaluating', 'queued', 'subscribed', 'dormant', 'unsubscribed'] as const).map(stage => threadMark(t,
     { stage, pending: 2 }))
   expect(threads.map(({ label, dot, icon }) => [label, dot, icon])).toEqual([['轮询失败', 'error', 'alert'], ['评估进行中', 'ongoing', 'running'],
