@@ -145,6 +145,17 @@ pwsh -NoProfile -File scripts/dsh-superagent-windows.ps1 -Action stop
    把你的个人 CLI（例如登录到你本人账号的那个）列为被阻止的命令。
 4. **Prompts。** 设置团队相关段落：GitHub 披露声明、评审机器人、提交作者以及自动合并条件。
 
+### VS Code 扩展通知
+
+语言模型桥扩展带一个可选的主动提醒，用来告诉人“有工单在等你”。它由扩展自己的两个 VS Code 设置决定，Runtime 不读它们：
+
+| 设置键 | 默认值 | 谁读它 | 行为 |
+| --- | --- | --- | --- |
+| `dsh.superagent.notify` | `false`（不打扰） | `extension/dsh-lm-bridge/notify.js` 与 `extension.js` | 关闭时**不发起任何轮询**，也没有提醒；开启后每 60 秒请求一次本机面板的 `GET /orchestrator/api/overview` |
+| `dsh.superagent.panelUrl` | `http://127.0.0.1:3082` | 同上 | 轮询与“打开面板”按钮使用的地址；只接受回环 `http`，非回环地址会被拒绝并写日志 |
+
+提醒规则只有三条：首次轮询只建立基线，不把已有的积压当成新工作；之后只有出现此前没见过的“等待人工处理”工单才弹一次提醒；工单离开该列表后再次进入会重新提醒。提醒里最多列出三个标题，附一个「打开面板」按钮。失败（面板未启动、端口不对）只写扩展输出面板的日志，不影响模型桥与回合。
+
 ### 管理 API
 
 面板网页使用一个本地 HTTP API，代理也可以调用它。`SETUP.md` 用它保存设置，Windows 守护脚本则读取 `GET state`。

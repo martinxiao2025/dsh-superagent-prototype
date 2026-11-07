@@ -35,6 +35,16 @@
           "type": "number",
           "default": 1800000,
           "description": "单个回合的默认超时（毫秒）。"
+        },
+        "dsh.superagent.notify": {
+          "type": "boolean",
+          "default": false,
+          "description": "有工单进入“等待人工处理”时弹 VS Code 提醒。默认关闭（不打扰）；关闭时不轮询面板。"
+        },
+        "dsh.superagent.panelUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:3082",
+          "description": "本机面板地址，仅用于打开面板与通知轮询；只接受回环 http 地址。"
         }
       }
     }

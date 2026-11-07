@@ -10,6 +10,10 @@
  *
  * 配置（`dsh.lmBridge.*`）：模型 id、发现文件路径、单回合超时。
  * 发现文件默认 `~/.dsh-superagent/lm-bridge.json`，环境变量 `DSH_LM_BRIDGE_FILE` 优先。
+ *
+ * 主动通知（`dsh.superagent.notify`，默认 `false`）：开启后每分钟轮询本机面板的
+ * `/orchestrator/api/overview`，只有出现新的“等待人工处理”工单时才弹一次提醒；
+ * 关闭时不发起任何轮询，完全安静。地址由 `dsh.superagent.panelUrl` 指定，只接受回环 http。
  */
 const vscode = require('vscode')
 const http = require('node:http')
@@ -32,6 +36,9 @@ const TOOL_TIMEOUT_MS = 120000
 const MAX_HISTORY = 60
 /** 发现文件路径的环境变量覆盖名。 */
 const DISCOVERY_ENV = 'DSH_LM_BRIDGE_FILE'
+/** 通知开启时的轮询间隔。 */
+const NOTIFY_INTERVAL_MS = 60_000
+const { decide, prompt, loopbackUrl } = require('./notify.js')
 
 /** 桥侧失败，`kind` 与 Runtime 的 `BridgeErrorKind` 一一对应。 */
 class BridgeFailure extends Error {
@@ -69,6 +76,10 @@ const state = {
   logFile: undefined,
   /** 记录本扩展是否为本窗口启动了桥；远程已有桥时为 false。 */
   owner: false,
+  /** 上一轮通知轮询见过的等待人工处理的工单 id；首次轮询后才有值。 */
+  seen: undefined,
+  /** 通知轮询的定时器；关闭通知时为 undefined。 */
+  notifyTimer: undefined,
 }
 
 /**
@@ -109,6 +120,80 @@ function discoveryFile() {
   return override && override.trim() !== ''
     ? path.resolve(override)
     : path.join(os.homedir(), '.dsh-superagent', 'lm-bridge.json')
+}
+
+/**
+ * 读取通知相关配置。
+ * @returns {{notify: boolean, panelUrl: string}} 通知开关与面板地址。
+ */
+function notifySettings() {
+  const config = vscode.workspace.getConfiguration('dsh.superagent')
+  return { notify: config.get('notify', false) === true, panelUrl: String(config.get('panelUrl', 'http://127.0.0.1:3082')) }
+}
+
+/** 停止通知轮询并清空基线；重复调用是安全的。 */
+function stopNotify() {
+  if (state.notifyTimer) clearInterval(state.notifyTimer)
+  state.notifyTimer = undefined
+  state.seen = undefined
+}
+
+/**
+ * 轮询一次面板总览，出现新的等待人工处理的工单时提醒一次。
+ * 任何失败都只写日志：通知是附加能力，不能影响桥与回合。
+ */
+async function pollNotifications() {
+  const config = notifySettings()
+  if (!config.notify) return
+  const base = loopbackUrl(config.panelUrl)
+  if (!base) {
+    log(`通知：面板地址不是回环 http 地址（${config.panelUrl}），已跳过`)
+    return
+  }
+  let body
+  try {
+    const response = await fetch(`${base}/orchestrator/api/overview`, {
+      headers: { 'x-orchestrator-request': '1' },
+      signal: AbortSignal.timeout(5000),
+    })
+    if (!response.ok) {
+      log(`通知：总览接口返回 HTTP ${response.status}`)
+      return
+    }
+    body = await response.json()
+  } catch (error) {
+    log(`通知：面板不可达（${error instanceof Error ? error.message : String(error)}）`)
+    return
+  }
+  const person = Array.isArray(body?.person)
+    ? body.person.filter(item => item && typeof item.id === 'string')
+      .map(item => ({ id: item.id, ...(typeof item.title === 'string' ? { title: item.title } : {}) }))
+    : []
+  const result = decide(state.seen, person)
+  state.seen = result.ids
+  if (!result.notify) return
+  const { message, action } = prompt(result.fresh)
+  log(`通知：${message}`)
+  const choice = await vscode.window.showInformationMessage(message, action)
+  if (choice === action) await vscode.env.openExternal(vscode.Uri.parse(`${base}/`))
+}
+
+/**
+ * 按当前配置启动或停止通知轮询；配置变化后重新调用即可。
+ * @param {boolean} [announce] 为真时把开关状态写进输出面板。
+ */
+function syncNotify(announce = false) {
+  stopNotify()
+  const config = notifySettings()
+  if (!config.notify) {
+    if (announce) log('通知已关闭（dsh.superagent.notify = false），不轮询面板')
+    return
+  }
+  if (announce) log(`通知已开启：每 ${NOTIFY_INTERVAL_MS / 1000} 秒轮询 ${config.panelUrl}`)
+  void pollNotifications()
+  const timer = setInterval(() => { void pollNotifications() }, NOTIFY_INTERVAL_MS)
+  timer.unref?.()
+  state.notifyTimer = timer
 }
 
 /**
@@ -723,10 +808,15 @@ async function activate(context) {
     log(`桥启动失败：${error instanceof Error ? error.message : String(error)}`)
     vscode.window.showWarningMessage(`DSH 语言模型桥启动失败：${error instanceof Error ? error.message : String(error)}`)
   })
+  context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
+    if (event.affectsConfiguration('dsh.superagent')) syncNotify(true)
+  }))
+  syncNotify(true)
 }
 
-/** 扩展停用：删除发现文件并关闭服务。 */
+/** 扩展停用：删除发现文件、关闭服务并停止通知轮询。 */
 function deactivate() {
+  stopNotify()
   unpublish()
   for (const turn of state.turns.values()) {
     turn.timedOut = false
