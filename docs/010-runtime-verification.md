@@ -162,10 +162,32 @@ copilot -p "<中文操作指令>" --plugin-dir ./lib/plugin --allow-all-tools -s
 | `tests/health.spec.ts`（旧三例） | 部分 | 逐部件健康项改为：`models` 回合失败/恢复、`reply` 重试、同名通知去重三条，断言对象改为 Runtime 实际维护的条目 |
 | `tests/panel-deployment.spec.tsx`（旧例） | 是 | 部署页改为只读展示：限制展示、禁用输入、无保存栏、setup 失败提示与重新检查 |
 
-`pnpm check` 在本批收口时为退出码 0：54 个测试文件、988 通过、26 跳过（全部为 POSIX 专属对象的范围外跳过），构建与插件校验通过。
+`pnpm check` 在本批收口时为退出码 0：56 个测试文件（55 通过、1 个整组跳过）、990 通过、26 跳过（全部为 POSIX 专属对象的范围外跳过），构建与插件校验通过。这个总数已包含 §12 的真实端到端用例。
 
 ## 11. 已知限制：图片附件
 
 本期不读取工单中的图片附件。具体表现：**带图工单只能读文字**，`orchestrator_eval_read` 的图片分支返回固定错误并说明不可读，评估指令也据此要求「依赖截图措辞或视觉事实时给出 `unavailable`」；面板与 MCP 两侧行为一致。
 
 后续加回位置：`src/app/assessment.ts` 的 `read()` 中 `resource === 'image'` 分支——把它从固定错误恢复为读取附件并交给评估；同时恢复 `prompts/admission.md` 的图片段落与 `tests/feishu-image.spec.ts` 级别的覆盖。该限制同时写入仓库根 `README.md` 的「已知限制」与 `docs/007` 的「读取资源」一节。
+
+## 12. B5：真实端到端（模型 → 改文件 → ready → 交付）
+
+去 DSH 之后必须证明的不再是「插件被宿主加载」，而是「一条工单能从受理走到真实交付」。该验证由 `tests/e2e-bridge.spec.ts` 承担：真实 `Runtime`、真实工具面、真实 SQLite，只有工单来源用夹具构造；模型回合经 `VsCodeLmHost` 走 VS Code 语言模型桥，是本仓库唯一的真实模型通路。
+
+| 项目 | 实测结果 |
+| --- | --- |
+| 命令 | `pnpm test -- tests/e2e-bridge.spec.ts` |
+| 结果 | `1 passed`，`1 passed (1)`，耗时 14082 ms |
+| 模型 | 桥当前选中模型 `deepseek-flash`（由桥健康回报，未硬编码） |
+| 流程 | 飞书提及 → `orchestrator_route` 受理（`worktree_name` `fix-typo`）→ 真实回合读 `README.md` → 把 `teh` 改为 `the` → 汇报 `ready` → `orchestrator_reply`（`purpose=result`）返回 `{status:"sent"}` |
+| 断言 | 转录条数 > 1；worker 文本长度 > 10；`latestReport(ticket)?.state === 'ready'`；磁盘上 `README.md` 含 `the widget factory`；结果交付回执为 `sent` |
+
+失败与修正记录（都属于验证脚本自身的问题，不是产品行为）：
+
+1. 首轮真实回合在 86 秒后报 `Cannot read properties of undefined (reading 'transcript')`——`KV` 常量应从 `src/kv.ts` 导入，而不是从 `src/core/index.ts`。
+2. 转录文本提取为空——文本在 `message.content[].text`，需要先展开 `content`。
+3. 空工作目录里模型反复读 `README.md` 失败，撞上限后整回合失败：`[回合失败] 模型侧失败：回合工具调用超过 24 轮仍未结束，已中止`。修法是在受理后、`drain()` 前把真实 `README.md` 写进 `ticket.execution.directory`，让回合有可读的文件。
+
+**观察到的硬边界**：桥对单个回合设有 24 轮工具调用上限，超限即整回合失败（错误文案可读、落进转录，工单按普通回合失败处理，可重试）。因此「空目录里让模型自行摸索」不是有效场景，工单的执行目录必须真的存在且可用。
+
+该测试在没有桥发现文件时会整组跳过（`describe.skipIf(!info)`），跳过不计入通过；本机 2026-11-07 是真实执行并通过的。

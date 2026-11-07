@@ -155,7 +155,7 @@ node scripts/validate-plugin.mjs [--dir <path>]   # 单独校验某个插件目�
 
 `plugin:check` 依赖先构建：它同时校验 `plugin/`（1 个技能）与 `lib/plugin/`（3 个技能）。校验覆盖官方 schema、`$schema` 版本一致性、`plugin.version` 与 `package.json` 一致、MCP URL 必须是回环 `http://…/mcp`、技能目录结构与 frontmatter，以及所有文本文件的 UTF-8（无 BOM）；任一项失败退出码为 1 并打印原因。
 
-当前基线（2026-11-07，Windows）：`pnpm check` 退出 0，全量测试 **988 通过 / 26 跳过 / 0 失败**。跳过的 26 项都源于被测对象本身是 POSIX 专属实现（产品生成的 `#!/bin/sh` worker shim、`scripts/dsh-superagent` 服务脚本、飞书消费者的假 CLI、一处 POSIX 权限位断言）；它们在 Windows 上**范围外**，测试文件内用 `skipIf(platform)` 写明原因，保留跳过但不当作通过，也不计入剩余待办。
+当前基线（2026-11-07，Windows）：`pnpm check` 退出 0，全量测试 **990 通过 / 26 跳过 / 0 失败**（56 个测试文件）。跳过的 26 项都源于被测对象本身是 POSIX 专属实现（产品生成的 `#!/bin/sh` worker shim、`scripts/dsh-superagent` 服务脚本、飞书消费者的假 CLI、一处 POSIX 权限位断言）；它们在 Windows 上**范围外**，测试文件内用 `skipIf(platform)` 写明原因，保留跳过但不当作通过，也不计入剩余待办。`tests/e2e-bridge.spec.ts` 走真实 VS Code 语言模型桥，找不到桥时整组跳过，不计入通过。
 
 ## 已知限制
 

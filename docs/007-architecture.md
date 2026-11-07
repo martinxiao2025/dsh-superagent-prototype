@@ -438,6 +438,7 @@ flowchart TB
 | `tests/followups.spec.ts` | 工单线程上的人的跟进：发给主会话的通知、对其操作的工具、一次突发的代价；worker 的交回与上下文跟随，以及主会话的备注 |
 | `tests/health.spec.ts` | 主会话回合失败上报到 `models`、回复重试与同名通知去重，以及下一次成功后的恢复 |
 | `tests/runtime.spec.ts` | 在 `AgentHost` 替身上运行整个应用：接收、接受、作业环境、转录、暂停与失败，经工具与回环 HTTP |
+| `tests/e2e-bridge.spec.ts` | 真实端到端：真实 Runtime 与工具面，模型回合经 VS Code 语言模型桥，从受理到真实改文件、`ready` 汇报与结果交付；找不到桥时整组跳过 |
 | `tests/tools.spec.ts` | 会话的工具：`orchestrator_read` 为每个角色读取的内容，以及其他主会话工具的形状与检查 |
 | `tests/http.spec.ts` | 同源与回环检查、每种失败的状态、请求体上限、路径参数与查询 |
 | `tests/settings.spec.ts` | 与模型或账号检查竞争的设置保存、被保存超过的策略同步，以及暂停、同步与块的拒绝 |

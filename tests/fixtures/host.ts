@@ -160,8 +160,9 @@ export class FakeAgentHost implements AgentHost {
 /**
  * @param seed - 在 Runtime 打开数据库之前写入，例如更早版本存储的记录。
  * @param options - `mcpPort` 在该回环端口上启用 MCP 端点；0 表示向操作系统申请一个空闲端口。
+ *   `host` 换成真实的 `AgentHost`（例如 `VsCodeLmHost`）即可在同一套编排上跑真实模型回合。
  */
-export async function startRuntime(seed?: (store: Store) => void, options: { mcpPort?: number } = {}) {
+export async function startRuntime(seed?: (store: Store) => void, options: { mcpPort?: number; host?: AgentHost } = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'orchestrator-host-'))
   const AGENT = join(directory, 'agent-gh'), BOT = join(directory, 'lark-bot')
   const repository = { default_branch: 'master', permissions: { push: true } }
@@ -196,7 +197,7 @@ export async function startRuntime(seed?: (store: Store) => void, options: { mcp
   seeded.saveSettings(SettingsSchema.parse({ ...seeded.settings(), sources }))
   seed?.(seeded)
   seeded.close()
-  const host = new FakeAgentHost()
+  const host = options.host ?? new FakeAgentHost()
   const runtime = new Runtime({ machine: testMachine({ stateDir: directory, promptMaxChars: reference(100000),
     ...(options.mcpPort === undefined ? {} : { mcpEnabled: true, mcpPort: options.mcpPort }) }),
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }, subprocess, host, restart: () => {} })
@@ -205,7 +206,9 @@ export async function startRuntime(seed?: (store: Store) => void, options: { mcp
   runtime.store.saveSettings({ ...settings, eval: { ...settings.eval, mode: 'auto' },
     policy: { ...settings.policy, sources: { feishu: { allowed: [{ id: MEMBER, name: 'Alice' }], syncChat: CHAT }, github: { allowed: [{ id: 'alice' }] } } },
     sources: { ...sources, feishu: { enabled: true, config: { cli: BOT, chats: [{ chatId: CHAT, listen: 'all' }], directMessages: true } } } })
-  host.deliveries.mockClear()
+  // 真实宿主没有可断言的投递记录；依赖它的辅助函数在那种情况下返回空。
+  const fake = host instanceof FakeAgentHost ? host : undefined
+  fake?.deliveries.mockClear()
 
   /** 把一次提示词中的最后一段 JSON 解析出来；找不到时返回 undefined。 */
   const jsonTail = (text: string): Record<string, unknown> | undefined => {
@@ -216,7 +219,7 @@ export async function startRuntime(seed?: (store: Store) => void, options: { mcp
     return undefined
   }
   /** 投递给 `sessionId` 的已解析 JSON 载荷，按投递顺序。 */
-  const relays = (sessionId: string) => host.deliveries.mock.calls.map(([call]) => call).filter(call => call.sessionId === sessionId)
+  const relays = (sessionId: string) => (fake?.deliveries.mock.calls ?? []).map(([call]) => call).filter(call => call.sessionId === sessionId)
     .map(call => jsonTail(call.text)).filter((value): value is Record<string, unknown> => value !== undefined)
   /** 主会话尚未注入的待办通知；同一名称只保留最新一条。 */
   const notices = (): Record<string, unknown>[] => {
@@ -276,7 +279,8 @@ export async function startRuntime(seed?: (store: Store) => void, options: { mcp
   }
   /** 驱动主会话队列与 effect 队列到空闲。 */
   const settle = drain
-  return { runtime, directory, host, agents: host.agents, deliveries: host.deliveries, relays, notices, candidates, tools: { get: toolMap },
+  return { runtime, directory, host: host as FakeAgentHost, agents: fake?.agents ?? new Map<string, FakeAgent>(),
+    deliveries: fake?.deliveries ?? vi.fn(), relays, notices, candidates, tools: { get: toolMap },
     runTool, route, accept, acceptedTicket, api, subprocess, hooks, stop, settle, drain, mcpPort: () => runtime.mcpPort }
 }
 /** 夹具返回值类型。 */
