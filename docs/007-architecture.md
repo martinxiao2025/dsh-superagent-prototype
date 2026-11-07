@@ -565,7 +565,7 @@ worker 的工作区工具由 `src/executor/workspace-tools.ts` 提供（`read_fi
 
 | 资源 | 内容 |
 | --- | --- |
-| `tickets`、`triggers`、`threads`、`decisions` | 分页列表，形如 `{items, next_offset}`；活动列表最新优先 |
+| `tickets`、`triggers`、`threads`、`decisions` | 分页列表，形如 `{items, next_offset}`；活动列表最新优先。`tickets` 与 `triggers` 的页尾另带 `unread` 摘要（打开的工单数、等人处理的工单数、未决策的触发数、是否暂停），让重启后的会话不必翻完列表就知道还有多少事要做 |
 | `decision/<id>` | 一个决策 |
 | `thread/<key>` | 标签、工单、最近决策与一页触发 |
 | `trigger/<id>` | 消息文本、被回复的触发与相邻消息，排除 CI 运行 |

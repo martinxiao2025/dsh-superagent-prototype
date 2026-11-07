@@ -21,8 +21,11 @@ it('reads the lists, a ticket, a decision, the settings, the prompts and the mod
   const { ticket, trigger } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))
   await h.acceptedTicket(feishu('2', '@bot 再修一个'))
   const tickets = await read('tickets', { limit: 1 })
-  expect(tickets).toEqual({ items: [expect.objectContaining({ ticket_id: expect.any(String), state: 'idle' })], next_offset: 1 })
-  expect(await read('tickets', { offset: 1 })).toMatchObject({ items: [expect.objectContaining({ ticket_id: ticket.id })], next_offset: null })
+  expect(tickets).toMatchObject({ items: [expect.objectContaining({ ticket_id: expect.any(String), state: 'idle' })], next_offset: 1 })
+  // 页尾的未读摘要说明还有多少事要做：两张打开且都未被暂停的工单，候选都已决策。
+  expect(tickets).toMatchObject({ unread: { tickets_open: 2, tickets_waiting_person: 0, triggers_undecided: 0, paused: false } })
+  expect(await read('tickets', { offset: 1 })).toMatchObject({ items: [expect.objectContaining({ ticket_id: ticket.id })], next_offset: null,
+    unread: { tickets_open: 2 } })
   const triggers = await read('triggers') as { items: { trigger_id: string }[] }
   expect(triggers.items.map(item => item.trigger_id)).toEqual([expect.any(String), trigger.id])
   expect(await read('threads')).toMatchObject({ items: expect.arrayContaining([expect.objectContaining({ tickets: [ticket.id] })]) })
@@ -56,6 +59,17 @@ it('reads the lists, a ticket, a decision, the settings, the prompts and the mod
   const config = h.runtime.prompts.current().config
   for (let revision = 0; revision < 51; revision++) h.runtime.prompts.save({ ...config, scope: `Scope ${revision}.` }, revision, 'panel')
   expect(await read('prompts', { limit: 8000 })).toMatchObject({ items: expect.objectContaining({ length: 50 }), next_offset: 50 })
+})
+
+it('summarises the work left in the tail of the list pages', async () => {
+  // 直接落库一个还没被任何决策处理的 Trigger：它计入余量，被接受后的 Trigger 不再计入。
+  h.runtime.store.triggers.save(feishu('9', '@bot 还有一个'))
+  expect(await read('triggers')).toMatchObject({ unread: { tickets_open: 0, tickets_waiting_person: 0, triggers_undecided: 1, paused: false } })
+  await h.acceptedTicket(feishu('10', '@bot 修一下'))
+  expect(await read('tickets')).toMatchObject({ unread: { tickets_open: 1, triggers_undecided: 1 } })
+  // 暂停后摘要立即反映，不依赖重启。
+  h.runtime.settings.pause(true, 'panel')
+  expect(await read('tickets')).toMatchObject({ unread: { paused: true } })
 })
 
 it('lists in prompts the built-in parts whose text changed since the team overrode them, and the built-in parts in prompts/defaults', async () => {

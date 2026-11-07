@@ -55,6 +55,8 @@ export function storeReads(db: DatabaseSync) {
     const pattern = `%${query.replace(/[\\%_]/g, match => `\\${match}`)}%`
     return db.prepare("SELECT value FROM trigger WHERE id = ? OR json_extract(value, '$.url') LIKE ? ESCAPE '\\' OR json_extract(value, '$.meta.messageId') = ? OR json_extract(value, '$.text') LIKE ? ESCAPE '\\' ORDER BY at DESC LIMIT ?").all(query, `${query.replace(/[\\%_]/g, match => `\\${match}`)}%`, query, pattern, limit).map(row => JSON.parse(String(row.value)) as Trigger)
   },
+  /** 尚未产生 disposition（即还没被决策或过滤）的 Trigger 数，供工具结果尾部的未读摘要使用。 */
+  undecided: (): number => Number(db.prepare('SELECT COUNT(*) AS n FROM trigger t LEFT JOIN disposition d ON d.id = t.id WHERE d.id IS NULL').get()?.n ?? 0),
   recentDecisions: (offset = 0, limit = 50): Decision[] => db.prepare('SELECT value FROM decision ORDER BY rowid DESC LIMIT ? OFFSET ?').all(limit, offset).map(row => JSON.parse(String(row.value)) as Decision),
   /** kind 匹配 `kinds`、且其 trigger 自 `since` 起到达的决策，与 `flow` 的窗口计数口径一致。 */
   decisions: (options: { kinds: string[]; since: string }, offset: number, limit: number): { items: Decision[]; more: boolean } => {

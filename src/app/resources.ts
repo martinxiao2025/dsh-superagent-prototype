@@ -123,15 +123,29 @@ async function transcript(host: ResourceHost, ticketId: string) {
   return host.transcript(ticketId)
 }
 
+/**
+ * 工具结果尾部的未读摘要：重启后的会话不必翻完列表就知道还有多少事要做。
+ * 只统计需要人或主会话动作的事项，因此 `tickets_open` 与 `triggers_undecided` 是当前工作量，
+ * `tickets_waiting_person` 是必须有人处理的那一部分，`paused` 说明处理是否已被暂停。
+ */
+function unread(host: MainResourceHost) {
+  const open = host.store.tickets.open()
+  return { tickets_open: open.length,
+    tickets_waiting_person: open.filter(ticket => ticketCard(ticket).state.startsWith('person')).length,
+    triggers_undecided: host.store.read.undecided(),
+    paused: host.store.settings().paused }
+}
+
 const ROUTES: readonly Route[] = [
   ['tickets', read => {
     const host = main(read), tickets = host.store.tickets.list()
     const card = (ticket: Ticket) => ({ ...ticketCard(ticket), ...host.sessions.modelRetry(runningAssignment(ticket) && workerSessionId(ticket.id)) })
-    return list(read, (offset, count) => tickets.slice(offset, offset + count).map(card))
+    return { ...list(read, (offset, count) => tickets.slice(offset, offset + count).map(card)), unread: unread(host) }
   }],
   ['triggers', read => {
     const { store } = main(read)
-    return list(read, (offset, count) => store.read.recentTriggers(offset, count).map(item => triggerCard(item, store.triggers.disposition(item.id))))
+    return { ...list(read, (offset, count) => store.read.recentTriggers(offset, count).map(item => triggerCard(item, store.triggers.disposition(item.id)))),
+      unread: unread(main(read)) }
   }],
   ['threads', read => {
     const { store } = main(read)
