@@ -45,9 +45,9 @@ export class PanelServer {
   private server?: Server
   private actualPort = 0
   private readonly root: string
-  /** 记录选项；静态目录默认取 `lib/panel`。 */
+  /** 记录选项；静态目录默认取构建产物同目录下的 `panel/`（即 `lib/panel`）。 */
   constructor(private readonly options: PanelServerOptions) {
-    this.root = options.root ?? join(dirname(fileURLToPath(import.meta.url)), '..', 'panel')
+    this.root = options.root ?? join(dirname(fileURLToPath(import.meta.url)), 'panel')
   }
   /** 实际监听的端口；尚未启动时为 0。 */
   get port(): number { return this.actualPort }
