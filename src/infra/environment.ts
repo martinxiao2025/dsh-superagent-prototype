@@ -6,7 +6,7 @@
 import { lstat, mkdir, readdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { realpathSync } from 'node:fs'
 import { delimiter, join, resolve } from 'node:path'
-import type { SubprocessOutputReader, SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
+import type { SubprocessOutputReader, SubprocessRuntime } from './subprocess.ts'
 import type { Deployment } from '../deployment.ts'
 import { SetupError } from '../setup.ts'
 import { CliError } from './commands.ts'

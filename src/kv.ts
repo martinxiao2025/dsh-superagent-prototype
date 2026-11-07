@@ -31,8 +31,9 @@ export const KV = {
     builtIn: family<string, [base: string]>('prompt-built-in:') },
   /** Runtime：主 Session 的 ID。 */
   runtime: { masterId: record<string>('master-id') },
-  /** Sessions：每个 Session 工作过的提示词修订号，从旧到新排列；最后一项（`.at(-1)`）是它当前生效的修订。 */
-  sessions: { prompts: family<number[], [session: string]>('session-prompts:') },
+  /** Sessions：每个 Session 工作过的提示词修订号，从旧到新排列；最后一项（`.at(-1)`）是它当前生效的修订；以及主会话已投递过的 request id（去重，保留最近若干条）。 */
+  sessions: { prompts: family<number[], [session: string]>('session-prompts:'),
+    delivered: family<string[], [session: string]>('session-delivered:') },
   /** Schema 11 迁移：导入到 effect 表中的旧版主 Session 队列。 */
   queues: { relays: record<{ id: string; text: string }[]>('relay-queue'), unsubscribed: record<string[]>('subscription-results'),
     prompts: record<number | null>('prompt-notification'), settings: record<number | null>('settings-notification') },

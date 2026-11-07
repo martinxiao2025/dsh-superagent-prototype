@@ -5,7 +5,7 @@ import { delimiter, isAbsolute, join } from 'node:path'
 import type { Volatile } from '@deepseek-ai/cordis'
 import s from '@deepseek-ai/schemastery'
 import { z } from 'zod'
-import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
+import type { SubprocessRuntime } from './infra/subprocess.ts'
 import { runAsWorker, sameDirectory, withoutDirectory, workerBin } from './infra/environment.ts'
 import { SetupError } from './setup.ts'
 

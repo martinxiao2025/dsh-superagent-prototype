@@ -329,6 +329,7 @@ flowchart TB
 | `src/app/prompts.ts` | 提示词、`builtInParts`（团队可覆盖的内置部分）以及 `promptParts`（角色提示词各节的顺序） |
 | `src/app/context.ts` | 内置提示词文本，从 `prompts/` 读取，以及会话读取的记录条目 |
 | `src/app/skill-files.ts` | 打包文本：`promptFile`（把文件每行一句连接成段落）与内置技能 |
+| `src/app/main-session.ts` | `MainSession`：用 `AgentHost` 回合维持的主会话（去 DSH 版 `Sessions`）：`prompt` 按 `requestId` 去重、派发即返回、回合按会话串行回收；`inject` 通知缓存到下一回合前缀；`status`/`promptVersion`/`mayRead` 与 `Models 健康` 语义与原实现一致 |
 | `src/app/sessions.ts` | 会话 |
 | `src/app/delivery.ts` | `AgentDelivery`：每个请求 id 向 DeepSeek Harness 智能体投递一次消息，跨恢复的会话亦然 |
 | `src/app/retry-health.ts` | `RetryHealth`：哪些会话在等待模型预算重试，供 `models` 健康条目使用 |
@@ -364,7 +365,9 @@ flowchart TB
 | `src/executor/workspace-tools.ts` | worker 回合的工作区工具（`read_file`、`write_file`、`edit_file`、`list_files`、`search`、`run_command`）：全部限定在工单 worktree 内，越界拒绝，输出有上限，命令超时后终止整棵进程树 |
 | `src/infra/commands.ts` | `Commands`，CLI 传输：`run`；`api` 与 `pages`（限于配置的仓库并经过校验）；`lark`（以机器人身份）；`git`。`CliError` 携带命令输出报告的代码，例如 GitHub HTTP 状态；不输出任何内容的命令以其结束方式失败，绝不以其参数失败；`validItems` 跳过并统计列表中的畸形项 |
 | `src/infra/environment.ts` | 智能体的进程环境：命令 shim、git 配置与凭证助手、`runAsWorker`，以及环境与工单目录的检查 |
+| `src/infra/logger.ts` | `Logger` 的最小接口与 `consoleLogger`/`redactingLogger`：`%s` 占位符日志，并在写出前脱敏 `Bearer`、`token=`、`gh?_…` 等凭据 |
 | `src/infra/paths.ts` | 包的根目录，即打包文件所在位置 |
+| `src/infra/subprocess.ts` | `SubprocessRuntime` 的本地 `node:child_process` 实现：argv、cwd、env 覆盖、有上限的输出收集与中止宽限，替代 DSH 的 subprocess 服务 |
 | `src/infra/text.ts` | 字数统计与聊天消息上限、`fill` 与 `sameName` |
 | `src/infra/health.ts` | `HealthBoard`，每个部件的健康条目，各自由其唯一写入者认领 |
 | `src/sources/kind.ts` | `SourceKind` 协议 |
