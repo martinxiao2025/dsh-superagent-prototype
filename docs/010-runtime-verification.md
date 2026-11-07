@@ -202,6 +202,8 @@ copilot -p "<中文操作指令>" --plugin-dir ./lib/plugin --allow-all-tools -s
 | --- | --- | --- | --- |
 | `scripts/dsh-superagent` | 全文只被 `tests/service-script.spec.ts`、README 与历史文档引用；脚本首行依赖 `shutil.which('dsh')` 与 `dsh --profile`，去 DSH 后该二进制不再存在 | 否。POSIX 下的 start/stop/status/drill 随 DSH profile 一起终止 | `scripts/dsh-superagent-windows.ps1`（本项目唯一支持的平台） |
 | `tests/service-script.spec.ts` | 整个文件 `test.skipIf(process.platform === 'win32')`，在本项目支持的 Windows 上从未执行 | 否，被测对象已删除 | 同上；Windows 守护脚本由 `scripts/copilot-smoke.ps1` 与 `-Action drill` 实测覆盖 |
+| `src/executor/copilot.ts` | `CopilotCliHost` 只被 `tests/host.spec.ts` 引用；`src/index.ts` 只构造 `VsCodeLmHost`，配置里也没有选择宿主的键 | 否。经 `copilot` CLI 跑回合的能力随支持范围收敛而终止（理由见 13.4） | `VsCodeLmHost`（`vscode.lm` 扩展桥），是本机唯一真实模型通路 |
+| `tests/host.spec.ts` | 整文件只覆盖 `CopilotCliHost` 与 `parseTurnOutput` | 否，被测对象已删除 | `tests/vscode-lm.spec.ts` 覆盖宿主与桥协议 |
 
 删除后跳过用例由 26 项降为 11 项，均为仍在产品的 POSIX 专属对象（worker shim、飞书消费者假 CLI、权限位断言）。
 
@@ -216,3 +218,33 @@ copilot -p "<中文操作指令>" --plugin-dir ./lib/plugin --allow-all-tools -s
 | `src/app/runtime.ts` | 「不再依赖 DSH 或 Cordis」「替代 DSH 的 cordis 插件装载」 | 改为描述注入与生命周期 |
 
 残留扫描命令与口径：在 `src/`、`tests/`、`scripts/`、`plugin/`、`extension/` 内检索 `@deepseek-ai`、`cordis`、`DshExecutor`、`executor/dsh`、`keepalive-host`、`sessionController`、`ctx.agents`、`ctx.jobs`、`ctx.subagents`、`ctx.webServer`。结果：代码引用为 0；`dsh`、`DSH_SUPERAGENT_*`、`dsh-superagent` 作为产品名保留；`tests/controls.spec.tsx` 中「不引用 `@deepseek-ai/`」是一条防回归断言，不是残留。
+
+### 13.3 agent-plugins 1.0.0 核对表
+
+离线 schema 放在 `scripts/schemas/agent-plugins-1.0.0/`，校验命令 `node scripts/validate-plugin.mjs`（源目录）与 `node scripts/validate-plugin.mjs --dir lib/plugin`（打包产物），两者都必须退出 0，且校验过程不联网。
+
+| 核对项 | 规范要求 | 实测 | 结论 |
+| --- | --- | --- | --- |
+| `$schema` 版本 | 精确等于 `https://agent-plugins.org/schemas/1.0.0/plugin.schema.json`；`mcp.json` 用同名 `mcp.schema.json` | 两份文件都是 1.0.0，没有混用旧版本 | 符合 |
+| `plugin.json` 字段封闭 | 1.0.0 只允许 `$schema`、`name`、`version`、`description`、`author`、`homepage`、`repository`、`license`、`keywords`、`extensions`，且 `additionalProperties: false` | 只用了 `$schema`、`name`、`version`、`description`、`license`、`keywords` 六个字段；`author`、`homepage`、`repository` 在拿到真实地址前不写 | 符合 |
+| 名称规则 | `name` 非空、不以 `-` 开头、不含 `--` 与 `..`、长度受限 | `dsh-superagent` | 符合 |
+| 必填项 | `$schema` 与 `name` | 都在 | 符合 |
+| 版本一致性 | `plugin.json.version` 与 `package.json.version` 一致 | 都是 `0.1.0`；`validate-plugin.mjs` 显式比对 | 符合 |
+| `mcp.json` 结构 | 顶层只有 `$schema` 与 `mcpServers`；服务器条目带 `type` 与 `url` | 一个服务器 `dsh-superagent`，`streamable-http` + `http://127.0.0.1:3083/mcp` | 符合 |
+| MCP 监听面 | 只允许回环 | 地址是 `127.0.0.1`；校验脚本额外拒绝非回环与非 `/mcp` 路径 | 符合（比 schema 更严） |
+| `skills/` 一级目录 | 每个技能是 `skills/<name>/SKILL.md`，不允许嵌套或散文件 | `plugin/skills/` 只有 `dsh-superagent/`；打包产物另有 `dsh-superagent-feishu/`、`dsh-superagent-github/` | 符合 |
+| 技能 frontmatter | `name`、`description` 必填，`name` 与目录名一致 | 三个技能逐一核对，全部一致 | 符合 |
+| 扩展命名空间 | 若用 `extensions`，键必须是反向域名；未声明时视为不使用 | 没有 `extensions` 字段；VS Code 扩展走独立安装，不通过插件清单分发 | 符合（不使用） |
+| 离线校验 | 校验不得联网 | 只用本地 schema 与本地文件 | 符合 |
+
+### 13.4 简洁性检查
+
+| 检查项 | 证据 | 处理 |
+| --- | --- | --- |
+| 无人消费的宿主实现 | `CopilotCliHost` 只被 `tests/host.spec.ts` 引用，`src/index.ts` 只构造 `VsCodeLmHost`；Copilot CLI 又不在支持环境内 | 删除 `src/executor/copilot.ts` 与 `tests/host.spec.ts`（行为终止，见 13.1 的取代者列） |
+| 无人消费的配置项 | `MachineSchema` 的 `stateDir`、`promptMaxChars`、`mcpEnabled`、`mcpPort`、`panelPort`、`host`、`model`、`github`、`feishu`、`executor` 在 `src/` 内都有读取方 | 无需删除 |
+| 只在 Windows 上失效的绝对路径判断 | `ExecutorConfigSchema.directory` 用 `startsWith('/')` 判断绝对路径，Windows 的 `C:\work` 会被拒绝 | 改用 `node:path.isAbsolute`，并在 `tests/policy.spec.ts` 增加接受/拒绝各一例 |
+| 注释与实现不符 | `src/executor/workspace-tools.ts` 首段写「此前由 DSH 的 profile 提供」 | 改为直接描述当前实现 |
+| 错误码与文案不一致 | 拒绝一律 `UserError(code, values)`，`code` 来自 `USER_ERRORS`，由 `tests/errors.spec.ts` 与各工具用例覆盖 | 无漂移 |
+| 重复的统计逻辑 | 资源页 `tickets`/`triggers` 的 `unread` 只由 `src/app/resources.ts` 的 `unread()` 计算一次，面板不二次统计 | 无需合并 |
+| 一次性抽象 | `scripts/keepalive-probe.mjs` 被 Windows 守护脚本的 `drill` 调用，不是死文件 | 保留 |

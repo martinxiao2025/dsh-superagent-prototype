@@ -2,6 +2,7 @@
  * 运行时设置的 schema、评估校验与 policy 闸门判定。
  * 谁可以发起工作由各 Source 在自身身份配置中设定；Policy 绝不会把同一个人跨 Source 映射。
  */
+import { isAbsolute } from 'node:path'
 import { LIMITS } from './limits.ts'
 import { z } from 'zod'
 import { ADMISSION_DEFAULTS, type Admission, type AdmissionCell, type AdmissionRow } from './admission.ts'
@@ -91,7 +92,7 @@ const CommandNameSchema = z.string().regex(/^[A-Za-z0-9._-]+$/).refine(name => n
 export const ExecutorConfigSchema = z.object({
   model: RoleModelSchema.nullable().default(null),
   maxWorkers: z.number().int().min(LIMITS.maxWorkers.min).max(LIMITS.maxWorkers.max).default(3),
-  directory: z.string().trim().refine(path => path === '' || path.startsWith('/'), '使用绝对路径，或留空表示 <stateDir>/work').default(''),
+  directory: z.string().trim().refine(path => path === '' || isAbsolute(path), '使用绝对路径，或留空表示 <stateDir>/work').default(''),
   prepare: z.string().max(LIMITS.prepareCommand).default(''),
   blockedCommands: z.array(CommandNameSchema).default([]),
 }).strict()

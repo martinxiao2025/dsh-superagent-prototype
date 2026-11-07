@@ -361,7 +361,6 @@ flowchart TB
 | `src/executor/messages.ts` | 工单与 trigger 的消息格式化、执行元数据与临时失败判定；从执行器拆出，不依赖任何宿主 |
 | `src/executor/slots.ts` | `WorkerSlots`：worker 并发槽位的占用、预留与释放，上限来自执行的 `maxWorkers` |
 | `src/executor/host.ts` | 宿主与 agent 执行的抽象：`AgentHost` 的启动、健康检查、派发回合、结果回收与停止，以及回合请求、回执、结果与 MCP 服务器的类型。Runtime 只依赖它，换宿主不影响领域规则 |
-| `src/executor/copilot.ts` | `CopilotCliHost`：用 `copilot` CLI 的非交互模式运行真实回合，提示词经 stdin 送达，`parseTurnOutput` 解析文本与 JSONL 输出；Windows 上 `.cmd` 垫片无法以 `shell: false` 启动时记为健康错误，而不是抛出 |
 | `src/executor/bridge.ts` | 扩展桥协议：发现文件（`bridgeFilePath`、`readBridgeInfo`）、回合快照与分类，以及只连 `127.0.0.1` 的 `BridgeClient`；HTTP 状态与错误分类一一对应，供宿主区分“桥不可用”与“模型侧失败” |
 | `src/executor/vscode-lm.ts` | `VsCodeLmHost`：经扩展桥驱动 `vscode.lm` 回合，等发现文件、派发、轮询回收、取消与超时；把桥的分类映射为带固定前缀的错误，`TurnResult` 带上模型 id 与 token 用量 |
 | `src/executor/tool-server.ts` | 回合工具回调端点：只在 `127.0.0.1` 的随机端口监听，每个回合一个一次性令牌；扩展把模型的工具调用 POST 到这里，由 Runtime 执行并回传结果，工具失败以文本回给模型而不是当成传输失败 |
@@ -426,7 +425,6 @@ flowchart TB
 | `tests/feishu-read.spec.ts`、`tests/github-read.spec.ts` | 飞书与 GitHub 读取 |
 | `tests/admission-context.spec.ts` | 评估的线程窗口 |
 | `tests/assessment.spec.ts` | MasterAssessor 每次评估保留的内容，以及何时释放 |
-| `tests/host.spec.ts` | 宿主抽象与 Copilot CLI 宿主：就绪与错误自检、正常回合与经 stdin 的提示词、非零退出码、超时、无法解析的输出、MCP 配置临时文件与清理、停止，以及测试替身 |
 | `tests/vscode-lm.spec.ts` | `VsCodeLmHost` 与桥协议：正常回合与模型/用量回收、鉴权失败、无可用模型、发现文件缺失、超时与取消（都会取消桥侧回合）、模型侧失败分类，以及带工具回合的派发与工具回调 |
 | `tests/tool-server.spec.ts` | 回合工具回调端点：回环监听、令牌与未知回合拒绝、非 POST 路由与畸形请求体、工具失败以文本回传、超长结果截断，以及注销与停止后不再服务 |
 | `tests/workspace-tools.spec.ts` | worker 工作区工具：JSON Schema 与参数校验、带行号的读取与写入与定点编辑、歧义编辑拒绝、路径越界拒绝、列目录跳过依赖、正则搜索、命令退出码、输出截断与超时终止 |

@@ -421,7 +421,7 @@ exit=1
 
 ### 13.3 对宿主改造的影响
 
-- 路径 ① 成立:`vscode.lm` 只在扩展宿主可用,桥以 `127.0.0.1` + 随机端口 + 一次性令牌暴露回合接口;`VsCodeLmHost` 据此实现 `AgentHost`,与 `CopilotCliHost` 并存且为主用路线。
+- 路径 ① 成立:`vscode.lm` 只在扩展宿主可用,桥以 `127.0.0.1` + 随机端口 + 一次性令牌暴露回合接口;`VsCodeLmHost` 据此实现 `AgentHost`,是唯一的产品宿主。**已废止历史(2026-11-07)**:当时并存的 `CopilotCliHost`(`src/executor/copilot.ts`)没有任何产品路径使用,且 Copilot CLI 不在支持环境内,已连同 `tests/host.spec.ts` 删除。
 - 扩展开发宿主日志出现过 `Error: Chat model provider for vendor deepseek is already registered.`(DeepSeek BYOK 扩展重复注册);不影响选模型与发送。
 - 探针目录 `experiments/vscode-lm-probe/` 在结论摘录后已删除,正式实现见 `extension/dsh-lm-bridge`、`src/executor/bridge.ts`、`src/executor/vscode-lm.ts`。
 

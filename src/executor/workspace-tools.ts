@@ -1,7 +1,7 @@
 /**
  * worker 回合的工作区工具：读、写、改文件，列目录、搜索，以及执行命令。
  *
- * 这些能力此前由 DSH 的 profile 提供；`VsCodeLmHost` 接管 worker 后必须自带。所有路径都
+ * 这些能力由执行器自带，不依赖任何外部宿主的工具面。所有路径都
  * 限定在工单的 worktree 内，越界一律拒绝；输出有上限，超长时截断并标注原文长度。
  */
 import { spawn } from 'node:child_process'

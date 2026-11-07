@@ -246,6 +246,11 @@ describe('settings migration', () => {
     expect(SettingsSchema.parse(migrateSettings(saved))).toEqual(saved)
     expect(SettingsSchema.parse(migrateSettings({ executor: { maxWorkers: 2, paused: true } }))).toMatchObject({ paused: true, executor: { maxWorkers: 2 } })
   })
+  it('accepts a native absolute ticket directory root and rejects a relative one', () => {
+    const root = process.platform === 'win32' ? 'C:\\work' : '/srv/work'
+    expect(SettingsSchema.parse({ executor: { directory: root } }).executor.directory).toBe(root)
+    expect(() => SettingsSchema.parse({ executor: { directory: 'relative/work' } })).toThrow()
+  })
   it('moves pre-domain chat lists into the Feishu Source, the pause into a setting of its own, and members into the Sources\' parts', () => {
     const migrated = SettingsSchema.parse(migrateSettings({ paused: true, allowedChats: [CHAT, OBSERVED], allowDirectMessages: false, pollSeconds: 120, maxWorkers: 5, members: [{ name: 'A', feishuId: MEMBER, github: 'a' }],
       models: { orchestrator: { provider: 'p', model: 'm' }, worker: null, admission: null }, admission: { mode: 'auto', chats: [OBSERVED], maxEvaluators: 1, timeoutSeconds: 90, rules: [] } }))
